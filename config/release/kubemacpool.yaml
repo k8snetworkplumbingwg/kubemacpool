@@ -1,0 +1,201 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: mac-controller-manager
+    controller-tools.k8s.io: "1.0"
+  name: kubemacpool-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: kubemacpool-manager-role
+rules:
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  - validatingwebhookconfigurations
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - update
+  - create
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - get
+  - list
+  - create
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+- apiGroups:
+  - apiextensions.k8s.io
+  resources:
+  - customresourcedefinitions
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - kubevirt.io
+  resources:
+  - virtualmachines
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  creationTimestamp: null
+  name: kubemacpool-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubemacpool-manager-role
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: kubemacpool-system
+---
+apiVersion: v1
+data:
+  END_POOL_RANGE: FD:FF:FF:FF:FF:FF
+  START_POOL_RANGE: "02:00:00:00:00:00"
+kind: ConfigMap
+metadata:
+  labels:
+    control-plane: mac-controller-manager
+    controller-tools.k8s.io: "1.0"
+  name: kubemacpool-mac-range-config
+  namespace: kubemacpool-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubemacpool-webhook-secret
+  namespace: kubemacpool-system
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    control-plane: mac-controller-manager
+    controller-tools.k8s.io: "1.0"
+  name: kubemacpool-mac-controller-manager
+  namespace: kubemacpool-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: mac-controller-manager
+      controller-tools.k8s.io: "1.0"
+  serviceName: controller-manager-service
+  template:
+    metadata:
+      labels:
+        control-plane: mac-controller-manager
+        controller-tools.k8s.io: "1.0"
+    spec:
+      containers:
+      - args:
+        - --v=production
+        command:
+        - /manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SECRET_NAME
+          value: kubemacpool-webhook-secret
+        - name: START_POOL_RANGE
+          valueFrom:
+            configMapKeyRef:
+              key: START_POOL_RANGE
+              name: kubemacpool-mac-range-config
+        - name: END_POOL_RANGE
+          valueFrom:
+            configMapKeyRef:
+              key: END_POOL_RANGE
+              name: kubemacpool-mac-range-config
+        image: quay.io/schseba/mac-controller:latest
+        imagePullPolicy: Always
+        name: manager
+        ports:
+        - containerPort: 9876
+          name: webhook-server
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 30Mi
+          requests:
+            cpu: 100m
+            memory: 20Mi
+        volumeMounts:
+        - mountPath: /tmp/cert
+          name: cert
+          readOnly: true
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 5
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: kubemacpool-webhook-secret

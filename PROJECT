@@ -1,0 +1,3 @@
+version: "1"
+domain: kubemacpool.io
+repo: github.com/K8sNetworkPlumbingWG/kubemacpool

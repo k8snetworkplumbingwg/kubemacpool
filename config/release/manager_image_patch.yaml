@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mac-controller-manager
+spec:
+  template:
+    spec:
+      containers:
+      - image: quay.io/schseba/mac-controller:latest
+        name: manager

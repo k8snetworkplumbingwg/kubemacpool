@@ -41,6 +41,7 @@ var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager) (*admis
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 	svr, err := runtimewebhook.NewServer("kubemacpool-webhook", mgr, runtimewebhook.ServerOptions{
 		CertDir: "/tmp/cert",
+		Port:    8000,
 		BootstrapOptions: &runtimewebhook.BootstrapOptions{
 			Secret: &apitypes.NamespacedName{
 				Namespace: "kubemacpool-system",

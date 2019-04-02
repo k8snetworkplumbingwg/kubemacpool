@@ -25,9 +25,9 @@ namePrefix: kubemacpool-
   # Only one of manager_auth_proxy_patch.yaml and
   # manager_prometheus_metrics_patch.yaml should be enabled.
 resources:
-- ../rbac/rbac_role.yaml
-- ../rbac/rbac_role_binding.yaml
-- ../manager/manager.yaml
+- rbac/rbac_role.yaml
+- rbac/rbac_role_binding.yaml
+- manager/manager.yaml
 #- ../rbac/auth_proxy_service.yaml
 #- ../rbac/auth_proxy_role.yaml
 #- ../rbac/auth_proxy_role_binding.yaml
@@ -45,5 +45,5 @@ vars:
     apiVersion: v1
     kind: Secret
     name: webhook-secret
-apiVersion: v1beta1
+apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

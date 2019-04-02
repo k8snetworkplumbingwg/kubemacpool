@@ -47,6 +47,9 @@ goveralls:
 docker-goveralls: docker-test
 	./hack/run.sh goveralls
 
+docker-generate:
+	./hack/run.sh 
+
 # Test Inside a docker
 docker-test:
 	./hack/run.sh test

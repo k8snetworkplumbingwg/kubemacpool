@@ -27,7 +27,7 @@ registry=localhost:$registry_port
 
 REGISTRY=$registry make docker-build
 REGISTRY=$registry make docker-push
-make generate-test
+make docker-generate
 
 ./cluster/kubectl.sh delete --ignore-not-found -f ./config/test/kubemacpool.yaml || true
 ./cluster/kubectl.sh delete --ignore-not-found mutatingwebhookconfigurations mutating-webhook-configuration

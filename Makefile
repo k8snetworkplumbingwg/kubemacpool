@@ -5,7 +5,7 @@ IMAGE_TAG ?= latest
 
 IMG ?= schseba/mac-controller
 
-all: generate test generate-deploy generate-test
+all: generate generate-deploy generate-test
 
 # Run tests
 test:
@@ -26,7 +26,8 @@ generate-test: manifests
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests:
-	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go all
+	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd --output-dir config/default/crd
+	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go rbac --output-dir config/default/rbac
 
 # Run go fmt against code
 fmt:
@@ -45,6 +46,9 @@ goveralls:
 
 docker-goveralls: docker-test
 	./hack/run.sh goveralls
+
+docker-generate:
+	./hack/run.sh 
 
 # Test Inside a docker
 docker-test:

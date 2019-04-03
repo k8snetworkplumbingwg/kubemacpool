@@ -111,6 +111,11 @@ func main() {
 	startPoolRange := loadMacAddressFromEnvVar(poolmanager.StartPoolRangeEnv)
 	endPoolRange := loadMacAddressFromEnvVar(poolmanager.EndPoolRangeEnv)
 
+	// create a owner ref on the mutating webhook
+	// this way when we remove the statefulset of the manager the webhook will be also removed from the cluster
+	err = webhook.CreateOwnerRefForMutatingWebhook(clientset)
+	ExitIfError(err, "unable to create owner reference for mutating webhook object")
+
 	isKubevirtInstalled := checkForKubevirt(clientset)
 	poolManager, err := poolmanager.NewPoolManager(clientset, startPoolRange, endPoolRange, isKubevirtInstalled)
 	ExitIfError(err, "unable to create pool manager")

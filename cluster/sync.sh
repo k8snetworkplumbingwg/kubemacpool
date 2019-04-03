@@ -30,7 +30,6 @@ REGISTRY=$registry make docker-push
 make docker-generate
 
 ./cluster/kubectl.sh delete --ignore-not-found -f ./config/test/kubemacpool.yaml || true
-./cluster/kubectl.sh delete --ignore-not-found mutatingwebhookconfigurations mutating-webhook-configuration
 
 # Wait until all objects are deleted
 until [[ `./cluster/kubectl.sh get ns | grep "kubemacpool-system " | wc -l` -eq 0 ]]; do

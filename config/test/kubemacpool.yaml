@@ -151,7 +151,7 @@ metadata:
   name: kubemacpool-mac-controller-manager
   namespace: kubemacpool-system
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       control-plane: mac-controller-manager
@@ -192,6 +192,13 @@ spec:
         - containerPort: 9876
           name: webhook-server
           protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/healthy
+          initialDelaySeconds: 15
+          periodSeconds: 5
         resources:
           limits:
             cpu: 100m

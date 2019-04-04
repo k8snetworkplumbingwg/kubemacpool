@@ -27,7 +27,7 @@ metadata:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       control-plane: mac-controller-manager
@@ -72,6 +72,13 @@ spec:
           requests:
             cpu: 100m
             memory: 20Mi
+        readinessProbe:
+          exec:
+            command:
+              - cat
+              - /tmp/healthy
+          initialDelaySeconds: 15
+          periodSeconds: 5
         ports:
         - containerPort: 9876
           name: webhook-server

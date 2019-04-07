@@ -24,6 +24,7 @@ import (
 
 	multus "github.com/intel/multus-cni/types"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
@@ -150,6 +151,69 @@ func (p *PoolManager) allocatePodFromPool(pod *corev1.Pod) (string, error) {
 		"podName", pod.Name,
 		"podNamespace", pod.Namespace)
 	return macAddr.String(), nil
+}
+
+func (p *PoolManager) initPodMap() error {
+	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
+	pods, err := p.kubeClient.CoreV1().Pods("").List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range pods.Items {
+		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+		if pod.Annotations == nil {
+			continue
+		}
+
+		networkValue, ok := pod.Annotations[networksAnnotation]
+		if !ok {
+			continue
+		}
+
+		networks, err := parsePodNetworkAnnotation(networkValue, pod.Namespace)
+		if err != nil {
+			continue
+		}
+		log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
+
+		for _, network := range networks {
+			if network.MacRequest == "" {
+				continue
+			}
+
+			if err := p.allocatePodRequestedMac(network, &pod); err != nil {
+				// Dont return an error here if we can't allocate a mac for a running pod
+				log.Error(fmt.Errorf("failed to parse mac address for pod"),
+					"Invalid mac address for pod",
+					"namespace", pod.Namespace,
+					"name", pod.Name,
+					"mac", network.MacRequest)
+				continue
+			}
+		}
+	}
+
+	return nil
+}
+
+func (p *PoolManager) allocatedToCurrentPod(podname string, network *multus.NetworkSelectionElement) bool {
+	networks, exist := p.podToMacPoolMap[podname]
+	if !exist {
+		return false
+	}
+
+	allocatedMac, exist := networks[network.Name]
+
+	if !exist {
+		return false
+	}
+
+	if allocatedMac == network.MacRequest {
+		return true
+	}
+
+	return false
 }
 
 func podNamespaced(pod *corev1.Pod) string {

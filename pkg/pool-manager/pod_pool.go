@@ -31,7 +31,11 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("AllocatePodMac: Data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
 
 	networkValue, ok := pod.Annotations[networksAnnotation]
 	if !ok {
@@ -85,7 +89,11 @@ func (p *PoolManager) ReleasePodMac(podName string) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("ReleasePodMac: Data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
 
 	macList, ok := p.podToMacPoolMap[podName]
 

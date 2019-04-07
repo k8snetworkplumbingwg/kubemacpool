@@ -29,7 +29,12 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("AllocateVirtualMachineMac: data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
+
 	if len(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
 		log.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", virtualMachine)
 		return nil
@@ -76,7 +81,11 @@ func (p *PoolManager) ReleaseVirtualMachineMac(virtualMachineName string) error 
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("ReleaseVirtualMachineMac: data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
 
 	macList, ok := p.vmToMacPoolMap[virtualMachineName]
 

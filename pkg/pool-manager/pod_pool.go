@@ -53,7 +53,8 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 		return nil
 	}
 
-	if isRelatedToKubevirt(pod) {
+	// validate if the pod is related to kubevirt
+	if p.isRelatedToKubevirt(pod) {
 		// nothing to do here. the mac is already by allocated by the virtual machine webhook
 		log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
 		return nil
@@ -123,7 +124,7 @@ func (p *PoolManager) allocatePodRequestedMac(requestedMac string, pod *corev1.P
 		return err
 	}
 
-	if _, exist := p.macPoolMap[requestedMac]; exist {
+	if isAllocatedToPod, exist := p.macPoolMap[requestedMac]; exist && isAllocatedToPod && !p.allocatedToCurrentPod(podNamespaced(pod), network) {
 		err := fmt.Errorf("failed to allocate requested mac address")
 		log.Error(err, "mac address already allocated")
 

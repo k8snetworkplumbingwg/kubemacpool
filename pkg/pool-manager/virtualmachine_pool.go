@@ -219,13 +219,24 @@ func (p *PoolManager) IsKubevirtEnabled() bool {
 	return p.isKubevirt
 }
 
-func isRelatedToKubevirt(pod *corev1.Pod) bool {
+func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 	if pod.ObjectMeta.OwnerReferences == nil {
 		return false
 	}
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
+			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
+			log.V(1).Info("test", "requestURI", requestUrl)
+			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do()
+
+			data, err := result.Raw()
+			log.V(1).Info("get kubevirt virtual machine object response", "err", err, "response", string(data))
+			if err != nil && errors.IsNotFound(err) {
+				log.V(1).Info("this pod is an ephemeral vmi object allocating mac as a regular pod")
+				return false
+			}
+
 			return true
 		}
 	}

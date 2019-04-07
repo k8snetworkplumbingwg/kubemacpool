@@ -99,19 +99,6 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 	return nil, fmt.Errorf("the range is full")
 }
 
-func (p *PoolManager) setAsLeader() {
-	// Now this manager is the leader load existing macs
-	if p.isLeader == false {
-		log.V(1).Info("this manager is now the leader")
-		err := p.InitMaps()
-		if err != nil {
-			log.Error(err, "failed to init allocated MAC addresses")
-			os.Exit(1)
-		}
-		p.isLeader = true
-	}
-}
-
 func (p *PoolManager) InitMaps() error {
 	err := p.initPodMap()
 	if err != nil {

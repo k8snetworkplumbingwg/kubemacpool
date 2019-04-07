@@ -54,7 +54,7 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 		return nil, err
 	}
 
-	return &PoolManager{kubeClient: kubeClient,
+	poolManger := &PoolManager{kubeClient: kubeClient,
 		isLeader:        false,
 		isKubevirt:      kubevirtExist,
 		endRange:        endPoolRange,
@@ -63,7 +63,14 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 		podToMacPoolMap: map[string][]string{},
 		vmToMacPoolMap:  map[string][]string{},
 		macPoolMap:      map[string]bool{},
-		poolMutex:       sync.Mutex{}}, nil
+		poolMutex:       sync.Mutex{}}
+
+	err = poolManger.InitMaps()
+	if err != nil {
+		return nil, err
+	}
+
+	return poolManger, nil
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {

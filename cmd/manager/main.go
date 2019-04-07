@@ -27,10 +27,10 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/manager"
 	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
 )
@@ -126,10 +126,7 @@ func main() {
 	go waitForSignal()
 
 	log.Info("Setting up manager")
-	mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: metricsAddr,
-		LeaderElection:          true,
-		LeaderElectionID:        "kubemacpool-mac-election",
-		LeaderElectionNamespace: "kubemacpool-system"})
+	mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: metricsAddr})
 	ExitIfError(err, "unable to set up manager")
 
 	log.Info("Setting up controller")

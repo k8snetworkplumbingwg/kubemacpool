@@ -89,5 +89,15 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	// allocate only when the pod is ready
+	if instance.Annotations == nil {
+		return reconcile.Result{}, nil
+	}
+
+	err = r.poolManager.AllocatePodMac(instance)
+	if err != nil {
+		log.Error(err, "failed to allocate mac for pod")
+	}
+
 	return reconcile.Result{}, nil
 }

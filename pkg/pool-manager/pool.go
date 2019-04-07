@@ -26,25 +26,33 @@ import (
 )
 
 const (
-	StartPoolRangeEnv  = "START_POOL_RANGE"
-	EndPoolRangeEnv    = "END_POOL_RANGE"
-	networksAnnotation = "k8s.v1.cni.cncf.io/networks"
+	StartPoolRangeEnv        = "START_POOL_RANGE"
+	EndPoolRangeEnv          = "END_POOL_RANGE"
+	networksAnnotation       = "k8s.v1.cni.cncf.io/networks"
+	networksStatusAnnotation = "k8s.v1.cni.cncf.io/networks-status"
 )
 
 var log = logf.Log.WithName("PoolManager")
 
 type PoolManager struct {
-	kubeClient      kubernetes.Interface // kubernetes client
-	startRange      net.HardwareAddr     // fist mac in range
-	endRange        net.HardwareAddr     // last mac in range
-	currentMac      net.HardwareAddr     // last given mac
-	macPoolMap      map[string]bool      // allocated mac map
-	podToMacPoolMap map[string][]string  // map for namespace/podname and a list of allocated mac addresses
-	vmToMacPoolMap  map[string][]string  // cap for namespace/vmname and a list of allocated mac addresses
-	poolMutex       sync.Mutex           // mutex for allocation an release
-	isLeader        bool                 // leader boolean
-	isKubevirt      bool                 // bool if kubevirt virtualmachine crd exist in the cluster
+	kubeClient      kubernetes.Interface         // kubernetes client
+	startRange      net.HardwareAddr             // fist mac in range
+	endRange        net.HardwareAddr             // last mac in range
+	currentMac      net.HardwareAddr             // last given mac
+	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
+	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	vmToMacPoolMap  map[string][]string          // cap for namespace/vmname and a list of allocated mac addresses
+	poolMutex       sync.Mutex                   // mutex for allocation an release
+	isLeader        bool                         // leader boolean
+	isKubevirt      bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 }
+
+type AllocationStatus string
+
+const (
+	AllocationStatusAllocated     AllocationStatus = "Allocated"
+	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
+)
 
 func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRange net.HardwareAddr, kubevirtExist bool) (*PoolManager, error) {
 	err := checkRange(startPoolRange, endPoolRange)
@@ -58,9 +66,9 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 		endRange:        endPoolRange,
 		startRange:      startPoolRange,
 		currentMac:      startPoolRange,
-		podToMacPoolMap: map[string][]string{},
+		podToMacPoolMap: map[string]map[string]string{},
 		vmToMacPoolMap:  map[string][]string{},
-		macPoolMap:      map[string]bool{},
+		macPoolMap:      map[string]AllocationStatus{},
 		poolMutex:       sync.Mutex{}}
 
 	err = poolManger.InitMaps()

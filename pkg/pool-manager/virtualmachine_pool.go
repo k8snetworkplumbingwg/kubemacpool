@@ -115,7 +115,7 @@ func (p *PoolManager) allocateFromPoolForVirtualMachine(virtualMachine *kubevirt
 		return "", err
 	}
 
-	p.macPoolMap[macAddr.String()] = true
+	p.macPoolMap[macAddr.String()] = AllocationStatusAllocated
 	if p.vmToMacPoolMap[vmNamespaced(virtualMachine)] == nil {
 		p.vmToMacPoolMap[vmNamespaced(virtualMachine)] = []string{}
 	}
@@ -139,7 +139,7 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(requestedMac s
 		return err
 	}
 
-	p.macPoolMap[requestedMac] = true
+	p.macPoolMap[requestedMac] = AllocationStatusAllocated
 	if p.vmToMacPoolMap[vmNamespaced(virtualMachine)] == nil {
 		p.vmToMacPoolMap[vmNamespaced(virtualMachine)] = []string{}
 	}

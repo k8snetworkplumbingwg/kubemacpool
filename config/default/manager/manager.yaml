@@ -4,6 +4,7 @@ metadata:
   labels:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
+    kubemacpool/ignoreAdmission: "true"
   name: system
 ---
 apiVersion: v1
@@ -19,7 +20,7 @@ data:
   END_POOL_RANGE: FD:FF:FF:FF:FF:FF
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: mac-controller-manager
   namespace: system
@@ -27,12 +28,11 @@ metadata:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       control-plane: mac-controller-manager
       controller-tools.k8s.io: "1.0"
-  serviceName: controller-manager-service
   template:
     metadata:
       labels:

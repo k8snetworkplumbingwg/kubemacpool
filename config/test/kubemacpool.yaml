@@ -4,6 +4,7 @@ metadata:
   labels:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
+    kubemacpool/ignoreAdmission: "true"
   name: kubemacpool-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -90,7 +91,7 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - statefulsets
+  - deployments
   verbs:
   - get
   - create
@@ -143,7 +144,7 @@ metadata:
   namespace: kubemacpool-system
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   labels:
     control-plane: mac-controller-manager
@@ -151,12 +152,11 @@ metadata:
   name: kubemacpool-mac-controller-manager
   namespace: kubemacpool-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       control-plane: mac-controller-manager
       controller-tools.k8s.io: "1.0"
-  serviceName: controller-manager-service
   template:
     metadata:
       labels:

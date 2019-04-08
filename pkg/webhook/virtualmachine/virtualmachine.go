@@ -18,6 +18,7 @@ package virtualmachine
 
 import (
 	"context"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
@@ -36,7 +37,7 @@ import (
 
 var log = logf.Log.WithName("Webhook VirtualMachine")
 
-func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) (*admission.Webhook, error) {
+func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSelector *v1.LabelSelector) (*admission.Webhook, error) {
 	if !poolManager.IsKubevirtEnabled() {
 		return nil, nil
 	}
@@ -49,6 +50,7 @@ func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) (*admission
 		Operations(admissionregistrationv1beta1.Create).
 		ForType(&kubevirt.VirtualMachine{}).
 		Handlers(virtualMachineAnnotator).
+		NamespaceSelector(namespaceSelector).
 		WithManager(mgr).
 		Build()
 	if err != nil {

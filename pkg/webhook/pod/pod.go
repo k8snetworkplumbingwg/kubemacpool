@@ -28,6 +28,7 @@ import (
 
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
@@ -35,7 +36,7 @@ import (
 
 var log = logf.Log.WithName("Webhook Pod")
 
-func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) (*admission.Webhook, error) {
+func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSelector *v1.LabelSelector) (*admission.Webhook, error) {
 	podAnnotator := &podAnnotator{poolManager: poolManager}
 
 	wh, err := builder.NewWebhookBuilder().
@@ -45,6 +46,7 @@ func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) (*admission
 		ForType(&corev1.Pod{}).
 		Handlers(podAnnotator).
 		WithManager(mgr).
+		NamespaceSelector(namespaceSelector).
 		Build()
 	if err != nil {
 		return nil, err

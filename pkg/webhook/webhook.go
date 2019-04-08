@@ -33,7 +33,7 @@ import (
 )
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager
-var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager) (*admission.Webhook, error)
+var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1.LabelSelector) (*admission.Webhook, error)
 
 // AddToManager adds all Controllers to the Manager
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations;validatingwebhookconfigurations,verbs=get;list;watch;create;update;patch;delete
@@ -43,7 +43,7 @@ var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager) (*admis
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
-// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;create;update;patch;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 	svr, err := runtimewebhook.NewServer("kubemacpool-webhook", mgr, runtimewebhook.ServerOptions{
@@ -69,9 +69,12 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		return err
 	}
 
+	namespaceSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: "kubemacpool/ignoreAdmission",
+		Operator: metav1.LabelSelectorOpDoesNotExist}}}
+
 	webhooks := []runtimewebhook.Webhook{}
 	for _, f := range AddToManagerFuncs {
-		if webhooktoRegister, err := f(mgr, poolManager); err != nil {
+		if webhooktoRegister, err := f(mgr, poolManager, namespaceSelector); err != nil {
 			return err
 		} else if webhooktoRegister != nil {
 			webhooks = append(webhooks, webhooktoRegister)
@@ -92,11 +95,11 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 // We choose this solution because the sigs.k8s.io/controller-runtime package doesn't allow to customize
 // the ServerOptions object
 func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset) error {
-	managerStatefulSet, err := kubeClient.AppsV1().StatefulSets("kubemacpool-system").Get("kubemacpool-mac-controller-manager", metav1.GetOptions{})
+	managerDeployment, err := kubeClient.AppsV1().Deployments("kubemacpool-system").Get("kubemacpool-mac-controller-manager", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
-	ownerRefList := []metav1.OwnerReference{{Name: managerStatefulSet.Name, Kind: "StatefulSet", APIVersion: "apps/v1", UID: managerStatefulSet.UID}}
+	ownerRefList := []metav1.OwnerReference{{Name: managerDeployment.Name, Kind: "Deployment", APIVersion: "apps/v1", UID: managerDeployment.UID}}
 
 	mutatingWebHookObject, err := kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get("kubemacpool", metav1.GetOptions{})
 	if err != nil {

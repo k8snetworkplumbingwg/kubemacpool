@@ -19,34 +19,40 @@ package pool_manager
 import (
 	"fmt"
 	"net"
-	"os"
 	"sync"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 
 const (
-	StartPoolRangeEnv  = "START_POOL_RANGE"
-	EndPoolRangeEnv    = "END_POOL_RANGE"
-	networksAnnotation = "k8s.v1.cni.cncf.io/networks"
+	StartPoolRangeEnv        = "START_POOL_RANGE"
+	EndPoolRangeEnv          = "END_POOL_RANGE"
+	networksAnnotation       = "k8s.v1.cni.cncf.io/networks"
+	networksStatusAnnotation = "k8s.v1.cni.cncf.io/networks-status"
 )
 
 var log = logf.Log.WithName("PoolManager")
 
 type PoolManager struct {
-	kubeClient      kubernetes.Interface // kubernetes client
-	startRange      net.HardwareAddr     // fist mac in range
-	endRange        net.HardwareAddr     // last mac in range
-	currentMac      net.HardwareAddr     // last given mac
-	macPoolMap      map[string]bool      // allocated mac map
-	podToMacPoolMap map[string][]string  // map for namespace/podname and a list of allocated mac addresses
-	vmToMacPoolMap  map[string][]string  // cap for namespace/vmname and a list of allocated mac addresses
-	poolMutex       sync.Mutex           // mutex for allocation an release
-	isLeader        bool                 // leader boolean
-	isKubevirt      bool                 // bool if kubevirt virtualmachine crd exist in the cluster
+	kubeClient      kubernetes.Interface         // kubernetes client
+	startRange      net.HardwareAddr             // fist mac in range
+	endRange        net.HardwareAddr             // last mac in range
+	currentMac      net.HardwareAddr             // last given mac
+	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
+	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	vmToMacPoolMap  map[string][]string          // cap for namespace/vmname and a list of allocated mac addresses
+	poolMutex       sync.Mutex                   // mutex for allocation an release
+	isLeader        bool                         // leader boolean
+	isKubevirt      bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 }
+
+type AllocationStatus string
+
+const (
+	AllocationStatusAllocated     AllocationStatus = "Allocated"
+	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
+)
 
 func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRange net.HardwareAddr, kubevirtExist bool) (*PoolManager, error) {
 	err := checkRange(startPoolRange, endPoolRange)
@@ -54,16 +60,23 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 		return nil, err
 	}
 
-	return &PoolManager{kubeClient: kubeClient,
+	poolManger := &PoolManager{kubeClient: kubeClient,
 		isLeader:        false,
 		isKubevirt:      kubevirtExist,
 		endRange:        endPoolRange,
 		startRange:      startPoolRange,
 		currentMac:      startPoolRange,
-		podToMacPoolMap: map[string][]string{},
+		podToMacPoolMap: map[string]map[string]string{},
 		vmToMacPoolMap:  map[string][]string{},
-		macPoolMap:      map[string]bool{},
-		poolMutex:       sync.Mutex{}}, nil
+		macPoolMap:      map[string]AllocationStatus{},
+		poolMutex:       sync.Mutex{}}
+
+	err = poolManger.InitMaps()
+	if err != nil {
+		return nil, err
+	}
+
+	return poolManger, nil
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
@@ -94,58 +107,15 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 	return nil, fmt.Errorf("the range is full")
 }
 
-func (p *PoolManager) setAsLeader() {
-	// Now this manager is the leader load existing macs
-	if p.isLeader == false {
-		log.V(1).Info("this manager is now the leader")
-		err := p.InitMaps()
-		if err != nil {
-			log.Error(err, "failed to init allocated MAC addresses")
-			os.Exit(1)
-		}
-		p.isLeader = true
-	}
-}
-
 func (p *PoolManager) InitMaps() error {
-	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
-	pods, err := p.kubeClient.CoreV1().Pods("").List(metav1.ListOptions{})
+	err := p.initPodMap()
 	if err != nil {
 		return err
 	}
 
-	for _, pod := range pods.Items {
-		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
-		if pod.Annotations == nil {
-			continue
-		}
-
-		networkValue, ok := pod.Annotations[networksAnnotation]
-		if !ok {
-			continue
-		}
-
-		networks, err := parsePodNetworkAnnotation(networkValue, pod.Namespace)
-		if err != nil {
-			continue
-		}
-		log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
-
-		for _, network := range networks {
-			if network.MacRequest == "" {
-				continue
-			}
-
-			if err := p.allocatePodRequestedMac(network.MacRequest, &pod); err != nil {
-				// Dont return an error here if we can't allocate a mac for a running pod
-				log.Error(fmt.Errorf("failed to parse mac address for pod"),
-					"Invalid mac address for pod",
-					"namespace", pod.Namespace,
-					"name", pod.Name,
-					"mac", network.MacRequest)
-				continue
-			}
-		}
+	err = p.initVirtualMachineMap()
+	if err != nil {
+		return err
 	}
 
 	return nil

@@ -19,6 +19,7 @@ package pod
 import (
 	"context"
 	"net/http"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
@@ -72,24 +73,24 @@ func (a *podAnnotator) Handle(ctx context.Context, req types.Request) types.Resp
 	if err != nil {
 		return admission.ErrorResponse(http.StatusBadRequest, err)
 	}
-	copy := pod.DeepCopy()
 
-	err = a.mutatePodsFn(ctx, copy)
+	if pod.Annotations == nil {
+		admission.PatchResponse(pod, pod)
+	}
+
+	copyPod := pod.DeepCopy()
+	if copyPod.Namespace == "" {
+		copyPod.Namespace = req.AdmissionRequest.Namespace
+	}
+
+	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace)
+	err = a.poolManager.AllocatePodMac(copyPod)
 	if err != nil {
 		return admission.ErrorResponse(http.StatusInternalServerError, err)
 	}
+
 	// admission.PatchResponse generates a Response containing patches.
-	return admission.PatchResponse(pod, copy)
-}
-
-// mutatePodsFn add an annotation to the given pod
-func (a *podAnnotator) mutatePodsFn(ctx context.Context, pod *corev1.Pod) error {
-	if pod.Annotations == nil {
-		return nil
-	}
-
-	log.V(1).Info("got a mutate pod event", "podName", pod.Name, "podNamespace", pod.Namespace)
-	return a.poolManager.AllocatePodMac(pod)
+	return admission.PatchResponse(pod, copyPod)
 }
 
 // podAnnotator implements inject.Client.

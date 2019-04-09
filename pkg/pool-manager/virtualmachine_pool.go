@@ -18,6 +18,7 @@ package pool_manager
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"net"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,7 +29,12 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("AllocateVirtualMachineMac: data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
+
 	if len(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
 		log.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", virtualMachine)
 		return nil
@@ -75,7 +81,11 @@ func (p *PoolManager) ReleaseVirtualMachineMac(virtualMachineName string) error 
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	p.setAsLeader()
+	log.V(1).Info("ReleaseVirtualMachineMac: data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
 
 	macList, ok := p.vmToMacPoolMap[virtualMachineName]
 
@@ -105,7 +115,7 @@ func (p *PoolManager) allocateFromPoolForVirtualMachine(virtualMachine *kubevirt
 		return "", err
 	}
 
-	p.macPoolMap[macAddr.String()] = true
+	p.macPoolMap[macAddr.String()] = AllocationStatusAllocated
 	if p.vmToMacPoolMap[vmNamespaced(virtualMachine)] == nil {
 		p.vmToMacPoolMap[vmNamespaced(virtualMachine)] = []string{}
 	}
@@ -129,7 +139,7 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(requestedMac s
 		return err
 	}
 
-	p.macPoolMap[requestedMac] = true
+	p.macPoolMap[requestedMac] = AllocationStatusAllocated
 	if p.vmToMacPoolMap[vmNamespaced(virtualMachine)] == nil {
 		p.vmToMacPoolMap[vmNamespaced(virtualMachine)] = []string{}
 	}
@@ -143,17 +153,90 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(requestedMac s
 	return nil
 }
 
+func (p *PoolManager) initVirtualMachineMap() error {
+	if !p.isKubevirt {
+		return nil
+	}
+
+	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1alpha3/virtualmachines").Do()
+	if result.Error() != nil {
+		return result.Error()
+	}
+
+	vms := &kubevirt.VirtualMachineList{}
+	err := result.Into(vms)
+	if err != nil {
+		return err
+	}
+
+	for _, vm := range vms.Items {
+		log.V(1).Info("InitMaps for virtual machine", "vmName", vm.Name, "vmNamespace", vm.Namespace)
+		if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
+			log.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
+			continue
+		}
+
+		if len(vm.Spec.Template.Spec.Networks) == 0 {
+			log.V(1).Info("no networks found for virtual machine, skipping mac allocation", "name", vm.Name,
+				"namespace", vm.Namespace)
+			continue
+		}
+
+		networks := map[string]kubevirt.Network{}
+		for _, network := range vm.Spec.Template.Spec.Networks {
+			networks[network.Name] = network
+		}
+
+		log.V(1).Info("virtual machine data",
+			"name", vm.Name,
+			"namespace", vm.Namespace,
+			"interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
+
+		for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+			if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
+				log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
+				continue
+			}
+
+			if iface.MacAddress != "" {
+				if err := p.allocateRequestedVirtualMachineInterfaceMac(iface.MacAddress, &vm); err != nil {
+					// Dont return an error here if we can't allocate a mac for a configured vm
+					log.Error(fmt.Errorf("failed to parse mac address for virtual machine"),
+						"Invalid mac address for virtual machine",
+						"namespace", vm.Namespace,
+						"name", vm.Name,
+						"mac", iface.MacAddress)
+					continue
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func (p *PoolManager) IsKubevirtEnabled() bool {
 	return p.isKubevirt
 }
 
-func isRelatedToKubevirt(pod *corev1.Pod) bool {
+func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 	if pod.ObjectMeta.OwnerReferences == nil {
 		return false
 	}
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
+			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
+			log.V(1).Info("test", "requestURI", requestUrl)
+			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do()
+
+			data, err := result.Raw()
+			log.V(1).Info("get kubevirt virtual machine object response", "err", err, "response", string(data))
+			if err != nil && errors.IsNotFound(err) {
+				log.V(1).Info("this pod is an ephemeral vmi object allocating mac as a regular pod")
+				return false
+			}
+
 			return true
 		}
 	}

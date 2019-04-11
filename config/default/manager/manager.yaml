@@ -67,11 +67,11 @@ spec:
                 key: END_POOL_RANGE
         resources:
           limits:
-            cpu: 100m
-            memory: 30Mi
+            cpu: 800m
+            memory: 900Mi
           requests:
-            cpu: 100m
-            memory: 20Mi
+            cpu: 500m
+            memory: 500Mi
         readinessProbe:
           exec:
             command:

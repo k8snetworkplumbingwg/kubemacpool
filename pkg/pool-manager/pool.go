@@ -60,12 +60,15 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 		return nil, err
 	}
 
+	currentMac := make(net.HardwareAddr, len(startPoolRange))
+	copy(currentMac, startPoolRange)
+
 	poolManger := &PoolManager{kubeClient: kubeClient,
 		isLeader:        false,
 		isKubevirt:      kubevirtExist,
 		endRange:        endPoolRange,
 		startRange:      startPoolRange,
-		currentMac:      startPoolRange,
+		currentMac:      currentMac,
 		podToMacPoolMap: map[string]map[string]string{},
 		vmToMacPoolMap:  map[string][]string{},
 		macPoolMap:      map[string]AllocationStatus{},
@@ -80,8 +83,6 @@ func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRang
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
-	currentMac := p.currentMac
-
 	// this look will ensure that we check all the range
 	// first iteration from current mac to last mac in the range
 	// second iteration from first mac in the range to the latest one
@@ -89,19 +90,18 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 
 		// This loop runs from the current mac to the last one in the range
 		for {
-			if _, ok := p.macPoolMap[currentMac.String()]; !ok {
-				log.V(1).Info("found unused mac", "mac", currentMac)
-				p.currentMac = currentMac
-				return currentMac, nil
+			if _, ok := p.macPoolMap[p.currentMac.String()]; !ok {
+				log.V(1).Info("found unused mac", "mac", p.currentMac)
+				return p.currentMac, nil
 			}
 
-			if currentMac.String() == p.endRange.String() {
+			if p.currentMac.String() == p.endRange.String() {
 				break
 			}
-			currentMac = getNextMac(currentMac)
+			p.currentMac = getNextMac(p.currentMac)
 		}
 
-		currentMac = p.startRange
+		copy(p.currentMac, p.startRange)
 	}
 
 	return nil, fmt.Errorf("the range is full")

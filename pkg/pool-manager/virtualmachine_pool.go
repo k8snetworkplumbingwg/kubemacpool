@@ -56,24 +56,32 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		"namespace", virtualMachine.Namespace,
 		"interfaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 
-	for idx, iface := range virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
+	copyVM := virtualMachine.DeepCopy()
+	allocations := []string{}
+	for idx, iface := range copyVM.Spec.Template.Spec.Domain.Devices.Interfaces {
 		if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
 			log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 			continue
 		}
 
 		if iface.MacAddress != "" {
-			if err := p.allocateRequestedVirtualMachineInterfaceMac(iface.MacAddress, virtualMachine); err != nil {
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(iface.MacAddress, copyVM); err != nil {
+				p.revertAllocationOnVm(vmNamespaced(copyVM), allocations)
 				return err
 			}
+			allocations = append(allocations, iface.MacAddress)
 		} else {
-			macAddr, err := p.allocateFromPoolForVirtualMachine(virtualMachine)
+			macAddr, err := p.allocateFromPoolForVirtualMachine(copyVM)
 			if err != nil {
+				p.revertAllocationOnVm(vmNamespaced(copyVM), allocations)
 				return err
 			}
-			virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
+			copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
+			allocations = append(allocations, macAddr)
 		}
 	}
+
+	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
 	return nil
 }
 
@@ -242,6 +250,13 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 	}
 
 	return false
+}
+
+// Revert allocation if one of the requested mac addresses fails to be allocated
+func (p *PoolManager) revertAllocationOnVm(vmName string, allocations []string) {
+	log.V(1).Info("Rever vm allocation", "vmName", vmName, "allocations", allocations)
+	p.releaseAllocations(allocations)
+	delete(p.vmToMacPoolMap, vmName)
 }
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {

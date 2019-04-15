@@ -68,20 +68,25 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 		return nil
 	}
 
+	allocations := []string{}
 	networkList := []*multus.NetworkSelectionElement{}
 	for _, network := range networks {
 		if network.MacRequest != "" {
 			if err := p.allocatePodRequestedMac(network, pod); err != nil {
+				p.revertAllocationOnPod(podNamespaced(pod), allocations)
 				return err
 			}
+			allocations = append(allocations, network.MacRequest)
 		} else {
 			macAddr, err := p.allocatePodFromPool(network, pod)
 			if err != nil {
+				p.revertAllocationOnPod(podNamespaced(pod), allocations)
 				return err
 			}
 
 			network.MacRequest = macAddr
 			networkList = append(networkList, network)
+			allocations = append(allocations, macAddr)
 		}
 	}
 
@@ -260,6 +265,13 @@ func (p *PoolManager) allocatedToCurrentPod(podname string, network *multus.Netw
 	}
 
 	return false
+}
+
+// Revert allocation if one of the requested mac addresses fails to be allocated
+func (p *PoolManager) revertAllocationOnPod(podName string, allocations []string) {
+	log.V(1).Info("Rever vm allocation", "podName", podName, "allocations", allocations)
+	p.releaseAllocations(allocations)
+	delete(p.podToMacPoolMap, podName)
 }
 
 func podNamespaced(pod *corev1.Pod) string {

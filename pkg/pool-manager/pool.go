@@ -89,7 +89,6 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 
 		// This loop runs from the current mac to the last one in the range
 		for {
-			currentMac := getNextMac(currentMac)
 			if _, ok := p.macPoolMap[currentMac.String()]; !ok {
 				log.V(1).Info("found unused mac", "mac", currentMac)
 				p.currentMac = currentMac
@@ -99,6 +98,7 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 			if currentMac.String() == p.endRange.String() {
 				break
 			}
+			currentMac = getNextMac(currentMac)
 		}
 
 		currentMac = p.startRange

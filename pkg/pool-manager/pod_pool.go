@@ -210,7 +210,18 @@ func (p *PoolManager) initPodMap() error {
 		if err != nil {
 			continue
 		}
+
 		log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
+		if len(networks) == 0 {
+			continue
+		}
+
+		// validate if the pod is related to kubevirt
+		if p.isRelatedToKubevirt(&pod) {
+			// nothing to do here. the mac is already by allocated by the virtual machine webhook
+			log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
+			continue
+		}
 
 		for _, network := range networks {
 			if network.MacRequest == "" {

@@ -92,7 +92,19 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 		for {
 			if _, ok := p.macPoolMap[p.currentMac.String()]; !ok {
 				log.V(1).Info("found unused mac", "mac", p.currentMac)
-				return p.currentMac, nil
+				freeMac := make(net.HardwareAddr, len(p.currentMac))
+				copy(freeMac, p.currentMac)
+
+				// move to the next mac after we found a free one
+				// If we allocate a mac address then release it and immediately allocate the same one to another object
+				// we can have issues with dhcp and arp discovery
+				if p.currentMac.String() == p.endRange.String() {
+					copy(p.currentMac, p.startRange)
+				} else {
+					p.currentMac = getNextMac(p.currentMac)
+				}
+
+				return freeMac, nil
 			}
 
 			if p.currentMac.String() == p.endRange.String() {

@@ -72,13 +72,6 @@ spec:
           requests:
             cpu: 500m
             memory: 500Mi
-        readinessProbe:
-          exec:
-            command:
-              - cat
-              - /tmp/healthy
-          initialDelaySeconds: 15
-          periodSeconds: 5
         ports:
         - containerPort: 9876
           name: webhook-server

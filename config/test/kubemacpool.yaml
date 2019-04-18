@@ -127,8 +127,8 @@ subjects:
 ---
 apiVersion: v1
 data:
-  END_POOL_RANGE: FD:FF:FF:FF:FF:FF
-  START_POOL_RANGE: "02:00:00:00:00:00"
+  RANGE_END: FD:FF:FF:FF:FF:FF
+  RANGE_START: "02:00:00:00:00:00"
 kind: ConfigMap
 metadata:
   labels:
@@ -175,15 +175,15 @@ spec:
               fieldPath: metadata.namespace
         - name: SECRET_NAME
           value: kubemacpool-webhook-secret
-        - name: START_POOL_RANGE
+        - name: RANGE_START
           valueFrom:
             configMapKeyRef:
-              key: START_POOL_RANGE
+              key: RANGE_START
               name: kubemacpool-mac-range-config
-        - name: END_POOL_RANGE
+        - name: RANGE_END
           valueFrom:
             configMapKeyRef:
-              key: END_POOL_RANGE
+              key: RANGE_END
               name: kubemacpool-mac-range-config
         image: registry:5000/schseba/mac-controller:latest
         imagePullPolicy: Always

@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	StartPoolRangeEnv        = "START_POOL_RANGE"
-	EndPoolRangeEnv          = "END_POOL_RANGE"
+	RangeStartEnv            = "RANGE_START"
+	RangeEndEvn              = "RANGE_END"
 	networksAnnotation       = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation = "k8s.v1.cni.cncf.io/networks-status"
 )
@@ -36,8 +36,8 @@ var log = logf.Log.WithName("PoolManager")
 
 type PoolManager struct {
 	kubeClient      kubernetes.Interface         // kubernetes client
-	startRange      net.HardwareAddr             // fist mac in range
-	endRange        net.HardwareAddr             // last mac in range
+	rangeStart      net.HardwareAddr             // fist mac in range
+	rangeEnd        net.HardwareAddr             // last mac in range
 	currentMac      net.HardwareAddr             // last given mac
 	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
 	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
@@ -54,20 +54,20 @@ const (
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
 
-func NewPoolManager(kubeClient kubernetes.Interface, startPoolRange, endPoolRange net.HardwareAddr, kubevirtExist bool) (*PoolManager, error) {
-	err := checkRange(startPoolRange, endPoolRange)
+func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, kubevirtExist bool) (*PoolManager, error) {
+	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
 	}
 
-	currentMac := make(net.HardwareAddr, len(startPoolRange))
-	copy(currentMac, startPoolRange)
+	currentMac := make(net.HardwareAddr, len(rangeStart))
+	copy(currentMac, rangeStart)
 
 	poolManger := &PoolManager{kubeClient: kubeClient,
 		isLeader:        false,
 		isKubevirt:      kubevirtExist,
-		endRange:        endPoolRange,
-		startRange:      startPoolRange,
+		rangeEnd:        rangeEnd,
+		rangeStart:      rangeStart,
 		currentMac:      currentMac,
 		podToMacPoolMap: map[string]map[string]string{},
 		vmToMacPoolMap:  map[string][]string{},
@@ -98,8 +98,8 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 				// move to the next mac after we found a free one
 				// If we allocate a mac address then release it and immediately allocate the same one to another object
 				// we can have issues with dhcp and arp discovery
-				if p.currentMac.String() == p.endRange.String() {
-					copy(p.currentMac, p.startRange)
+				if p.currentMac.String() == p.rangeEnd.String() {
+					copy(p.currentMac, p.rangeStart)
 				} else {
 					p.currentMac = getNextMac(p.currentMac)
 				}
@@ -107,13 +107,13 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 				return freeMac, nil
 			}
 
-			if p.currentMac.String() == p.endRange.String() {
+			if p.currentMac.String() == p.rangeEnd.String() {
 				break
 			}
 			p.currentMac = getNextMac(p.currentMac)
 		}
 
-		copy(p.currentMac, p.startRange)
+		copy(p.currentMac, p.rangeStart)
 	}
 
 	return nil, fmt.Errorf("the range is full")

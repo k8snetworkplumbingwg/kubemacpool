@@ -108,8 +108,8 @@ func main() {
 	clientset, err := kubernetes.NewForConfig(cfg)
 	ExitIfError(err, "unable to create a kubernetes client")
 	// setup Pool Manager
-	startPoolRange := loadMacAddressFromEnvVar(poolmanager.StartPoolRangeEnv)
-	endPoolRange := loadMacAddressFromEnvVar(poolmanager.EndPoolRangeEnv)
+	rangeStart := loadMacAddressFromEnvVar(poolmanager.RangeStartEnv)
+	rangeEnd := loadMacAddressFromEnvVar(poolmanager.RangeEndEvn)
 
 	// create a owner ref on the mutating webhook
 	// this way when we remove the statefulset of the manager the webhook will be also removed from the cluster
@@ -117,7 +117,7 @@ func main() {
 	ExitIfError(err, "unable to create owner reference for mutating webhook object")
 
 	isKubevirtInstalled := checkForKubevirt(clientset)
-	poolManager, err := poolmanager.NewPoolManager(clientset, startPoolRange, endPoolRange, isKubevirtInstalled)
+	poolManager, err := poolmanager.NewPoolManager(clientset, rangeStart, rangeEnd, isKubevirtInstalled)
 	ExitIfError(err, "unable to create pool manager")
 	if !isKubevirtInstalled {
 		log.Info("kubevirt was not found in the cluster start a watching process")

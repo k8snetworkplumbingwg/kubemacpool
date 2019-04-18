@@ -16,8 +16,8 @@ metadata:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
 data:
-  START_POOL_RANGE: 02:00:00:00:00:00
-  END_POOL_RANGE: FD:FF:FF:FF:FF:FF
+  RANGE_START: 02:00:00:00:00:00
+  RANGE_END: FD:FF:FF:FF:FF:FF
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,16 +55,16 @@ spec:
                 fieldPath: metadata.namespace
           - name: SECRET_NAME
             value: $(WEBHOOK_SECRET_NAME)
-          - name: START_POOL_RANGE
+          - name: RANGE_START
             valueFrom:
               configMapKeyRef:
                 name: mac-range-config
-                key: START_POOL_RANGE
-          - name: END_POOL_RANGE
+                key: RANGE_START
+          - name: RANGE_END
             valueFrom:
               configMapKeyRef:
                 name: mac-range-config
-                key: END_POOL_RANGE
+                key: RANGE_END
         resources:
           limits:
             cpu: 800m

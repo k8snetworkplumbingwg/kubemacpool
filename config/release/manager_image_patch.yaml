@@ -6,5 +6,5 @@ spec:
   template:
     spec:
       containers:
-      - image: quay.io/schseba/mac-controller:latest
+      - image: quay.io/kubevirt/kubemacpool:latest
         name: manager

@@ -3,7 +3,7 @@
 REGISTRY ?= quay.io
 IMAGE_TAG ?= latest
 
-IMG ?= schseba/mac-controller
+IMG ?= kubevirt/kubemacpool
 
 all: generate generate-deploy generate-test
 

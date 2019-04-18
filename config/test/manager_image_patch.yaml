@@ -6,7 +6,7 @@ spec:
   template:
     spec:
       containers:
-      - image: registry:5000/schseba/mac-controller:latest
+      - image: registry:5000/kubevirt/kubemacpool:latest
         name: manager
         args:
           - "--v=debug"

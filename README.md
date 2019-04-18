@@ -47,11 +47,11 @@ Name:         kubemacpool-mac-range-config
 Namespace:    kubemacpool-system
 Data
 ====
-END_POOL_RANGE:
+RANGE_END:
 ----
 FD:FF:FF:FF:FF:FE
 
-START_POOL_RANGE:
+RANGE_START:
 ----
 02:00:00:00:00:11
 ```
@@ -59,9 +59,8 @@ START_POOL_RANGE:
 pods:
 ```bash
 kubectl -n kubemacpool-system get po                
-NAME                                   READY   STATUS    RESTARTS   AGE
-kubemacpool-mac-controller-manager-0   1/1     Running   0          107s
-kubemacpool-mac-controller-manager-1   1/1     Running   0          2m19s
+NAME                                                  READY   STATUS    RESTARTS   AGE
+kubemacpool-mac-controller-manager-6894f7785d-t6hf4   1/1     Running   0          107s
 ```
 
 ### Example

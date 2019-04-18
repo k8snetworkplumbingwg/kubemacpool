@@ -185,7 +185,7 @@ spec:
             configMapKeyRef:
               key: END_POOL_RANGE
               name: kubemacpool-mac-range-config
-        image: quay.io/schseba/mac-controller:latest
+        image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager
         ports:

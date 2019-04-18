@@ -45,7 +45,7 @@ spec:
         - /manager
         args:
           - "--v=production"
-        image: quay.io/schseba/mac-controller:latest
+        image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager
         env:

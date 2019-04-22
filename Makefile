@@ -11,6 +11,9 @@ all: generate generate-deploy generate-test
 test:
 	go test ./pkg/... ./cmd/... -coverprofile cover.out
 
+functest:
+	./hack/functest.sh
+
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy
 	kubectl apply -f config/test/kubemacpool.yaml

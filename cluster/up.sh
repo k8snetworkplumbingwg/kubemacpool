@@ -20,3 +20,28 @@ set -e
 source hack/common.sh
 source cluster/$MACPOOL_PROVIDER/provider.sh
 up
+
+# deploy kubevirt
+./cluster/kubectl.sh apply -f cluster/kubevirt/kubevirt-operator.yaml
+
+# Ensure the KubeVirt CRD is created
+count=0
+until ./cluster/kubectl.sh get crd kubevirts.kubevirt.io; do
+    ((count++)) && ((count == 30)) && echo "KubeVirt CRD not found" && exit 1
+    echo "waiting for KubeVirt CRD"
+    sleep 1
+done
+
+./cluster/kubectl.sh apply -f cluster/kubevirt/kubevirt-cr.yaml
+
+# Ensure the KubeVirt CR is created
+count=0
+until ./cluster/kubectl.sh -n kubevirt get kv kubevirt; do
+    ((count++)) && ((count == 30)) && echo "KubeVirt CR not found" && exit 1
+    echo "waiting for KubeVirt CR"
+    sleep 1
+done
+
+./cluster/kubectl.sh wait -n kubevirt kv kubevirt --for condition=Ready --timeout 180s || (echo "KubeVirt not ready in time" && exit 1)
+
+echo "Done"

@@ -986,16 +986,16 @@
   version = "v1.6.0"
 
 [[projects]]
-  digest = "1:9868a4dca68563b796cbdbbc73d37592b916b0c8af54918e6d82247bef9cebe3"
+  digest = "1:04c7377018595a036e4dc2128b368a72039bd961b7908da4825d78e0eb81af8b"
   name = "kubevirt.io/kubevirt"
   packages = [
     "pkg/api/v1",
     "pkg/precond",
   ]
   pruneopts = "T"
-  revision = "432f91f3a2bdb3c2624377ad327270c9e146d845"
+  revision = "06d91198bededc7a9353ac774221c83580ee3373"
   source = "https://github.com/kubevirt/kubevirt.git"
-  version = "v0.15.0"
+  version = "v0.16.0"
 
 [[projects]]
   digest = "1:5aa50779f75cc439edd3455a6dee7cf179b52f8dde764a47cc929693485d1afb"

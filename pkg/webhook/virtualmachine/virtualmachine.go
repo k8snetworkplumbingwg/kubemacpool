@@ -78,6 +78,9 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req types.Request)
 		return admission.ErrorResponse(http.StatusBadRequest, err)
 	}
 	copyObject := virtualMachine.DeepCopy()
+	if copyObject.Namespace == "" {
+		copyObject.Namespace = req.AdmissionRequest.Namespace
+	}
 
 	err = a.mutateVirtualMachinesFn(ctx, copyObject)
 	if err != nil {

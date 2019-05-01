@@ -156,7 +156,7 @@ var _ = Describe("Pool", func() {
 			macAddress, exist := poolManager.vmToMacPoolMap[vmNamespaced(&newVM)]
 			Expect(exist).To(BeTrue())
 			Expect(len(macAddress)).To(Equal(1))
-			Expect(macAddress[0]).To(Equal("02:00:00:00:00:01"))
+			Expect(macAddress["pod"]).To(Equal("02:00:00:00:00:01"))
 
 			err = poolManager.ReleaseVirtualMachineMac(vmNamespaced(&newVM))
 			Expect(err).ToNot(HaveOccurred())
@@ -208,8 +208,8 @@ var _ = Describe("Pool", func() {
 			macAddress, exist := poolManager.vmToMacPoolMap[vmNamespaced(&newVM)]
 			Expect(exist).To(BeTrue())
 			Expect(len(macAddress)).To(Equal(2))
-			Expect(macAddress[0]).To(Equal("02:00:00:00:00:01"))
-			Expect(macAddress[1]).To(Equal("02:00:00:00:00:02"))
+			Expect(macAddress["pod"]).To(Equal("02:00:00:00:00:01"))
+			Expect(macAddress["multus"]).To(Equal("02:00:00:00:00:02"))
 
 			err = poolManager.ReleaseVirtualMachineMac(vmNamespaced(&newVM))
 			Expect(err).ToNot(HaveOccurred())

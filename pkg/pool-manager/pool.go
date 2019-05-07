@@ -133,12 +133,6 @@ func (p *PoolManager) InitMaps() error {
 	return nil
 }
 
-func (p *PoolManager) releaseAllocations(allocations []string) {
-	for _, macAddr := range allocations {
-		delete(p.macPoolMap, macAddr)
-	}
-}
-
 func checkRange(startMac, endMac net.HardwareAddr) error {
 	for idx := 0; idx <= 5; idx++ {
 		if startMac[idx] < endMac[idx] {

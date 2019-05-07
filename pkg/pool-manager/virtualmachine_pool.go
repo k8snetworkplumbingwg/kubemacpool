@@ -117,6 +117,88 @@ func (p *PoolManager) ReleaseVirtualMachineMac(virtualMachineName string) error 
 	return nil
 }
 
+func (p *PoolManager) UpdateMacAddressesForVirtualMachine(virtualMachine *kubevirt.VirtualMachine) error {
+	p.poolMutex.Lock()
+
+	log.V(1).Info("UpdateMacAddressesForVirtualMachine: data",
+		"macmap", p.macPoolMap,
+		"podmap", p.podToMacPoolMap,
+		"vmmap", p.vmToMacPoolMap,
+		"currentMac", p.currentMac.String())
+
+	existInterfacesMap, isVirtualMachineExist := p.vmToMacPoolMap[vmNamespaced(virtualMachine)]
+	if !isVirtualMachineExist {
+		p.poolMutex.Unlock()
+		return p.AllocateVirtualMachineMac(virtualMachine)
+	}
+
+	defer p.poolMutex.Unlock()
+	// This map is for revert if the allocation failed
+	copyInterfacesMap := make(map[string]string)
+	// This map is for deltas
+	deltaInterfacesMap := make(map[string]string)
+	for key, value := range existInterfacesMap {
+		copyInterfacesMap[key] = value
+		deltaInterfacesMap[key] = value
+	}
+
+	copyVM := virtualMachine.DeepCopy()
+	newAllocations := map[string]string{}
+	releaseOldAllocations := map[string]string{}
+	for idx, iface := range virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
+		allocatedMacAddress, ifaceExist := copyInterfacesMap[iface.Name]
+		// The interface was configured before check if we need to update the mac or assign the existing one
+		if ifaceExist {
+			if iface.MacAddress == "" {
+				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = allocatedMacAddress
+			} else if iface.MacAddress != allocatedMacAddress {
+				// Specific mac address was requested
+				err := p.allocateRequestedVirtualMachineInterfaceMac(copyVM, iface)
+				if err != nil {
+					p.revertAllocationOnVm(vmNamespaced(copyVM), newAllocations)
+					p.vmToMacPoolMap[vmNamespaced(copyVM)] = copyInterfacesMap
+					return err
+				}
+				releaseOldAllocations[iface.Name] = allocatedMacAddress
+				newAllocations[iface.Name] = iface.MacAddress
+			}
+			delete(deltaInterfacesMap, iface.Name)
+
+		} else {
+			if iface.MacAddress != "" {
+				if err := p.allocateRequestedVirtualMachineInterfaceMac(copyVM, iface); err != nil {
+					p.revertAllocationOnVm(vmNamespaced(copyVM), newAllocations)
+					p.vmToMacPoolMap[vmNamespaced(copyVM)] = copyInterfacesMap
+					return err
+				}
+				newAllocations[iface.Name] = iface.MacAddress
+			} else {
+				macAddr, err := p.allocateFromPoolForVirtualMachine(copyVM, iface)
+				if err != nil {
+					p.revertAllocationOnVm(vmNamespaced(copyVM), newAllocations)
+					p.vmToMacPoolMap[vmNamespaced(copyVM)] = copyInterfacesMap
+					return err
+				}
+				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
+				newAllocations[iface.Name] = iface.MacAddress
+			}
+		}
+	}
+
+	// Release delta interfaces
+	log.V(1).Info("UpdateMacAddressesForVirtualMachine: delta interfaces to release",
+		"interfaces Map", deltaInterfacesMap)
+	p.releaseMacAddressesFromInterfaceMap(deltaInterfacesMap)
+
+	// Release old allocations
+	log.V(1).Info("UpdateMacAddressesForVirtualMachine: old interfaces to release",
+		"interfaces Map", releaseOldAllocations)
+	p.releaseMacAddressesFromInterfaceMap(releaseOldAllocations)
+
+	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
+	return nil
+}
+
 func (p *PoolManager) allocateFromPoolForVirtualMachine(virtualMachine *kubevirt.VirtualMachine, iface kubevirt.Interface) (string, error) {
 	macAddr, err := p.getFreeMac()
 	if err != nil {
@@ -253,16 +335,16 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 	return false
 }
 
+func (p *PoolManager) releaseMacAddressesFromInterfaceMap(allocations map[string]string) {
+	for _, value := range allocations {
+		delete(p.macPoolMap, value)
+	}
+}
+
 // Revert allocation if one of the requested mac addresses fails to be allocated
 func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string]string) {
-	log.V(1).Info("Rever vm allocation", "vmName", vmName, "allocations", allocations)
-	allocationsList := make([]string, len(allocations))
-	idx := 0
-	for _, value := range allocations {
-		allocationsList[idx] = value
-		idx++
-	}
-	p.releaseAllocations(allocationsList)
+	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
+	p.releaseMacAddressesFromInterfaceMap(allocations)
 	delete(p.vmToMacPoolMap, vmName)
 }
 

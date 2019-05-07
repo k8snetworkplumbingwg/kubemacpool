@@ -85,9 +85,9 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 			}
 
 			network.MacRequest = macAddr
-			networkList = append(networkList, network)
 			allocations = append(allocations, macAddr)
 		}
+		networkList = append(networkList, network)
 	}
 
 	networkListJson, err := json.Marshal(networkList)

@@ -83,7 +83,7 @@ func (a *podAnnotator) Handle(ctx context.Context, req types.Request) types.Resp
 		copyPod.Namespace = req.AdmissionRequest.Namespace
 	}
 
-	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace)
+	log.V(1).Info("got a create pod event", "podName", copyPod.Name, "podNamespace", copyPod.Namespace)
 	err = a.poolManager.AllocatePodMac(copyPod)
 	if err != nil {
 		return admission.ErrorResponse(http.StatusInternalServerError, err)

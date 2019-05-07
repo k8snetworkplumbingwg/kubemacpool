@@ -259,6 +259,21 @@ var _ = Describe("Pool", func() {
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:01"]
 			Expect(exist).To(BeFalse())
 		})
+		It("should allocate requested mac when empty", func() {
+			fakeClient := fake.NewSimpleClientset()
+			startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
+			Expect(err).ToNot(HaveOccurred())
+			endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:02")
+			Expect(err).ToNot(HaveOccurred())
+			poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false)
+			Expect(err).ToNot(HaveOccurred())
+			newPod := samplePod
+			newPod.Name = "newPod"
+
+			err = poolManager.AllocatePodMac(&newPod)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(newPod.Annotations[networksAnnotation]).To(Equal(afterAllocationAnnotation[networksAnnotation]))
+		})
 	})
 
 })

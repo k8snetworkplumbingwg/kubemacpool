@@ -1,16 +1,19 @@
 language: go
 sudo: required
 dist: trusty
-go: "1.10"
+go: "1.11"
 
 services:
 - docker
 
 install: true
 script:
+  - sudo cp ./cluster/dind-cluster/kubectl /usr/bin/kubectl
   - make docker-generate
   - if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run make. Please run it and commit the changes"; git status --porcelain; false; fi
   - make docker-test
+  - make deploy-test-cluster
+  - KUBECONFIG="`pwd`/cluster/dind-cluster/config" go test ./tests/...
 
 deploy:
 - provider: script

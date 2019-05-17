@@ -74,4 +74,7 @@ cluster-down:
 cluster-sync:
 	./cluster/sync.sh
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync
+deploy-test-cluster:
+	./hack/deploy-test-cluster.sh
+
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster

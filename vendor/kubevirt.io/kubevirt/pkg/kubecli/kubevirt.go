@@ -41,7 +41,7 @@ import (
 	networkclient "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 
 	cdiclient "kubevirt.io/containerized-data-importer/pkg/client/clientset/versioned"
-	"kubevirt.io/kubevirt/pkg/api/v1"
+	v1 "kubevirt.io/kubevirt/pkg/api/v1"
 )
 
 type KubevirtClient interface {
@@ -152,6 +152,8 @@ type VirtualMachineInterface interface {
 	Delete(name string, options *k8smetav1.DeleteOptions) error
 	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1.VirtualMachine, err error)
 	Restart(name string) error
+	Start(name string) error
+	Stop(name string) error
 }
 
 type VirtualMachineInstanceMigrationInterface interface {

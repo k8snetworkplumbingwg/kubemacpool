@@ -789,7 +789,7 @@ type FeatureHyperv struct {
 	// Defaults to the machine type setting.
 	// +optional
 	SyNICTimer *FeatureState `json:"synictimer,omitempty"`
-	// Reset enables Hyperv reboot/reset for the vmi.
+	// Reset enables Hyperv reboot/reset for the vmi. Requires synic.
 	// Defaults to the machine type setting.
 	// +optional
 	Reset *FeatureState `json:"reset,omitempty"`
@@ -797,6 +797,26 @@ type FeatureHyperv struct {
 	// Defaults to the machine type setting.
 	// +optional
 	VendorID *FeatureVendorID `json:"vendorid,omitempty"`
+	// Frequencies improve Hyper-V on KVM (TSC clock source).
+	// Defaults to the machine type setting.
+	// +optional
+	Frequencies *FeatureState `json:"frequencies,omitempty"`
+	// Reenlightenment improve Hyper-V on KVM (TSC clock source).
+	// Defaults to the machine type setting.
+	// +optional
+	Reenlightenment *FeatureState `json:"reenlightenment,omitempty"`
+	// TLBFlush improves performances in overcommited environments. Requires vpindex.
+	// Defaults to the machine type setting.
+	// +optional
+	TLBFlush *FeatureState `json:"tlbflush,omitempty"`
+	// IPI improves performances in overcommited environments. Requires vpindex.
+	// Defaults to the machine type setting.
+	// +optional
+	IPI *FeatureState `json:"ipi,omitempty"`
+	// EVMCS Speeds up L2 vmexits, but disables other virtualization features. Requires vapic.
+	// Defaults to the machine type setting.
+	// +optional
+	EVMCS *FeatureState `json:"evmcs,omitempty"`
 }
 
 // WatchdogAction defines the watchdog action, if a watchdog gets triggered.
@@ -978,9 +998,9 @@ type Network struct {
 // ---
 // +k8s:openapi-gen=true
 type NetworkSource struct {
-	Pod    *PodNetwork `json:"pod,omitempty"`
-	Multus *CniNetwork `json:"multus,omitempty"`
-	Genie  *CniNetwork `json:"genie,omitempty"`
+	Pod    *PodNetwork    `json:"pod,omitempty"`
+	Multus *MultusNetwork `json:"multus,omitempty"`
+	Genie  *GenieNetwork  `json:"genie,omitempty"`
 }
 
 // Represents the stock pod network interface.
@@ -998,13 +1018,24 @@ type PodNetwork struct {
 type Rng struct {
 }
 
-// Represents the cni network.
+// Represents the genie cni network.
 // ---
 // +k8s:openapi-gen=true
-type CniNetwork struct {
+type GenieNetwork struct {
+	// References the CNI plugin name.
+	NetworkName string `json:"networkName"`
+}
+
+// Represents the multus cni network.
+// ---
+// +k8s:openapi-gen=true
+type MultusNetwork struct {
 	// References to a NetworkAttachmentDefinition CRD object. Format:
 	// <networkName>, <namespace>/<networkName>. If namespace is not
 	// specified, VMI namespace is assumed.
-	// In case of genie, it references the CNI plugin name.
 	NetworkName string `json:"networkName"`
+
+	// Select the default network and add it to the
+	// multus-cni.io/default-network annotation.
+	Default bool `json:"default,omitempty"`
 }

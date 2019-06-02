@@ -550,6 +550,11 @@ func Convert_v1_FeatureHyperv_To_api_FeatureHyperv(source *v1.FeatureHyperv, hyp
 	hyperv.SyNICTimer = convertFeatureState(source.SyNICTimer)
 	hyperv.VAPIC = convertFeatureState(source.VAPIC)
 	hyperv.VPIndex = convertFeatureState(source.VPIndex)
+	hyperv.Frequencies = convertFeatureState(source.Frequencies)
+	hyperv.Reenlightenment = convertFeatureState(source.Reenlightenment)
+	hyperv.TLBFlush = convertFeatureState(source.TLBFlush)
+	hyperv.IPI = convertFeatureState(source.IPI)
+	hyperv.EVMCS = convertFeatureState(source.EVMCS)
 	return nil
 }
 
@@ -975,13 +980,20 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 
 	networks := map[string]*v1.Network{}
 	cniNetworks := map[string]int{}
+	multusNetworkIndex := 1
 	for _, network := range vmi.Spec.Networks {
 		numberOfSources := 0
 		if network.Pod != nil {
 			numberOfSources++
 		}
 		if network.Multus != nil {
-			cniNetworks[network.Name] = len(cniNetworks) + 1
+			if network.Multus.Default {
+				// default network is eth0
+				cniNetworks[network.Name] = 0
+			} else {
+				cniNetworks[network.Name] = multusNetworkIndex
+				multusNetworkIndex++
+			}
 			numberOfSources++
 		}
 		if network.Genie != nil {
@@ -1073,7 +1085,11 @@ func Convert_v1_VirtualMachine_To_api_Domain(vmi *v1.VirtualMachineInstance, dom
 					prefix := ""
 					// no error check, we assume that CNI type was set correctly
 					if net.Multus != nil {
-						prefix = "net"
+						if net.Multus.Default {
+							prefix = "eth"
+						} else {
+							prefix = "net"
+						}
 					} else if net.Genie != nil {
 						prefix = "eth"
 					}
@@ -1135,8 +1151,6 @@ func getCPUTopology(vmi *v1.VirtualMachineInstance) *CPUTopology {
 	sockets := uint32(1)
 	vmiCPU := vmi.Spec.Domain.CPU
 	if vmiCPU != nil {
-		vmiCPU := vmi.Spec.Domain.CPU
-
 		if vmiCPU.Cores != 0 {
 			cores = vmiCPU.Cores
 		}
@@ -1154,10 +1168,10 @@ func getCPUTopology(vmi *v1.VirtualMachineInstance) *CPUTopology {
 		//if cores, sockets, threads are not set, take value from domain resources request or limits and
 		//set value into sockets, which have best performance (https://bugzilla.redhat.com/show_bug.cgi?id=1653453)
 		resources := vmi.Spec.Domain.Resources
-		if cpuRequests, ok := resources.Requests[k8sv1.ResourceCPU]; ok {
-			sockets = uint32(cpuRequests.Value())
-		} else if cpuLimit, ok := resources.Limits[k8sv1.ResourceCPU]; ok {
+		if cpuLimit, ok := resources.Limits[k8sv1.ResourceCPU]; ok {
 			sockets = uint32(cpuLimit.Value())
+		} else if cpuRequests, ok := resources.Requests[k8sv1.ResourceCPU]; ok {
+			sockets = uint32(cpuRequests.Value())
 		}
 	}
 
@@ -1322,6 +1336,14 @@ func QuantityToByte(quantity resource.Quantity) (Memory, error) {
 		Value: uint64(memorySize),
 		Unit:  "B",
 	}, nil
+}
+
+func QuantityToMebiByte(quantity resource.Quantity) (uint64, error) {
+	q := int64(float64(0.953674) * float64(quantity.ScaledValue(resource.Mega)))
+	if q < 0 {
+		return 0, fmt.Errorf("Quantity '%s' must be greate tan or equal to 0", quantity.String())
+	}
+	return uint64(q), nil
 }
 
 func boolToOnOff(value *bool, defaultOn bool) string {

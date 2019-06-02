@@ -20,14 +20,13 @@
 package util
 
 import (
-	"fmt"
 	"time"
 
 	secv1 "github.com/openshift/api/security/v1"
+	"k8s.io/client-go/discovery"
 
 	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/cache"
 
 	virtv1 "kubevirt.io/kubevirt/pkg/api/v1"
 	"kubevirt.io/kubevirt/pkg/kubecli"
@@ -116,90 +115,25 @@ func hasFinalizer(kv *virtv1.KubeVirt) bool {
 	return false
 }
 
-func SetVersions(kv *virtv1.KubeVirt, config KubeVirtDeploymentConfig) {
-
+func SetOperatorVersion(kv *virtv1.KubeVirt) {
 	kv.Status.OperatorVersion = version.Get().String()
-
-	// Note: for now we just set targetKubeVirtVersion and observedKubeVirtVersion to the tag of the operator image
-	// In future this needs some more work...
-	kv.Status.TargetKubeVirtVersion = config.ImageTag
-	kv.Status.ObservedKubeVirtVersion = config.ImageTag
-
-}
-
-func UpdateScc(clientset kubecli.KubevirtClient, sccStore cache.Store, kv *virtv1.KubeVirt, add bool) error {
-
-	privSccObj, exists, err := sccStore.GetByKey("privileged")
-	if !exists {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	privScc, ok := privSccObj.(*secv1.SecurityContextConstraints)
-	if !ok {
-		return fmt.Errorf("couldn't cast object to SecurityContextConstraints: %+v", privSccObj)
-	}
-	privSccCopy := privScc.DeepCopy()
-
-	var kubeVirtAccounts []string
-	prefix := "system:serviceaccount"
-	kubeVirtAccounts = append(kubeVirtAccounts, fmt.Sprintf("%s:%s:%s", prefix, kv.Namespace, "kubevirt-handler"))
-	kubeVirtAccounts = append(kubeVirtAccounts, fmt.Sprintf("%s:%s:%s", prefix, kv.Namespace, "kubevirt-apiserver"))
-	kubeVirtAccounts = append(kubeVirtAccounts, fmt.Sprintf("%s:%s:%s", prefix, kv.Namespace, "kubevirt-controller"))
-
-	modified := false
-	users := privSccCopy.Users
-	for _, acc := range kubeVirtAccounts {
-		if add {
-			if !contains(users, acc) {
-				users = append(users, acc)
-				modified = true
-			}
-		} else {
-			removed := false
-			users, removed = remove(users, acc)
-			modified = modified || removed
-		}
-	}
-	if modified {
-		privSccCopy.Users = users
-		_, err = clientset.SecClient().SecurityContextConstraints().Update(privSccCopy)
-		if err != nil {
-			return fmt.Errorf("unable to update scc: %v", err)
-		}
-	}
-
-	return nil
-}
-
-func contains(users []string, user string) bool {
-	for _, u := range users {
-		if u == user {
-			return true
-		}
-	}
-	return false
-}
-
-func remove(users []string, user string) ([]string, bool) {
-	var newUsers []string
-	modified := false
-	for _, u := range users {
-		if u != user {
-			newUsers = append(newUsers, u)
-		} else {
-			modified = true
-		}
-	}
-	return newUsers, modified
 }
 
 func IsOnOpenshift(clientset kubecli.KubevirtClient) (bool, error) {
 
 	apis, err := clientset.DiscoveryClient().ServerResources()
-	if err != nil {
+	if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
 		return false, err
+	}
+
+	// In case of an error, check if security.openshift.io is the reason (unlikely).
+	// If it is, we are obviously on an openshift cluster.
+	// Otherwise we can do a positive check.
+	if discovery.IsGroupDiscoveryFailedError(err) {
+		e := err.(*discovery.ErrGroupDiscoveryFailed)
+		if _, exists := e.Groups[secv1.GroupVersion]; exists {
+			return true, nil
+		}
 	}
 
 	for _, api := range apis {

@@ -366,16 +366,21 @@ func (FeatureVendorID) SwaggerDoc() map[string]string {
 
 func (FeatureHyperv) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":           "Hyperv specific features.",
-		"relaxed":    "Relaxed relaxes constraints on timer.\nDefaults to the machine type setting.\n+optional",
-		"vapic":      "VAPIC indicates whether virtual APIC is enabled.\nDefaults to the machine type setting.\n+optional",
-		"spinlocks":  "Spinlocks indicates if spinlocks should be made available to the guest.\n+optional",
-		"vpindex":    "VPIndex enables the Virtual Processor Index to help windows identifying virtual processors.\nDefaults to the machine type setting.\n+optional",
-		"runtime":    "Runtime.\nDefaults to the machine type setting.\n+optional",
-		"synic":      "SyNIC enable Synthetic Interrupt Controller.\nDefaults to the machine type setting.\n+optional",
-		"synictimer": "SyNICTimer enable Synthetic Interrupt Controller timer.\nDefaults to the machine type setting.\n+optional",
-		"reset":      "Reset enables Hyperv reboot/reset for the vmi.\nDefaults to the machine type setting.\n+optional",
-		"vendorid":   "VendorID allows setting the hypervisor vendor id.\nDefaults to the machine type setting.\n+optional",
+		"":                "Hyperv specific features.",
+		"relaxed":         "Relaxed relaxes constraints on timer.\nDefaults to the machine type setting.\n+optional",
+		"vapic":           "VAPIC indicates whether virtual APIC is enabled.\nDefaults to the machine type setting.\n+optional",
+		"spinlocks":       "Spinlocks indicates if spinlocks should be made available to the guest.\n+optional",
+		"vpindex":         "VPIndex enables the Virtual Processor Index to help windows identifying virtual processors.\nDefaults to the machine type setting.\n+optional",
+		"runtime":         "Runtime.\nDefaults to the machine type setting.\n+optional",
+		"synic":           "SyNIC enable Synthetic Interrupt Controller.\nDefaults to the machine type setting.\n+optional",
+		"synictimer":      "SyNICTimer enable Synthetic Interrupt Controller timer.\nDefaults to the machine type setting.\n+optional",
+		"reset":           "Reset enables Hyperv reboot/reset for the vmi. Requires synic.\nDefaults to the machine type setting.\n+optional",
+		"vendorid":        "VendorID allows setting the hypervisor vendor id.\nDefaults to the machine type setting.\n+optional",
+		"frequencies":     "Frequencies improve Hyper-V on KVM (TSC clock source).\nDefaults to the machine type setting.\n+optional",
+		"reenlightenment": "Reenlightenment improve Hyper-V on KVM (TSC clock source).\nDefaults to the machine type setting.\n+optional",
+		"tlbflush":        "TLBFlush improves performances in overcommited environments. Requires vpindex.\nDefaults to the machine type setting.\n+optional",
+		"ipi":             "IPI improves performances in overcommited environments. Requires vpindex.\nDefaults to the machine type setting.\n+optional",
+		"evmcs":           "EVMCS Speeds up L2 vmexits, but disables other virtualization features. Requires vapic.\nDefaults to the machine type setting.\n+optional",
 	}
 }
 
@@ -487,9 +492,17 @@ func (Rng) SwaggerDoc() map[string]string {
 	}
 }
 
-func (CniNetwork) SwaggerDoc() map[string]string {
+func (GenieNetwork) SwaggerDoc() map[string]string {
 	return map[string]string{
-		"":            "Represents the cni network.",
-		"networkName": "References to a NetworkAttachmentDefinition CRD object. Format:\n<networkName>, <namespace>/<networkName>. If namespace is not\nspecified, VMI namespace is assumed.\nIn case of genie, it references the CNI plugin name.",
+		"":            "Represents the genie cni network.",
+		"networkName": "References the CNI plugin name.",
+	}
+}
+
+func (MultusNetwork) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":            "Represents the multus cni network.",
+		"networkName": "References to a NetworkAttachmentDefinition CRD object. Format:\n<networkName>, <namespace>/<networkName>. If namespace is not\nspecified, VMI namespace is assumed.",
+		"default":     "Select the default network and add it to the\nmultus-cni.io/default-network annotation.",
 	}
 }

@@ -20,6 +20,7 @@
 package virthandler
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	goerror "errors"
 	"fmt"
@@ -70,6 +71,8 @@ func NewController(
 	gracefulShutdownInformer cache.SharedIndexInformer,
 	watchdogTimeoutSeconds int,
 	maxDevices int,
+	clusterConfig *virtconfig.ClusterConfig,
+	tlsConfig *tls.Config,
 ) *VirtualMachineController {
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -87,8 +90,9 @@ func NewController(
 		gracefulShutdownInformer: gracefulShutdownInformer,
 		heartBeatInterval:        1 * time.Minute,
 		watchdogTimeoutSeconds:   watchdogTimeoutSeconds,
-		migrationProxy:           migrationproxy.NewMigrationProxyManager(virtShareDir),
+		migrationProxy:           migrationproxy.NewMigrationProxyManager(virtShareDir, tlsConfig),
 		podIsolationDetector:     isolation.NewSocketBasedIsolationDetector(virtShareDir),
+		clusterConfig:            clusterConfig,
 	}
 
 	vmiSourceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -140,6 +144,7 @@ type VirtualMachineController struct {
 	kvmController            *device_manager.DeviceController
 	migrationProxy           migrationproxy.ProxyManager
 	podIsolationDetector     isolation.PodIsolationDetector
+	clusterConfig            *virtconfig.ClusterConfig
 }
 
 // Determines if a domain's grace period has expired during shutdown.
@@ -339,6 +344,7 @@ func (d *VirtualMachineController) updateVMIStatus(vmi *v1.VirtualMachineInstanc
 			if vmi.Status.MigrationState.EndTimestamp == nil {
 				vmi.Status.MigrationState.EndTimestamp = migrationMetadata.EndTimestamp
 			}
+			vmi.Status.MigrationState.AbortStatus = v1.MigrationAbortStatus(migrationMetadata.AbortStatus)
 			vmi.Status.MigrationState.Completed = migrationMetadata.Completed
 			vmi.Status.MigrationState.Failed = migrationMetadata.Failed
 		}
@@ -1032,7 +1038,7 @@ func (d *VirtualMachineController) getLauncherClient(vmi *v1.VirtualMachineInsta
 		return client, nil
 	}
 
-	client, err := cmdclient.GetClient(sockFile)
+	client, err := cmdclient.NewClient(sockFile)
 	if err != nil {
 		return nil, err
 	}
@@ -1204,10 +1210,16 @@ func (d *VirtualMachineController) checkVolumesForMigration(vmi *v1.VirtualMachi
 	// A relevant error will be returned in this case.
 	for _, volume := range vmi.Spec.Volumes {
 		volSrc := volume.VolumeSource
-		if volSrc.PersistentVolumeClaim != nil {
-			_, shared, err := pvcutils.IsSharedPVCFromClient(d.clientset, vmi.Namespace, volSrc.PersistentVolumeClaim.ClaimName)
+		if volSrc.PersistentVolumeClaim != nil || volSrc.DataVolume != nil {
+			var volName string
+			if volSrc.PersistentVolumeClaim != nil {
+				volName = volSrc.PersistentVolumeClaim.ClaimName
+			} else {
+				volName = volSrc.DataVolume.Name
+			}
+			_, shared, err := pvcutils.IsSharedPVCFromClient(d.clientset, vmi.Namespace, volName)
 			if errors.IsNotFound(err) {
-				return blockMigrate, fmt.Errorf("persistentvolumeclaim %v not found", volSrc.PersistentVolumeClaim.ClaimName)
+				return blockMigrate, fmt.Errorf("persistentvolumeclaim %v not found", volName)
 			} else if err != nil {
 				return blockMigrate, err
 			}
@@ -1340,12 +1352,27 @@ func (d *VirtualMachineController) processVmUpdate(origVMI *v1.VirtualMachineIns
 			return fmt.Errorf("failed to handle post sync migration proxy: %v", err)
 		}
 	} else if d.isMigrationSource(vmi) {
-		err = client.MigrateVirtualMachine(vmi)
-		if err != nil {
-			return err
+		if vmi.Status.MigrationState.AbortRequested {
+			if vmi.Status.MigrationState.AbortStatus != v1.MigrationAbortInProgress {
+				err = client.CancelVirtualMachineMigration(vmi)
+				if err != nil {
+					return err
+				}
+				d.recorder.Event(vmi, k8sv1.EventTypeNormal, v1.Migrating.String(), "VirtualMachineInstance is aborting migration.")
+			}
+		} else {
+			options := &cmdclient.MigrationOptions{
+				Bandwidth:               *d.clusterConfig.GetMigrationConfig().BandwidthPerMigration,
+				ProgressTimeout:         *d.clusterConfig.GetMigrationConfig().ProgressTimeout,
+				CompletionTimeoutPerGiB: *d.clusterConfig.GetMigrationConfig().CompletionTimeoutPerGiB,
+				UnsafeMigration:         d.clusterConfig.GetMigrationConfig().UnsafeMigrationOverride,
+			}
+			err = client.MigrateVirtualMachine(vmi, options)
+			if err != nil {
+				return err
+			}
+			d.recorder.Event(vmi, k8sv1.EventTypeNormal, v1.Migrating.String(), "VirtualMachineInstance is migrating.")
 		}
-		d.recorder.Event(vmi, k8sv1.EventTypeNormal, v1.Migrating.String(), "VirtualMachineInstance is migrating.")
-
 	} else {
 		err = client.SyncVirtualMachine(vmi)
 		if err != nil {

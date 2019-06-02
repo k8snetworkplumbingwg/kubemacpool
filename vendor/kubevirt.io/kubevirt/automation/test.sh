@@ -29,7 +29,7 @@
 set -ex
 
 export WORKSPACE="${WORKSPACE:-$PWD}"
-readonly ARTIFACTS_PATH="$WORKSPACE/exported-artifacts"
+readonly ARTIFACTS_PATH="${ARTIFACTS-$WORKSPACE/exported-artifacts}"
 readonly TEMPLATES_SERVER="https://templates.ovirt.org/kubevirt/"
 
 if [[ $TARGET =~ windows.* ]]; then
@@ -90,8 +90,16 @@ safe_download() (
     local remote_sha1_url="${download_from}.sha1"
     local local_sha1_file="${download_to}.sha1"
     local remote_sha1
+    local retry=3
     # Remote file includes only sha1 w/o filename suffix
-    remote_sha1="$(curl -s "${remote_sha1_url}")"
+    for i in $(seq 1 $retry);
+    do
+      remote_sha1="$(curl -s "${remote_sha1_url}")"
+      if [[ "$remote_sha1" != "" ]]; then
+        break
+      fi
+    done
+
     if [[ "$(cat "$local_sha1_file")" != "$remote_sha1" ]]; then
         echo "${download_to} is not up to date, corrupted or doesn't exist."
         echo "Downloading file from: ${remote_sha1_url}"
@@ -132,17 +140,7 @@ fi
 
 kubectl() { cluster/kubectl.sh "$@"; }
 
-
-# If run on CI use random kubevirt system-namespaces
-if [ -n "${JOB_NAME}" ]; then
-  export NAMESPACE="kubevirt-system-$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 10 | head -n 1)"
-  cat >hack/config-local.sh <<EOF
-namespace=${NAMESPACE}
-EOF
-else
-  export NAMESPACE="${NAMESPACE:-kubevirt}"
-fi
-
+export NAMESPACE="${NAMESPACE:-kubevirt}"
 
 # Make sure that the VM is properly shut down on exit
 trap '{ make cluster-down; }' EXIT SIGINT SIGTERM SIGSTOP
@@ -155,6 +153,26 @@ if [ -n "${KUBEVIRT_CACHE_FROM}" ]; then
 fi
 
 make cluster-down
+
+# Create .bazelrc to use remote cache
+cat >.bazelrc <<EOF
+startup --host_jvm_args=-Dbazel.DigestFunction=sha256
+build --remote_local_fallback
+build --remote_http_cache=http://bazel-cache.kubevirt-prow.svc.cluster.local:8080/kubevirt.io/kubevirt
+EOF
+
+# build all images with the basic repeat logic
+# probably because load on the node, possible situation when the bazel
+# fails to download artifacts, to avoid job fails because of it,
+# we repeat the build images action
+set +e
+for i in $(seq 1 3);
+do
+  make bazel-build-images
+done
+set -e
+make bazel-build-images
+
 make cluster-up
 
 # Wait for nodes to become ready
@@ -172,14 +190,8 @@ set -e
 echo "Nodes are ready:"
 kubectl get nodes
 
-# Create .bazelrc to use remote cache
-cat >.bazelrc <<EOF
-startup --host_jvm_args=-Dbazel.DigestFunction=sha256
-build --remote_local_fallback
-build --remote_http_cache=http://bazel-cache.kubevirt-prow.svc.cluster.local:8080/kubevirt.io/kubevirt
-EOF
-
 make cluster-sync
+hack/dockerized bazel shutdown
 
 # OpenShift is running important containers under default namespace
 namespaces=(kubevirt default)
@@ -223,7 +235,7 @@ kubectl version
 
 mkdir -p "$ARTIFACTS_PATH"
 
-ginko_params="--ginkgo.noColor --junit-output=$ARTIFACTS_PATH/tests.junit.xml"
+ginko_params="--ginkgo.noColor --junit-output=$ARTIFACTS_PATH/junit.functest.xml"
 
 # Prepare PV for Windows testing
 if [[ $TARGET =~ windows.* ]]; then

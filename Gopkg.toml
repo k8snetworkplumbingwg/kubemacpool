@@ -39,4 +39,4 @@ version="v1.4.7"
 [[constraint]]
   name= "kubevirt.io/kubevirt"
   source = "https://github.com/kubevirt/kubevirt.git"
-  version = "v0.15.0"
+  version = "v0.17.0"

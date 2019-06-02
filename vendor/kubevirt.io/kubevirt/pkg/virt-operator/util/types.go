@@ -34,9 +34,11 @@ type Stores struct {
 	ServiceCache                  cache.Store
 	DeploymentCache               cache.Store
 	DaemonSetCache                cache.Store
+	ValidationWebhookCache        cache.Store
 	SCCCache                      cache.Store
 	InstallStrategyConfigMapCache cache.Store
 	InstallStrategyJobCache       cache.Store
+	InfrastructurePodCache        cache.Store
 }
 
 func (s *Stores) AllEmpty() bool {
@@ -48,7 +50,8 @@ func (s *Stores) AllEmpty() bool {
 		IsStoreEmpty(s.CrdCache) &&
 		IsStoreEmpty(s.ServiceCache) &&
 		IsStoreEmpty(s.DeploymentCache) &&
-		IsStoreEmpty(s.DaemonSetCache)
+		IsStoreEmpty(s.DaemonSetCache) &&
+		IsStoreEmpty(s.ValidationWebhookCache)
 	// Don't add InstallStrategyConfigMapCache to this list. The install
 	// strategies persist even after deletion and updates.
 }
@@ -67,6 +70,7 @@ type Expectations struct {
 	Service                  *controller.UIDTrackingControllerExpectations
 	Deployment               *controller.UIDTrackingControllerExpectations
 	DaemonSet                *controller.UIDTrackingControllerExpectations
+	ValidationWebhook        *controller.UIDTrackingControllerExpectations
 	InstallStrategyConfigMap *controller.UIDTrackingControllerExpectations
 	InstallStrategyJob       *controller.UIDTrackingControllerExpectations
 }
@@ -81,9 +85,11 @@ type Informers struct {
 	Service                  cache.SharedIndexInformer
 	Deployment               cache.SharedIndexInformer
 	DaemonSet                cache.SharedIndexInformer
+	ValidationWebhook        cache.SharedIndexInformer
 	SCC                      cache.SharedIndexInformer
 	InstallStrategyConfigMap cache.SharedIndexInformer
 	InstallStrategyJob       cache.SharedIndexInformer
+	InfrastructurePod        cache.SharedIndexInformer
 }
 
 func (e *Expectations) DeleteExpectations(key string) {
@@ -96,6 +102,7 @@ func (e *Expectations) DeleteExpectations(key string) {
 	e.Service.DeleteExpectations(key)
 	e.Deployment.DeleteExpectations(key)
 	e.DaemonSet.DeleteExpectations(key)
+	e.ValidationWebhook.DeleteExpectations(key)
 	e.InstallStrategyConfigMap.DeleteExpectations(key)
 	e.InstallStrategyJob.DeleteExpectations(key)
 }
@@ -110,6 +117,7 @@ func (e *Expectations) ResetExpectations(key string) {
 	e.Service.SetExpectations(key, 0, 0)
 	e.Deployment.SetExpectations(key, 0, 0)
 	e.DaemonSet.SetExpectations(key, 0, 0)
+	e.ValidationWebhook.SetExpectations(key, 0, 0)
 	e.InstallStrategyConfigMap.SetExpectations(key, 0, 0)
 	e.InstallStrategyJob.SetExpectations(key, 0, 0)
 }
@@ -124,6 +132,7 @@ func (e *Expectations) SatisfiedExpectations(key string) bool {
 		e.Service.SatisfiedExpectations(key) &&
 		e.Deployment.SatisfiedExpectations(key) &&
 		e.DaemonSet.SatisfiedExpectations(key) &&
+		e.ValidationWebhook.SatisfiedExpectations(key) &&
 		e.InstallStrategyConfigMap.SatisfiedExpectations(key) &&
 		e.InstallStrategyJob.SatisfiedExpectations(key)
 }

@@ -64,6 +64,7 @@ const (
 var validInterfaceModels = []string{"e1000", "e1000e", "ne2k_pci", "pcnet", "rtl8139", "virtio"}
 var validIOThreadsPolicies = []v1.IOThreadsPolicy{v1.IOThreadsPolicyShared, v1.IOThreadsPolicyAuto}
 var validCPUFeaturePolicies = []string{"", "force", "require", "optional", "disable", "forbid"}
+var validRunStrategies = []v1.VirtualMachineRunStrategy{v1.RunStrategyHalted, v1.RunStrategyManual, v1.RunStrategyAlways, v1.RunStrategyRerunOnFailure}
 
 type admitFunc func(*v1beta1.AdmissionReview) *v1beta1.AdmissionResponse
 
@@ -125,6 +126,16 @@ func validateDisks(field *k8sfield.Path, disks []v1.Disk) []metav1.StatusCause {
 				Field:   field.Index(idx).Child("name").String(),
 			})
 		}
+
+		// Reject Floppy disks
+		if disk.Floppy != nil {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueNotSupported,
+				Message: fmt.Sprintf("Floppy disks are deprecated and will be removed from the API soon."),
+				Field:   field.Index(idx).Child("name").String(),
+			})
+		}
+
 		// Verify only a single device type is set.
 		deviceTargetSetCount := 0
 		var diskType, bus string
@@ -610,11 +621,18 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 		}
 	}
 
-	// Validate memory size if values are not negative
+	// Validate memory size if values are not negative or too small
 	if spec.Domain.Resources.Requests.Memory().Value() < 0 {
 		causes = append(causes, metav1.StatusCause{
 			Type: metav1.CauseTypeFieldValueInvalid,
 			Message: fmt.Sprintf("%s '%s': must be greater than or equal to 0.", field.Child("domain", "resources", "requests", "memory").String(),
+				spec.Domain.Resources.Requests.Memory()),
+			Field: field.Child("domain", "resources", "requests", "memory").String(),
+		})
+	} else if spec.Domain.Resources.Requests.Memory().Value() > 0 && spec.Domain.Resources.Requests.Memory().Cmp(resource.MustParse("1M")) < 0 {
+		causes = append(causes, metav1.StatusCause{
+			Type: metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("%s '%s': must be greater than or equal to 1M.", field.Child("domain", "resources", "requests", "memory").String(),
 				spec.Domain.Resources.Requests.Memory()),
 			Field: field.Child("domain", "resources", "requests", "memory").String(),
 		})
@@ -766,6 +784,37 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 				Field:   field.Child("domain", "firmware", "serial").String(),
 			})
 		}
+	}
+
+	// Validate cpu if values are not negative
+	if spec.Domain.Resources.Requests.Cpu().MilliValue() < 0 {
+		causes = append(causes, metav1.StatusCause{
+			Type: metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("%s '%s': must be greater than or equal to 0.", field.Child("domain", "resources", "requests", "cpu").String(),
+				spec.Domain.Resources.Requests.Cpu()),
+			Field: field.Child("domain", "resources", "requests", "cpu").String(),
+		})
+	}
+
+	if spec.Domain.Resources.Limits.Cpu().MilliValue() < 0 {
+		causes = append(causes, metav1.StatusCause{
+			Type: metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("%s '%s': must be greater than or equal to 0.", field.Child("domain", "resources", "limits", "cpu").String(),
+				spec.Domain.Resources.Limits.Cpu()),
+			Field: field.Child("domain", "resources", "limits", "cpu").String(),
+		})
+	}
+
+	if spec.Domain.Resources.Limits.Cpu().MilliValue() > 0 &&
+		spec.Domain.Resources.Requests.Cpu().MilliValue() > spec.Domain.Resources.Limits.Cpu().MilliValue() {
+		causes = append(causes, metav1.StatusCause{
+			Type: metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("%s '%s' is greater than %s '%s'", field.Child("domain", "resources", "requests", "cpu").String(),
+				spec.Domain.Resources.Requests.Cpu(),
+				field.Child("domain", "resources", "limits", "cpu").String(),
+				spec.Domain.Resources.Limits.Cpu()),
+			Field: field.Child("domain", "resources", "requests", "cpu").String(),
+		})
 	}
 
 	// Validate CPU pinning
@@ -952,6 +1001,7 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 	}
 
 	if len(spec.Networks) > 0 && len(spec.Domain.Devices.Interfaces) > 0 {
+		multusDefaultCount := 0
 		multusExists := false
 		genieExists := false
 		podExists := false
@@ -971,6 +1021,9 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 				cniTypesCount++
 				multusExists = true
 				networkNameExistsOrNotNeeded = network.Multus.NetworkName != ""
+				if network.NetworkSource.Multus.Default {
+					multusDefaultCount++
+				}
 			}
 
 			if network.NetworkSource.Genie != nil {
@@ -1008,6 +1061,22 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 			}
 
 			networkNameMap[spec.Networks[idx].Name] = &spec.Networks[idx]
+		}
+
+		if multusDefaultCount > 1 {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("Multus CNI should only have one default network"),
+				Field:   field.Child("networks").String(),
+			})
+		}
+
+		if podExists && multusDefaultCount > 0 {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("Pod network cannot be defined when Multus default network is defined"),
+				Field:   field.Child("networks").String(),
+			})
 		}
 
 		// Make sure interfaces and networks are 1to1 related
@@ -1355,6 +1424,24 @@ func ValidateVirtualMachineInstanceSpec(field *k8sfield.Path, spec *v1.VirtualMa
 		causes = append(causes, validateDNSPolicy(&spec.DNSPolicy, field.Child("dnsPolicy"))...)
 	}
 	causes = append(causes, validatePodDNSConfig(spec.DNSConfig, &spec.DNSPolicy, field.Child("dnsConfig"))...)
+
+	if !virtconfig.LiveMigrationEnabled() && spec.EvictionStrategy != nil {
+		causes = append(causes, metav1.StatusCause{
+			Type:    metav1.CauseTypeFieldValueInvalid,
+			Message: "LiveMigration feature gate is not enabled",
+			Field:   field.Child("evictionStrategy").String(),
+		})
+	} else if spec.EvictionStrategy != nil {
+		if *spec.EvictionStrategy != v1.EvictionStrategyLiveMigrate {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("%s is set with an unrecognized option: %s", field.Child("evictionStrategy").String(), *spec.EvictionStrategy),
+				Field:   field.Child("evictionStrategy").String(),
+			})
+		}
+
+	}
+
 	return causes
 }
 
@@ -1368,6 +1455,7 @@ func ValidateVirtualMachineInstanceMetadata(field *k8sfield.Path, vmi *v1.Virtua
 			Field:   field.String(),
 		})
 	}
+
 	return causes
 }
 
@@ -1414,6 +1502,41 @@ func ValidateVirtualMachineSpec(field *k8sfield.Path, spec *v1.VirtualMachineSpe
 			}
 		}
 	}
+
+	// Validate RunStrategy
+	if spec.Running != nil && spec.RunStrategy != nil {
+		causes = append(causes, metav1.StatusCause{
+			Type:    metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("Running and RunStrategy are mutually exclusive"),
+			Field:   field.Child("running").String(),
+		})
+	}
+
+	if spec.Running == nil && spec.RunStrategy == nil {
+		causes = append(causes, metav1.StatusCause{
+			Type:    metav1.CauseTypeFieldValueInvalid,
+			Message: fmt.Sprintf("One of Running or RunStrategy must be specified"),
+			Field:   field.Child("running").String(),
+		})
+	}
+
+	if spec.RunStrategy != nil {
+		validRunStrategy := false
+		for _, strategy := range validRunStrategies {
+			if *spec.RunStrategy == strategy {
+				validRunStrategy = true
+				break
+			}
+		}
+		if validRunStrategy == false {
+			causes = append(causes, metav1.StatusCause{
+				Type:    metav1.CauseTypeFieldValueInvalid,
+				Message: fmt.Sprintf("Invalid RunStrategy (%s)", *spec.RunStrategy),
+				Field:   field.Child("runStrategy").String(),
+			})
+		}
+	}
+
 	// Validate ignition feature gate if set when the corresponding annotation is found
 	if spec.Template.ObjectMeta.GetAnnotations()[v1.IgnitionAnnotation] != "" && !virtconfig.IgnitionEnabled() {
 		causes = append(causes, metav1.StatusCause{
@@ -1553,7 +1676,7 @@ func admitVMIUpdate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	// Reject VMI update if VMI spec changed
 	if !reflect.DeepEqual(newVMI.Spec, oldVMI.Spec) {
 		return webhooks.ToAdmissionResponse([]metav1.StatusCause{
-			metav1.StatusCause{
+			{
 				Type:    metav1.CauseTypeFieldValueNotSupported,
 				Message: "update of VMI object is restricted",
 			},
@@ -1771,7 +1894,7 @@ func admitMigrationUpdate(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 	// Reject Migration update if spec changed
 	if !reflect.DeepEqual(newMigration.Spec, oldMigration.Spec) {
 		return webhooks.ToAdmissionResponse([]metav1.StatusCause{
-			metav1.StatusCause{
+			{
 				Type:    metav1.CauseTypeFieldValueNotSupported,
 				Message: "update of Migration object's spec is restricted",
 			},

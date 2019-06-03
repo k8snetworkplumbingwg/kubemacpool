@@ -48,7 +48,18 @@ var (
 		[]string{"domain", "drive", "type"},
 		nil,
 	)
-	// from now on: TODO: validate
+	storageTrafficDesc = prometheus.NewDesc(
+		"kubevirt_vm_storage_traffic_bytes_total",
+		"storage traffic.",
+		[]string{"domain", "drive", "type"},
+		nil,
+	)
+	storageTimesDesc = prometheus.NewDesc(
+		"kubevirt_vm_storage_times_ms_total",
+		"storage operation time.",
+		[]string{"domain", "drive", "type"},
+		nil,
+	)
 	vcpuUsageDesc = prometheus.NewDesc(
 		"kubevirt_vm_vcpu_seconds",
 		"Vcpu elapsed time.",
@@ -57,7 +68,7 @@ var (
 	)
 	networkTrafficDesc = prometheus.NewDesc(
 		"kubevirt_vm_network_traffic_bytes_total",
-		"network traffi.",
+		"network traffic.",
 		[]string{"domain", "interface", "type"},
 		nil,
 	)
@@ -71,6 +82,13 @@ var (
 		"kubevirt_vm_memory_resident_bytes",
 		"resident set size of the process running the domain",
 		[]string{"domain"},
+		nil,
+	)
+
+	swapTrafficDesc = prometheus.NewDesc(
+		"kubevirt_vm_memory_swap_traffic_bytes_total",
+		"swap memory traffic.",
+		[]string{"domain", "type"},
 		nil,
 	)
 )
@@ -93,6 +111,29 @@ func updateMemory(vmStats *stats.DomainStats, ch chan<- prometheus.Metric) {
 			// the libvirt value is in KiB
 			float64(vmStats.Memory.RSS)*1024,
 			vmStats.Name,
+		)
+		if err == nil {
+			ch <- mv
+		}
+	}
+
+	if vmStats.Memory.SwapInSet {
+		mv, err := prometheus.NewConstMetric(
+			swapTrafficDesc, prometheus.GaugeValue,
+			// the libvirt value is in KiB
+			float64(vmStats.Memory.SwapIn)*1024,
+			vmStats.Name, "in",
+		)
+		if err == nil {
+			ch <- mv
+		}
+	}
+	if vmStats.Memory.SwapInSet {
+		mv, err := prometheus.NewConstMetric(
+			swapTrafficDesc, prometheus.GaugeValue,
+			// the libvirt value is in KiB
+			float64(vmStats.Memory.SwapOut)*1024,
+			vmStats.Name, "out",
 		)
 		if err == nil {
 			ch <- mv
@@ -144,8 +185,49 @@ func updateBlock(vmStats *stats.DomainStats, ch chan<- prometheus.Metric) {
 				ch <- mv
 			}
 		}
-	}
 
+		if block.RdBytesSet {
+			mv, err := prometheus.NewConstMetric(
+				storageTrafficDesc, prometheus.CounterValue,
+				float64(block.RdBytes),
+				vmStats.Name, block.Name, "read",
+			)
+			if err == nil {
+				ch <- mv
+			}
+		}
+		if block.WrBytesSet {
+			mv, err := prometheus.NewConstMetric(
+				storageTrafficDesc, prometheus.CounterValue,
+				float64(block.WrBytes),
+				vmStats.Name, block.Name, "write",
+			)
+			if err == nil {
+				ch <- mv
+			}
+		}
+
+		if block.RdTimesSet {
+			mv, err := prometheus.NewConstMetric(
+				storageTimesDesc, prometheus.CounterValue,
+				float64(block.RdTimes),
+				vmStats.Name, block.Name, "read",
+			)
+			if err == nil {
+				ch <- mv
+			}
+		}
+		if block.WrTimesSet {
+			mv, err := prometheus.NewConstMetric(
+				storageTimesDesc, prometheus.CounterValue,
+				float64(block.WrTimes),
+				vmStats.Name, block.Name, "write",
+			)
+			if err == nil {
+				ch <- mv
+			}
+		}
+	}
 }
 
 func updateNetwork(vmStats *stats.DomainStats, ch chan<- prometheus.Metric) {
@@ -204,6 +286,8 @@ func (co *Collector) Describe(ch chan<- *prometheus.Desc) {
 	// TODO: Use DescribeByCollect?
 	ch <- versionDesc
 	ch <- storageIopsDesc
+	ch <- storageTrafficDesc
+	ch <- storageTimesDesc
 	ch <- vcpuUsageDesc
 	ch <- networkTrafficDesc
 	ch <- memoryAvailableDesc
@@ -236,7 +320,7 @@ type prometheusScraper struct {
 
 func (ps *prometheusScraper) Scrape(socketFile string) {
 	ts := time.Now()
-	cli, err := cmdclient.GetClient(socketFile)
+	cli, err := cmdclient.NewClient(socketFile)
 	if err != nil {
 		log.Log.Reason(err).Error("failed to connect to cmd client socket")
 		// Ignore failure to connect to client.

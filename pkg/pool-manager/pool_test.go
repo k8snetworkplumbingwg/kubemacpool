@@ -106,7 +106,7 @@ var _ = Describe("Pool", func() {
 				Bridge: &kubevirt.InterfaceBridge{}}}
 
 		podNetwork := kubevirt.Network{Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}
-		multusNetwork := kubevirt.Network{Name: "multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.CniNetwork{NetworkName: "multus"}}}
+		multusNetwork := kubevirt.Network{Name: "multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "multus"}}}
 
 		sampleVM := kubevirt.VirtualMachine{Spec: kubevirt.VirtualMachineSpec{
 			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{

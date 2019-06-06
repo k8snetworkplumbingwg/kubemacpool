@@ -9,9 +9,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	v12 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -27,11 +27,16 @@ const (
 	TestNamespace      = "kubemacpool-test"
 	OtherTestNamespace = "kubemacpool-test-alternative"
 
-	postUrl    = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	ovsConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"ovs\", \"bridge\": \"br1\", \"vlan\": 100 }"}}`
+	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
 )
 
-var testClient *TestClient
+var (
+	gracePeriodSeconds int64 = 10
+	rangeStart               = "02:00:00:00:00:00"
+	rangeEnd                 = "02:FF:FF:FF:FF:FF"
+	testClient         *TestClient
+)
 
 type TestClient struct {
 	VirtClient client.Client
@@ -69,26 +74,27 @@ func NewTestClient() (*TestClient, error) {
 }
 
 func createTestNamespaces() error {
-	_, err := testClient.KubeClient.CoreV1().Namespaces().Create(&v1.Namespace{ObjectMeta: v12.ObjectMeta{Name: TestNamespace}})
+	_, err := testClient.KubeClient.CoreV1().Namespaces().Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}})
 	if err != nil {
 		return err
 	}
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Create(&v1.Namespace{ObjectMeta: v12.ObjectMeta{Name: OtherTestNamespace}})
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}})
 	return err
 }
 
 func deleteTestNamespaces(namespace string) error {
-	return testClient.KubeClient.CoreV1().Namespaces().Delete(namespace, &v12.DeleteOptions{})
+	return testClient.KubeClient.CoreV1().Namespaces().Delete(namespace, &metav1.DeleteOptions{})
 }
 
 func removeTestNamespaces() {
-	fmt.Printf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace)
-	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
-		Should(BeTrue())
 
-	fmt.Printf("Waiting for namespace %s to be removed, this can take a while ...\n", OtherTestNamespace)
+	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace))
+	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
+		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
+
+	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", OtherTestNamespace))
 	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) }, 120*time.Second, 5*time.Second).
-		Should(BeTrue())
+		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
 func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
@@ -100,6 +106,51 @@ func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Inte
 	vm.Spec.Template.Spec.Networks = networks
 
 	return vm
+}
+
+func setRange(rangeStart, rangeEnd string) error {
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps("kubemacpool-system").Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	configMap.Data["RANGE_START"] = rangeStart
+	configMap.Data["RANGE_END"] = rangeEnd
+
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps("kubemacpool-system").Update(configMap)
+	if err != nil {
+		return err
+	}
+
+	podsList, err := testClient.KubeClient.CoreV1().Pods("kubemacpool-system").List(metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	err = testClient.KubeClient.CoreV1().Pods("kubemacpool-system").Delete(podsList.Items[0].Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+	if err != nil {
+		return err
+	}
+
+	Eventually(func() error {
+		podsList, err = testClient.KubeClient.CoreV1().Pods("kubemacpool-system").List(metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+
+		if len(podsList.Items) != 1 {
+			return fmt.Errorf("should have only one manager pod")
+		}
+
+		if podsList.Items[0].Status.Phase != corev1.PodRunning {
+			return fmt.Errorf("manager pod not ready")
+		}
+
+		return nil
+
+	}, 30*time.Second, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
+
+	return nil
 }
 
 func BeforeAll(fn func()) {

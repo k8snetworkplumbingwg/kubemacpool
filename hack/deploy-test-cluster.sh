@@ -7,14 +7,14 @@ docker run -d -p 5000:5000 --rm --network kubeadm-dind-net --name registry regis
 kubectl config view --raw > ./cluster/dind-cluster/config
 
 # Deploy CNA
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/cna/namespace.yaml
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/cna/network-addons-config.crd.yaml
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/cna/operator.yaml
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/cna/network-addons-config-example.cr.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/namespace.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/network-addons-config.crd.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/operator.yaml
+./cluster/dind-cluster/kubectl create -f ./hack/cna/cna-cr.yaml
 
 # Deploy Kubevirt
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/kubevirt/kubevirt-operator.yaml
-./cluster/dind-cluster/kubectl create -f ./hack/manifests/kubevirt/kubevirt-cr.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-operator.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-cr.yaml
 
 
 # Build kubemacpool

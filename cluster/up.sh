@@ -21,8 +21,18 @@ source hack/common.sh
 source cluster/$MACPOOL_PROVIDER/provider.sh
 up
 
+# Deploy CNA
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/namespace.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/network-addons-config.crd.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/operator.yaml
+./cluster/kubectl.sh create -f ./hack/cna/cna-cr.yaml
+
+# wait for cluster operator
+./cluster/kubectl.sh wait networkaddonsconfig cluster --for condition=Ready --timeout=800s
+
+
 # deploy kubevirt
-./cluster/kubectl.sh apply -f cluster/kubevirt/kubevirt-operator.yaml
+./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-operator.yaml
 
 # Ensure the KubeVirt CRD is created
 count=0
@@ -32,7 +42,7 @@ until ./cluster/kubectl.sh get crd kubevirts.kubevirt.io; do
     sleep 1
 done
 
-./cluster/kubectl.sh apply -f cluster/kubevirt/kubevirt-cr.yaml
+./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-cr.yaml
 
 # Ensure the KubeVirt CR is created
 count=0

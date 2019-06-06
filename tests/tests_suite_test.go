@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-
 func TestTests(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Tests Suite")
@@ -18,6 +17,7 @@ var _ = BeforeSuite(func() {
 	testClient, err = NewTestClient()
 	Expect(err).ToNot(HaveOccurred())
 
+	removeTestNamespaces()
 	err = createTestNamespaces()
 	Expect(err).ToNot(HaveOccurred())
 })

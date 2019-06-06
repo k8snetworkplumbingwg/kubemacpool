@@ -41,7 +41,7 @@ type PoolManager struct {
 	currentMac      net.HardwareAddr             // last given mac
 	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
 	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	vmToMacPoolMap  map[string][]string          // cap for namespace/vmname and a list of allocated mac addresses
+	vmToMacPoolMap  map[string]map[string]string // map for namespace/vmname and a map of interface name with allocated mac address
 	poolMutex       sync.Mutex                   // mutex for allocation an release
 	isLeader        bool                         // leader boolean
 	isKubevirt      bool                         // bool if kubevirt virtualmachine crd exist in the cluster
@@ -70,7 +70,7 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		rangeStart:      rangeStart,
 		currentMac:      currentMac,
 		podToMacPoolMap: map[string]map[string]string{},
-		vmToMacPoolMap:  map[string][]string{},
+		vmToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:      map[string]AllocationStatus{},
 		poolMutex:       sync.Mutex{}}
 
@@ -131,12 +131,6 @@ func (p *PoolManager) InitMaps() error {
 	}
 
 	return nil
-}
-
-func (p *PoolManager) releaseAllocations(allocations []string) {
-	for _, macAddr := range allocations {
-		delete(p.macPoolMap, macAddr)
-	}
 }
 
 func checkRange(startMac, endMac net.HardwareAddr) error {

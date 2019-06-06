@@ -270,7 +270,9 @@ func (p *PoolManager) allocatedToCurrentPod(podname string, network *multus.Netw
 // Revert allocation if one of the requested mac addresses fails to be allocated
 func (p *PoolManager) revertAllocationOnPod(podName string, allocations []string) {
 	log.V(1).Info("Rever vm allocation", "podName", podName, "allocations", allocations)
-	p.releaseAllocations(allocations)
+	for _, value := range allocations {
+		delete(p.macPoolMap, value)
+	}
 	delete(p.podToMacPoolMap, podName)
 }
 

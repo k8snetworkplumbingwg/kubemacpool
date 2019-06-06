@@ -20,3 +20,4 @@ bin
 cluster/k8s-multus-1.13.3/.kubeconfig
 cluster/k8s-multus-1.13.3/.kubectl
 hack/config-provider-*
+cluster/dind-cluster/config

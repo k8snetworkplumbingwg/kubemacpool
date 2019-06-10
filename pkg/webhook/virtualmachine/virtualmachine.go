@@ -18,9 +18,11 @@ package virtualmachine
 
 import (
 	"context"
+	"fmt"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
 
+	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -47,7 +49,7 @@ func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSe
 	wh, err := builder.NewWebhookBuilder().
 		Mutating().
 		FailurePolicy(admissionregistrationv1beta1.Fail).
-		Operations(admissionregistrationv1beta1.Create).
+		Operations(admissionregistrationv1beta1.Create, admissionregistrationv1beta1.Update).
 		ForType(&kubevirt.VirtualMachine{}).
 		Handlers(virtualMachineAnnotator).
 		NamespaceSelector(namespaceSelector).
@@ -82,20 +84,38 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req types.Request)
 		copyObject.Namespace = req.AdmissionRequest.Namespace
 	}
 
-	err = a.mutateVirtualMachinesFn(ctx, copyObject)
-	if err != nil {
-		return admission.ErrorResponse(http.StatusInternalServerError, err)
+	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
+		err = a.mutateCreateVirtualMachinesFn(ctx, copyObject)
+		if err != nil {
+			return admission.ErrorResponse(http.StatusInternalServerError,
+				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
+		}
+	} else if req.AdmissionRequest.Operation == admissionv1beta1.Update {
+		err = a.mutateUpdateVirtualMachinesFn(ctx, copyObject)
+		if err != nil {
+			return admission.ErrorResponse(http.StatusInternalServerError,
+				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
+		}
 	}
+
 	// admission.PatchResponse generates a Response containing patches.
 	return admission.PatchResponse(virtualMachine, copyObject)
 }
 
-// mutatePodsFn add an annotation to the given pod
-func (a *virtualMachineAnnotator) mutateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
-	log.Info("got a mutate virtual machine event",
+// mutateCreateVirtualMachinesFn calls the create allocation function
+func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
+	log.Info("got a create mutate virtual machine event",
 		"virtualMachineName", virtualMachine.Name,
 		"virtualMachineNamespace", virtualMachine.Namespace)
 	return a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+}
+
+// mutateUpdateVirtualMachinesFn calls the update allocation function
+func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
+	log.Info("got a update mutate virtual machine event",
+		"virtualMachineName", virtualMachine.Name,
+		"virtualMachineNamespace", virtualMachine.Namespace)
+	return a.poolManager.UpdateMacAddressesForVirtualMachine(virtualMachine)
 }
 
 // podAnnotator implements inject.Client.

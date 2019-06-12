@@ -23,7 +23,7 @@ MACPOOL_DIR="$(
 VENDOR_DIR=$MACPOOL_DIR/vendor
 
 
-MACPOOL_PROVIDER=${MACPOOL_PROVIDER:-k8s-multus-1.13.3}
+MACPOOL_PROVIDER=${MACPOOL_PROVIDER:-k8s-1.13.3}
 MACPOOL_NUM_NODES=${MACPOOL_NUM_NODES:-1}
 
 # Use this environment variable to set a custom pkgdir path

@@ -96,5 +96,6 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	r.poolManager.MarkVMAsReady(fmt.Sprintf("%s/%s", request.Namespace, request.Name))
 	return reconcile.Result{}, nil
 }

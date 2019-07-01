@@ -35,16 +35,18 @@ const (
 var log = logf.Log.WithName("PoolManager")
 
 type PoolManager struct {
-	kubeClient      kubernetes.Interface         // kubernetes client
-	rangeStart      net.HardwareAddr             // fist mac in range
-	rangeEnd        net.HardwareAddr             // last mac in range
-	currentMac      net.HardwareAddr             // last given mac
-	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
-	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	vmToMacPoolMap  map[string]map[string]string // map for namespace/vmname and a map of interface name with allocated mac address
-	poolMutex       sync.Mutex                   // mutex for allocation an release
-	isLeader        bool                         // leader boolean
-	isKubevirt      bool                         // bool if kubevirt virtualmachine crd exist in the cluster
+	kubeClient        kubernetes.Interface         // kubernetes client
+	rangeStart        net.HardwareAddr             // fist mac in range
+	rangeEnd          net.HardwareAddr             // last mac in range
+	currentMac        net.HardwareAddr             // last given mac
+	macPoolMap        map[string]AllocationStatus  // allocated mac map and status
+	podToMacPoolMap   map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	vmToMacPoolMap    map[string]map[string]string // map for namespace/vmname and a map of interface name with allocated mac address
+	vmCreationWaiting map[string]int               // map for namespace/vmname and count to wait for vm creation event
+	vmMutex           sync.Mutex                   // mutex for creation waiting cleanup loop
+	poolMutex         sync.Mutex                   // mutex for allocation an release
+	isLeader          bool                         // leader boolean
+	isKubevirt        bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 }
 
 type AllocationStatus string
@@ -64,20 +66,24 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 	copy(currentMac, rangeStart)
 
 	poolManger := &PoolManager{kubeClient: kubeClient,
-		isLeader:        false,
-		isKubevirt:      kubevirtExist,
-		rangeEnd:        rangeEnd,
-		rangeStart:      rangeStart,
-		currentMac:      currentMac,
-		podToMacPoolMap: map[string]map[string]string{},
-		vmToMacPoolMap:  map[string]map[string]string{},
-		macPoolMap:      map[string]AllocationStatus{},
-		poolMutex:       sync.Mutex{}}
+		isLeader:          false,
+		isKubevirt:        kubevirtExist,
+		rangeEnd:          rangeEnd,
+		rangeStart:        rangeStart,
+		currentMac:        currentMac,
+		podToMacPoolMap:   map[string]map[string]string{},
+		vmToMacPoolMap:    map[string]map[string]string{},
+		macPoolMap:        map[string]AllocationStatus{},
+		vmCreationWaiting: map[string]int{},
+		vmMutex:           sync.Mutex{},
+		poolMutex:         sync.Mutex{}}
 
 	err = poolManger.InitMaps()
 	if err != nil {
 		return nil, err
 	}
+
+	go poolManger.vmWaitingCleanupLook()
 
 	return poolManger, nil
 }

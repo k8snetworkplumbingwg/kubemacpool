@@ -18,10 +18,11 @@ package pool_manager
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"net"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"
 )
 
@@ -82,6 +83,7 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	}
 
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
+	p.vmCreationWaiting[vmNamespaced(virtualMachine)] = 0
 	return nil
 }
 
@@ -113,6 +115,7 @@ func (p *PoolManager) ReleaseVirtualMachineMac(virtualMachineName string) error 
 	}
 
 	delete(p.vmToMacPoolMap, virtualMachineName)
+	delete(p.vmCreationWaiting, virtualMachineName)
 	log.V(1).Info("removed virtual machine from vmToMacPoolMap", "virtualMachineName", virtualMachineName)
 	return nil
 }
@@ -196,6 +199,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(virtualMachine *kubevi
 	p.releaseMacAddressesFromInterfaceMap(releaseOldAllocations)
 
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
+	p.MarkVMAsReady(vmNamespaced(virtualMachine))
 	return nil
 }
 
@@ -343,9 +347,51 @@ func (p *PoolManager) releaseMacAddressesFromInterfaceMap(allocations map[string
 
 // Revert allocation if one of the requested mac addresses fails to be allocated
 func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string]string) {
+	// If the vm is in the vm creation waiting skip the revert
+	// this vm will be clean in the waiting clean loop
+	if _, isExist := p.vmCreationWaiting[vmName]; isExist {
+		return
+	}
+
 	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
 	p.releaseMacAddressesFromInterfaceMap(allocations)
 	delete(p.vmToMacPoolMap, vmName)
+}
+
+// This function remove the virtual machine from the waiting list
+// this mean that we got an event about a virtual machine in vm controller loop
+func (p *PoolManager) MarkVMAsReady(vmName string) {
+	p.vmMutex.Lock()
+	defer p.vmMutex.Unlock()
+
+	delete(p.vmCreationWaiting, vmName)
+}
+
+// This function check if there are virtual machines that hits the create
+// mutating webhook but we didn't get the creation event in the controller loop
+// this mean the create was failed by some other mutating or validating webhook
+// so we release the virtual machine
+func (p *PoolManager) vmWaitingCleanupLook() {
+	c := time.Tick(3 * time.Second)
+	for _ = range c {
+		p.vmMutex.Lock()
+
+		for vmName, waitingLookCount := range p.vmCreationWaiting {
+			if waitingLookCount < 2 {
+				p.vmCreationWaiting[vmName] += 1
+				continue
+			}
+
+			log.V(1).Info("found a non existing vm, start releasing", "vmName", vmName)
+			err := p.ReleaseVirtualMachineMac(vmName)
+			if err != nil {
+				log.Error(err, "failed to release virtual machine mac addresses in cleanup look")
+			}
+			delete(p.vmCreationWaiting, vmName)
+		}
+
+		p.vmMutex.Unlock()
+	}
 }
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {

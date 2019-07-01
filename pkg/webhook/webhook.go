@@ -22,7 +22,6 @@ import (
 	admissionregistration "k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	apitypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -51,10 +50,6 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		Port:    8000,
 		BootstrapOptions: &runtimewebhook.BootstrapOptions{
 			MutatingWebhookConfigName: "kubemacpool",
-			Secret: &apitypes.NamespacedName{
-				Namespace: "kubemacpool-system",
-				Name:      "kubemacpool-webhook-secret",
-			},
 			Service: &runtimewebhook.Service{
 				Namespace: "kubemacpool-system",
 				Name:      "kubemacpool-service",

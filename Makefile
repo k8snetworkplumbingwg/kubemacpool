@@ -11,6 +11,9 @@ all: generate generate-deploy generate-test
 test:
 	go test ./pkg/... ./cmd/... -coverprofile cover.out
 
+functest:
+	./hack/functest.sh
+
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy
 	kubectl apply -f config/test/kubemacpool.yaml
@@ -31,11 +34,11 @@ manifests:
 
 # Run go fmt against code
 fmt:
-	go fmt ./pkg/... ./cmd/...
+	go fmt ./pkg/... ./cmd/... ./tests/...
 
 # Run go vet against code
 vet:
-	go vet ./pkg/... ./cmd/...
+	go vet ./pkg/... ./cmd/... ./tests/...
 
 # Generate code
 generate: fmt vet manifests
@@ -71,4 +74,7 @@ cluster-down:
 cluster-sync:
 	./cluster/sync.sh
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync
+deploy-test-cluster:
+	./hack/deploy-test-cluster.sh
+
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster

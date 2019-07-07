@@ -364,6 +364,64 @@ var _ = Describe("Virtual Machines", func() {
 				}
 			})
 		})
+
+		//TODO:  remove the the pending annotation -"P"- from "PContext" when issue #44 is fixed :
+		//https://github.com/K8sNetworkPlumbingWG/kubemacpool/issues/44
+		PContext("When we re-apply a failed VM yaml", func() {
+			It("should allow to assign to the VM the same MAC addresses, name as requested before and do not return an error", func() {
+				err := setRange(rangeStart, rangeEnd)
+				Expect(err).ToNot(HaveOccurred())
+
+				vm1 := CreateVmObject(TestNamespace, false,
+					[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
+					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+
+				baseVM := vm1.DeepCopy()
+
+				Eventually(func() bool {
+					err := testClient.VirtClient.Create(context.TODO(), vm1)
+					if err != nil && strings.Contains(err.Error(), "every network must be mapped to an interface") {
+						return true
+					}
+					return false
+
+				}, 40*time.Second, 5*time.Second).Should(BeTrue(), "failed to apply the new vm object")
+
+				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
+
+				Eventually(func() error {
+					return testClient.VirtClient.Create(context.TODO(), baseVM)
+
+				}, 50*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+			})
+			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
+				err := setRange(rangeStart, rangeEnd)
+				Expect(err).ToNot(HaveOccurred())
+
+				vm1 := CreateVmObject(TestNamespace, false,
+					[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
+					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+
+				baseVM := vm1.DeepCopy()
+				baseVM.Name = "new-vm"
+
+				Eventually(func() bool {
+					err := testClient.VirtClient.Create(context.TODO(), vm1)
+					if err != nil && strings.Contains(err.Error(), "every network must be mapped to an interface") {
+						return true
+					}
+					return false
+
+				}, 40*time.Second, 5*time.Second).Should(BeTrue(), "failed to apply the new vm object")
+
+				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
+
+				Eventually(func() error {
+					return testClient.VirtClient.Create(context.TODO(), baseVM)
+
+				}, 50*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+			})
+		})
 	})
 })
 

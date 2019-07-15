@@ -137,12 +137,6 @@ metadata:
   name: kubemacpool-mac-range-config
   namespace: kubemacpool-system
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: kubemacpool-webhook-secret
-  namespace: kubemacpool-system
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -173,8 +167,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
-        - name: SECRET_NAME
-          value: kubemacpool-webhook-secret
         - name: RANGE_START
           valueFrom:
             configMapKeyRef:
@@ -199,14 +191,5 @@ spec:
           requests:
             cpu: 500m
             memory: 500Mi
-        volumeMounts:
-        - mountPath: /tmp/cert
-          name: cert
-          readOnly: true
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
-      volumes:
-      - name: cert
-        secret:
-          defaultMode: 420
-          secretName: kubemacpool-webhook-secret

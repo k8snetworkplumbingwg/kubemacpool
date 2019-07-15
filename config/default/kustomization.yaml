@@ -38,12 +38,5 @@ resources:
   # manager_prometheus_metrics_patch.yaml should be enabled.
 #- manager_prometheus_metrics_patch.yaml
 
-vars:
-- fieldref: {}
-  name: WEBHOOK_SECRET_NAME
-  objref:
-    apiVersion: v1
-    kind: Secret
-    name: webhook-secret
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

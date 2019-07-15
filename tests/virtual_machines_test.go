@@ -62,8 +62,8 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		//2166
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
+			//2166
 			Context("When the MAC address is within range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
 					err := setRange(rangeStart, rangeEnd)

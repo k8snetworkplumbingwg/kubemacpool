@@ -18,8 +18,9 @@ package pool_manager
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/api/errors"
 	"net"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	corev1 "k8s.io/api/core/v1"
 	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"

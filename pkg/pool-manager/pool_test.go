@@ -24,7 +24,7 @@ import (
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"
@@ -77,6 +77,24 @@ var _ = Describe("Pool", func() {
 			table.Entry("Start: 02:00:00:00:00:00  End: 02:10:00:00:00:00", "02:00:00:00:00:00", "02:10:00:00:00:00", false),
 			table.Entry("Start: 02:FF:00:00:00:00  End: 02:00:00:00:00:00", "02:FF:00:00:00:00", "00:00:00:00:00:00", true),
 		)
+
+		table.DescribeTable("should check that the multicast bit is off", func(MacAddr string, shouldFail bool) {
+			MacAddrHW, err := net.ParseMAC(MacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			err = checkCast(MacAddrHW)
+			if shouldFail {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		},
+			table.Entry("Valid address: 02:00:00:00:00:00", "02:00:00:00:00:00", false),
+			table.Entry("Valid address: 06:00:00:00:00:00", "06:00:00:00:00:00", false),
+			table.Entry("Valid address: 0A:00:00:00:00:00", "0A:00:00:00:00:00", false),
+			table.Entry("Valid address: 0E:00:00:00:00:00", "0E:00:00:00:00:00", false),
+			table.Entry("Invalid address: 01:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "01:FF:00:00:00:00", true),
+			table.Entry("Invalid address: FF:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "FF:FF:00:00:00:00", true),
+		)
 	})
 
 	Describe("Pool Manager General Functions ", func() {
@@ -84,20 +102,45 @@ var _ = Describe("Pool", func() {
 			fakeClient := fake.NewSimpleClientset()
 			startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			endPoolRangeEnv, err := net.ParseMAC("FD:FF:FF:FF:FF:FF")
+			endPoolRangeEnv, err := net.ParseMAC("02:FF:FF:FF:FF:FF")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		It("should fail to pool manager because of the invalid range", func() {
+		It("should fail to create pool manager when rangeStart is greater than rangeEnd", func() {
 			fakeClient := fake.NewSimpleClientset()
-			startPoolRangeEnv, err := net.ParseMAC("03:00:00:00:00:00")
+			startPoolRangeEnv, err := net.ParseMAC("0A:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
 			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false)
 			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
+
+		})
+
+		It("should fail to pool manager because of the first octet of RangeStart is not 2, 6, A, E", func() {
+			fakeClient := fake.NewSimpleClientset()
+			startPoolRangeEnv, err := net.ParseMAC("03:00:00:00:00:00")
+			Expect(err).ToNot(HaveOccurred())
+			endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
+
+		})
+
+		It("should fail to create a pool manager object when the first octet of RangeEnd is not 2, 6, A, E", func() {
+			fakeClient := fake.NewSimpleClientset()
+			startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
+			Expect(err).ToNot(HaveOccurred())
+			endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
+			Expect(err).ToNot(HaveOccurred())
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
 		})
 	})
 

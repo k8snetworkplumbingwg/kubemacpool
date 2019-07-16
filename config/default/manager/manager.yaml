@@ -17,7 +17,7 @@ metadata:
     controller-tools.k8s.io: "1.0"
 data:
   RANGE_START: 02:00:00:00:00:00
-  RANGE_END: FD:FF:FF:FF:FF:FF
+  RANGE_END: 02:FF:FF:FF:FF:FF
 ---
 apiVersion: apps/v1
 kind: Deployment

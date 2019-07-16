@@ -59,6 +59,14 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 	if err != nil {
 		return nil, err
 	}
+	err = checkCast(rangeStart)
+	if err != nil {
+		return nil, fmt.Errorf("RangeStart is invalid: %v", err)
+	}
+	err = checkCast(rangeEnd)
+	if err != nil {
+		return nil, fmt.Errorf("RangeEnd is invalid: %v", err)
+	}
 
 	currentMac := make(net.HardwareAddr, len(rangeStart))
 	copy(currentMac, rangeStart)
@@ -140,7 +148,17 @@ func checkRange(startMac, endMac net.HardwareAddr) error {
 		}
 	}
 
-	return fmt.Errorf("Invalid range start: %s end: %s", startMac.String(), endMac.String())
+	return fmt.Errorf("Invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
+}
+
+func checkCast(mac net.HardwareAddr) error {
+	// A bitwise AND between 00000001 and the mac address first octet.
+	// In case where the LSB of the first octet (the multicast bit) is on, it will return 1, and 0 otherwise.
+	multicastBit := 1 & mac[0]
+	if multicastBit != 1 {
+		return nil
+	}
+	return fmt.Errorf("invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is %#0X", mac[0])
 }
 
 func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {

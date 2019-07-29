@@ -28,7 +28,7 @@ metadata:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       control-plane: mac-controller-manager
@@ -53,6 +53,10 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.namespace
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
           - name: RANGE_START
             valueFrom:
               configMapKeyRef:

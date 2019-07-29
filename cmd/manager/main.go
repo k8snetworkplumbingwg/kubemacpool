@@ -68,7 +68,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubemacpoolManager := manager.NewKubeMacPoolManager(metricsAddr)
+	podNamespace, ok := os.LookupEnv("POD_NAMESPACE")
+	if !ok {
+		log.Error(err, "Failed to load pod namespace from environment variable")
+		os.Exit(1)
+	}
+
+	podName, ok := os.LookupEnv("POD_NAME")
+	if !ok {
+		log.Error(err, "Failed to load pod name from environment variable")
+		os.Exit(1)
+	}
+
+	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr)
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {

@@ -17,15 +17,18 @@ package manager
 
 import (
 	"fmt"
-	"k8s.io/client-go/rest"
 	"net"
 	"os"
 	"os/signal"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"time"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	kubevirt_api "kubevirt.io/kubevirt/pkg/api/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
@@ -44,14 +47,19 @@ type KubeMacPoolManager struct {
 	restartChannel           chan struct{}
 	kubevirtInstalledChannel chan struct{}
 	stopSignalChannel        chan os.Signal
+	podNamespace             string
+	podName                  string
+	resourceLock             resourcelock.Interface
 }
 
-func NewKubeMacPoolManager(metricsAddr string) *KubeMacPoolManager {
+func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
 		continueToRunManager:     true,
 		restartChannel:           make(chan struct{}),
 		kubevirtInstalledChannel: make(chan struct{}),
 		stopSignalChannel:        make(chan os.Signal, 1),
+		podNamespace:             podNamespace,
+		podName:                  podName,
 		metricsAddr:              metricsAddr}
 
 	signal.Notify(kubemacpoolManager.stopSignalChannel, os.Interrupt, os.Kill)
@@ -75,6 +83,34 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to create a kubernetes client error %v", err)
 		}
 
+		log.Info("Setting up manager")
+		mgr, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
+		if err != nil {
+			return fmt.Errorf("unable to set up manager error %v", err)
+		}
+
+		err = kubevirt_api.AddToScheme(mgr.GetScheme())
+		if err != nil {
+			return fmt.Errorf("unable to register kubevirt scheme error %v", err)
+		}
+
+		err = k.newLeaderElection(k.config, mgr.GetScheme())
+		if err != nil {
+			return fmt.Errorf("unable to create a leader election resource lock error %v", err)
+		}
+
+		log.Info("waiting for manager to become leader")
+		err = k.waitToStartLeading()
+		if err != nil {
+			return err
+		}
+
+		log.Info("the manager is a leader adding leader label to pod")
+		err = k.markPodAsLeader()
+		if err != nil {
+			return err
+		}
+
 		// create a owner ref on the mutating webhook
 		// this way when we remove the statefulset of the manager the webhook will be also removed from the cluster
 		err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset)
@@ -93,12 +129,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			go k.waitForKubevirt()
 		}
 		go k.waitForSignal()
-
-		log.Info("Setting up manager")
-		mgr, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
-		if err != nil {
-			return fmt.Errorf("unable to set up manager error %v", err)
-		}
 
 		log.Info("Setting up controller")
 		err = controller.AddToManager(mgr, poolManager)
@@ -158,6 +188,21 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	}
 
 	close(k.restartChannel)
+}
+
+func (k *KubeMacPoolManager) markPodAsLeader() error {
+	pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(k.podName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	pod.Labels[webhook.LeaderLabel] = "true"
+	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func init() {

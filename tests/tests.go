@@ -13,20 +13,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-
 	"k8s.io/client-go/kubernetes/scheme"
-	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
+	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
+
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
 )
 
 const (
 	TestNamespace      = "kubemacpool-test"
 	OtherTestNamespace = "kubemacpool-test-alternative"
-
+	ManagerNamespce    = "kubemacpool-system"
 	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
 	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
 )
@@ -109,7 +110,7 @@ func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Inte
 }
 
 func setRange(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps("kubemacpool-system").Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -117,33 +118,37 @@ func setRange(rangeStart, rangeEnd string) error {
 	configMap.Data["RANGE_START"] = rangeStart
 	configMap.Data["RANGE_END"] = rangeEnd
 
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps("kubemacpool-system").Update(configMap)
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
 	if err != nil {
 		return err
 	}
 
-	podsList, err := testClient.KubeClient.CoreV1().Pods("kubemacpool-system").List(metav1.ListOptions{})
+	podsList, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	err = testClient.KubeClient.CoreV1().Pods("kubemacpool-system").Delete(podsList.Items[0].Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
-	if err != nil {
-		return err
+	for _, pod := range podsList.Items {
+		err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+		if err != nil {
+			return err
+		}
 	}
 
 	Eventually(func() error {
-		podsList, err = testClient.KubeClient.CoreV1().Pods("kubemacpool-system").List(metav1.ListOptions{})
+		podsList, err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
 
-		if len(podsList.Items) != 1 {
-			return fmt.Errorf("should have only one manager pod")
+		if len(podsList.Items) != 2 {
+			return fmt.Errorf("should have two manager pods")
 		}
 
-		if podsList.Items[0].Status.Phase != corev1.PodRunning {
-			return fmt.Errorf("manager pod not ready")
+		for _, pod := range podsList.Items {
+			if pod.Status.Phase != corev1.PodRunning {
+				return fmt.Errorf("manager pod not ready")
+			}
 		}
 
 		return nil
@@ -151,6 +156,33 @@ func setRange(rangeStart, rangeEnd string) error {
 	}, 30*time.Second, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
 
 	return nil
+}
+
+func DeleteLeaderManager() {
+	pods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	leaderPodName := ""
+	for _, pod := range pods.Items {
+		if _, ok := pod.Labels[webhook.LeaderLabel]; ok {
+			leaderPodName = pod.Name
+			break
+		}
+	}
+
+	Expect(leaderPodName).ToNot(BeEmpty())
+
+	err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(leaderPodName, &metav1.DeleteOptions{})
+	Expect(err).ToNot(HaveOccurred())
+
+	Eventually(func() bool {
+		_, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(leaderPodName, metav1.GetOptions{})
+		if err != nil && errors.IsNotFound(err) {
+			return true
+		}
+
+		return false
+	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
 }
 
 func BeforeAll(fn func()) {

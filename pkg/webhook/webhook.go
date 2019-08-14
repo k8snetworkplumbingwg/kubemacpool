@@ -31,6 +31,10 @@ import (
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 )
 
+const (
+	LeaderLabel = "kubemacpool-leader"
+)
+
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager
 var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1.LabelSelector) (*admission.Webhook, error)
 
@@ -55,7 +59,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 				Name:      "kubemacpool-service",
 				// Selectors should select the pods that runs this webhook server.
 				Selectors: map[string]string{
-					"control-plane": "mac-controller-manager",
+					LeaderLabel: "true",
 				},
 			},
 		},

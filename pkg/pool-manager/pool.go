@@ -27,7 +27,7 @@ import (
 
 const (
 	RangeStartEnv            = "RANGE_START"
-	RangeEndEvn              = "RANGE_END"
+	RangeEndEnv              = "RANGE_END"
 	networksAnnotation       = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation = "k8s.v1.cni.cncf.io/networks-status"
 )

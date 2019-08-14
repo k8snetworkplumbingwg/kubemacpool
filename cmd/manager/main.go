@@ -62,7 +62,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEvn)
+	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEnv)
 	if err != nil {
 		log.Error(err, "Failed to load mac address from environment variable")
 		os.Exit(1)

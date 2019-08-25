@@ -157,6 +157,18 @@ spec:
         control-plane: mac-controller-manager
         controller-tools.k8s.io: "1.0"
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: control-plane
+                  operator: In
+                  values:
+                  - mac-controller-manager
+              topologyKey: kubernetes.io/hostname
+            weight: 1
       containers:
       - args:
         - --v=debug

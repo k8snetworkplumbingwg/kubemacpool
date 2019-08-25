@@ -10,13 +10,18 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
 )
 
-var _ = Describe("Virtual Machines", func() {
+const timeout = 60 * time.Second
+const pollingInterval = 5 * time.Second
 
+var _ = Describe("Virtual Machines", func() {
 	BeforeAll(func() {
 		result := testClient.KubeClient.ExtensionsV1beta1().RESTClient().
 			Post().
@@ -43,7 +48,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 				return len(vmList.Items)
 
-			}, 30*time.Second, 3*time.Second).Should(Equal(0), "failed to remove all vm objects")
+			}, timeout, pollingInterval).Should(Equal(0), "failed to remove all vm objects")
 		})
 
 		Context("When the client wants to create a vm", func() {
@@ -57,7 +62,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -73,7 +78,7 @@ var _ = Describe("Virtual Machines", func() {
 
 					Eventually(func() error {
 						return testClient.VirtClient.Create(context.TODO(), vm)
-					}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+					}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -83,12 +88,12 @@ var _ = Describe("Virtual Machines", func() {
 
 					Eventually(func() error {
 						err = testClient.VirtClient.Create(context.TODO(), vmOverlap)
-						if err != nil && strings.Contains(err.Error(), "failed to allocate requested mac address") {
+						if err != nil {
 							return err
 						}
 						return nil
 
-					}, 40*time.Second, 5*time.Second).Should(HaveOccurred())
+					}, timeout, pollingInterval).Should(HaveOccurred())
 					_, err = net.ParseMAC(vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
 				})
@@ -105,7 +110,7 @@ var _ = Describe("Virtual Machines", func() {
 					Eventually(func() error {
 						return testClient.VirtClient.Create(context.TODO(), vm)
 
-					}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+					}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -119,7 +124,7 @@ var _ = Describe("Virtual Machines", func() {
 							return err
 						}
 						return nil
-					}, 40*time.Second, 5*time.Second).Should(HaveOccurred())
+					}, timeout, pollingInterval).Should(HaveOccurred())
 				})
 			})
 		})
@@ -140,7 +145,7 @@ var _ = Describe("Virtual Machines", func() {
 						}
 						return nil
 
-					}, 40*time.Second, 5*time.Second).Should(HaveOccurred())
+					}, timeout, pollingInterval).Should(HaveOccurred())
 				})
 			})
 			//2200
@@ -159,7 +164,7 @@ var _ = Describe("Virtual Machines", func() {
 						}
 						return nil
 
-					}, 40*time.Second, 5*time.Second).Should(HaveOccurred())
+					}, timeout, pollingInterval).Should(HaveOccurred())
 				})
 			})
 		})
@@ -175,7 +180,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm1)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 
 				_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
@@ -185,7 +190,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm2)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -193,11 +198,8 @@ var _ = Describe("Virtual Machines", func() {
 				vm2MacAddress := vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 
 				//deleting both and try to assign their MAC address to the new VM
-				err = testClient.VirtClient.Delete(context.TODO(), vm1)
-				Expect(err).ToNot(HaveOccurred())
-
-				err = testClient.VirtClient.Delete(context.TODO(), vm2)
-				Expect(err).ToNot(HaveOccurred())
+				deleteVMI(vm1)
+				deleteVMI(vm2)
 
 				newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", vm1MacAddress)},
 					[]kubevirtv1.Network{newNetwork("br1")})
@@ -205,7 +207,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), newVM1)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(newVM1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -215,7 +217,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), newVM2)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -232,7 +234,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
@@ -244,7 +246,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), starvingVM)
 
-				}, 40*time.Second, 5*time.Second).Should((HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should((HaveOccurred()), "failed to apply the new vm object")
 			})
 		})
 		//2165
@@ -259,7 +261,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm1)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				mac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -272,19 +274,18 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm2)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
 				_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
-				err = testClient.VirtClient.Delete(context.TODO(), vm1)
-				Expect(err).ToNot(HaveOccurred())
+				deleteVMI(vm1)
 
 				newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
 					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), newVM1)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				newMac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 				newMac2, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
@@ -305,7 +306,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm1)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -323,7 +324,7 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return nil
 
-				}, 40*time.Second, 5*time.Second).Should(HaveOccurred())
+				}, timeout, pollingInterval).Should(HaveOccurred())
 			})
 		})
 		//2243
@@ -345,7 +346,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), vm1)
 
-				}, 50*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
 
 				updateObject.ObjectMeta = *vm1.ObjectMeta.DeepCopy()
 
@@ -355,9 +356,14 @@ var _ = Describe("Virtual Machines", func() {
 				}
 
 				Eventually(func() error {
+
+					err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: updateObject.Namespace, Name: updateObject.Name}, updateObject)
+					if err != nil {
+						return err
+					}
 					return testClient.VirtClient.Update(context.TODO(), updateObject)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to update client")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to update client")
 
 				for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
 					Expect(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress).To(Equal(updateObject.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress))
@@ -367,7 +373,7 @@ var _ = Describe("Virtual Machines", func() {
 		//TODO:  remove the the pending annotation -"P"- from "PContext" when issue #44 is fixed :
 		//https://github.com/K8sNetworkPlumbingWG/kubemacpool/issues/44
 		PContext("When we re-apply a failed VM yaml", func() {
-			It("should allow to assign to the VM the same MAC addresses, name as requested before and do not return an error", func() {
+			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -384,14 +390,14 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return false
 
-				}, 40*time.Second, 5*time.Second).Should(BeTrue(), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new vm object")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), baseVM)
 
-				}, 50*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
 			})
 			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
@@ -411,14 +417,47 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return false
 
-				}, 40*time.Second, 5*time.Second).Should(BeTrue(), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new vm object")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), baseVM)
 
-				}, 50*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object error")
+			})
+		})
+
+		Context("testing finalizers", func() {
+			Context("When the VM is not being deleted", func() {
+				It("should have a finalizer and deletion timestamp should be zero ", func() {
+					err := setRange(rangeStart, rangeEnd)
+					Expect(err).ToNot(HaveOccurred())
+
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
+					Eventually(func() error {
+						return testClient.VirtClient.Create(context.TODO(), vm)
+
+					}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+
+					Eventually(func() bool {
+						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						if err != nil {
+							return false
+						}
+
+						if vm.ObjectMeta.DeletionTimestamp.IsZero() {
+							if len(vm.ObjectMeta.Finalizers) == 1 {
+								if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
+									return true
+								}
+							}
+						}
+
+						return false
+					}, timeout, pollingInterval).Should(BeTrue())
+				})
 			})
 		})
 		Context("When the leader is changed", func() {
@@ -472,4 +511,17 @@ func newNetwork(name string) kubevirtv1.Network {
 			},
 		},
 	}
+}
+
+func deleteVMI(vm *kubevirtv1.VirtualMachine) {
+	err := testClient.VirtClient.Delete(context.TODO(), vm)
+	Expect(err).ToNot(HaveOccurred())
+
+	Eventually(func() bool {
+		err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+		if err != nil && errors.IsNotFound(err) {
+			return true
+		}
+		return false
+	}, timeout, pollingInterval).Should(BeTrue(), "failed to delete VM")
 }

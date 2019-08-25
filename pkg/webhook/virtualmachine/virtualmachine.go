@@ -19,11 +19,15 @@ package virtualmachine
 import (
 	"context"
 	"fmt"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"net/http"
+	"reflect"
+
+	"k8s.io/apimachinery/pkg/api/errors"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
@@ -32,9 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/builder"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 
-	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"
-
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 )
 
 var log = logf.Log.WithName("Webhook VirtualMachine")
@@ -107,6 +109,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 	log.Info("got a create mutate virtual machine event",
 		"virtualMachineName", virtualMachine.Name,
 		"virtualMachineNamespace", virtualMachine.Namespace)
+
 	return a.poolManager.AllocateVirtualMachineMac(virtualMachine)
 }
 
@@ -115,7 +118,18 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 	log.Info("got a update mutate virtual machine event",
 		"virtualMachineName", virtualMachine.Name,
 		"virtualMachineNamespace", virtualMachine.Namespace)
-	return a.poolManager.UpdateMacAddressesForVirtualMachine(virtualMachine)
+	previousVirtualMachine := &kubevirt.VirtualMachine{}
+	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !reflect.DeepEqual(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) {
+		return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine)
+	}
+	return nil
 }
 
 // podAnnotator implements inject.Client.

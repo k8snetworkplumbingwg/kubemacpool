@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	RangeStartEnv            = "RANGE_START"
-	RangeEndEnv              = "RANGE_END"
-	networksAnnotation       = "k8s.v1.cni.cncf.io/networks"
-	networksStatusAnnotation = "k8s.v1.cni.cncf.io/networks-status"
+	RangeStartEnv              = "RANGE_START"
+	RangeEndEnv                = "RANGE_END"
+	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
+	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
+	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
 )
 
 var log = logf.Log.WithName("PoolManager")

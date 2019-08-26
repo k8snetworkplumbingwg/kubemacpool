@@ -34,7 +34,6 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	log.V(1).Info("AllocatePodMac: Data",
 		"macmap", p.macPoolMap,
 		"podmap", p.podToMacPoolMap,
-		"vmmap", p.vmToMacPoolMap,
 		"currentMac", p.currentMac.String())
 
 	networkValue, ok := pod.Annotations[networksAnnotation]
@@ -106,7 +105,6 @@ func (p *PoolManager) ReleasePodMac(podName string) error {
 	log.V(1).Info("ReleasePodMac: Data",
 		"macmap", p.macPoolMap,
 		"podmap", p.podToMacPoolMap,
-		"vmmap", p.vmToMacPoolMap,
 		"currentMac", p.currentMac.String())
 
 	macList, ok := p.podToMacPoolMap[podName]

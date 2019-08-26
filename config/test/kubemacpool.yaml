@@ -209,3 +209,14 @@ spec:
             memory: 500Mi
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: kubemacpool-mac-controller-manager
+  namespace: kubemacpool-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: mac-controller-manager

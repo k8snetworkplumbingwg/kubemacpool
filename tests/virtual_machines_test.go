@@ -372,6 +372,7 @@ var _ = Describe("Virtual Machines", func() {
 		})
 		//TODO:  remove the the pending annotation -"P"- from "PContext" when issue #44 is fixed :
 		//https://github.com/K8sNetworkPlumbingWG/kubemacpool/issues/44
+		//2633
 		PContext("When we re-apply a failed VM yaml", func() {
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)

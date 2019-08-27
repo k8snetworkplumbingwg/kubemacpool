@@ -202,11 +202,11 @@ spec:
           protocol: TCP
         resources:
           limits:
-            cpu: 800m
-            memory: 900Mi
+            cpu: 300m
+            memory: 600Mi
           requests:
-            cpu: 500m
-            memory: 500Mi
+            cpu: 100m
+            memory: 300Mi
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
 ---

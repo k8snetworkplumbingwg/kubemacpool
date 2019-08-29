@@ -31,6 +31,7 @@ const (
 	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
 	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
+	vmWaitConfigMapName        = "kubemacpool-vm-configmap"
 )
 
 var log = logf.Log.WithName("PoolManager")
@@ -54,7 +55,7 @@ const (
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
 
-func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, kubevirtExist bool) (*PoolManager, error) {
+func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
@@ -85,6 +86,8 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 	if err != nil {
 		return nil, err
 	}
+
+	go poolManger.vmWaitingCleanupLook(waitTime)
 
 	return poolManger, nil
 }

@@ -10,3 +10,4 @@ spec:
         name: manager
         args:
           - "--v=debug"
+          - "--wait-time=10"

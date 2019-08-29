@@ -13,7 +13,7 @@ script:
   - if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run make. Please run it and commit the changes"; git status --porcelain; false; fi
   - make docker-test
   - make deploy-test-cluster
-  - KUBECONFIG="`pwd`/cluster/dind-cluster/config" go test -v -race ./tests/...
+  - KUBECONFIG="`pwd`/cluster/dind-cluster/config" go test -timeout 30m -v -race ./tests/...
 
 deploy:
 - provider: script

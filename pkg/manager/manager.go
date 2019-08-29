@@ -33,6 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller"
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
 )
@@ -44,15 +45,16 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	restartChannel           chan struct{}
-	kubevirtInstalledChannel chan struct{}
-	stopSignalChannel        chan os.Signal
-	podNamespace             string
-	podName                  string
-	resourceLock             resourcelock.Interface
+	restartChannel           chan struct{}          // Close the channel if we need to regenerate certs
+	kubevirtInstalledChannel chan struct{}          // This channel is close after we found kubevirt to reload the manager
+	stopSignalChannel        chan os.Signal         // stop channel signal
+	podNamespace             string                 // manager pod namespace
+	podName                  string                 // manager pod name
+	waitingTime              int                    // Duration in second to lock a mac address before it was saved to etcd
+	resourceLock             resourcelock.Interface // Use for the leader election
 }
 
-func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string) *KubeMacPoolManager {
+func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
 		continueToRunManager:     true,
 		restartChannel:           make(chan struct{}),
@@ -60,7 +62,8 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string) *KubeMacPo
 		stopSignalChannel:        make(chan os.Signal, 1),
 		podNamespace:             podNamespace,
 		podName:                  podName,
-		metricsAddr:              metricsAddr}
+		metricsAddr:              metricsAddr,
+		waitingTime:              waitingTime}
 
 	signal.Notify(kubemacpoolManager.stopSignalChannel, os.Interrupt, os.Kill)
 
@@ -119,7 +122,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
-		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, isKubevirtInstalled)
+		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return fmt.Errorf("unable to create pool manager error %v", err)
 		}
@@ -196,7 +199,7 @@ func (k *KubeMacPoolManager) markPodAsLeader() error {
 		return err
 	}
 
-	pod.Labels[webhook.LeaderLabel] = "true"
+	pod.Labels[names.LEADER_LABEL] = "true"
 	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
 	if err != nil {
 		return err

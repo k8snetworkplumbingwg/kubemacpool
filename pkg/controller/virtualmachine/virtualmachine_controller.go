@@ -113,6 +113,7 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.Virtual
 	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
 		return nil
 	}
+
 	log.V(1).Info("The VM does not have a finalizer",
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
@@ -129,6 +130,8 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.Virtual
 	log.V(1).Info("Finalizer was added to the VM",
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
+
+	r.poolManager.MarkVMAsReady(virtualMachine)
 
 	return nil
 }

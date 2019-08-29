@@ -48,4 +48,6 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 		fmt.Printf("Pod Name: %s \n", pod.Name)
 		fmt.Println(string(output))
 	}
+
+	Fail(message, callerSkip...)
 }

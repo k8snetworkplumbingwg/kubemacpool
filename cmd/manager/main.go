@@ -43,9 +43,11 @@ func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
 
 func main() {
 	var logType, metricsAddr string
+	var waitingTime int
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
+	flag.IntVar(&waitingTime, "wait-time", 600, "waiting time to release the mac if object was not created")
 	flag.Parse()
 
 	if logType == "debug" {
@@ -80,7 +82,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr)
+	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime)
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {

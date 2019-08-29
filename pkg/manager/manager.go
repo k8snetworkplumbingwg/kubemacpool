@@ -33,6 +33,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller"
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
 )
@@ -196,7 +197,7 @@ func (k *KubeMacPoolManager) markPodAsLeader() error {
 		return err
 	}
 
-	pod.Labels[webhook.LeaderLabel] = "true"
+	pod.Labels[names.LEADER_LABEL] = "true"
 	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
 	if err != nil {
 		return err

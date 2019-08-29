@@ -21,7 +21,7 @@ import (
 	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 )
 
 const (
@@ -164,7 +164,7 @@ func DeleteLeaderManager() {
 
 	leaderPodName := ""
 	for _, pod := range pods.Items {
-		if _, ok := pod.Labels[webhook.LeaderLabel]; ok {
+		if _, ok := pod.Labels[names.LEADER_LABEL]; ok {
 			leaderPodName = pod.Name
 			break
 		}

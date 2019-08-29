@@ -57,6 +57,7 @@ spec:
         - /manager
         args:
           - "--v=production"
+          - "--wait-time=600"
         image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager

@@ -370,10 +370,8 @@ var _ = Describe("Virtual Machines", func() {
 				}
 			})
 		})
-		//TODO:  remove the the pending annotation -"P"- from "PContext" when issue #44 is fixed :
-		//https://github.com/K8sNetworkPlumbingWG/kubemacpool/issues/44
 		//2633
-		PContext("When we re-apply a failed VM yaml", func() {
+		Context("When we re-apply a failed VM yaml", func() {
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
@@ -485,7 +483,7 @@ var _ = Describe("Virtual Machines", func() {
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), anotherVm)
 
-				}, 40*time.Second, 5*time.Second).Should(Not(HaveOccurred()), "failed to apply the new vm object")
+				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(anotherVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 			})

@@ -172,6 +172,7 @@ spec:
       containers:
       - args:
         - --v=production
+        - --wait-time=600
         command:
         - /manager
         env:

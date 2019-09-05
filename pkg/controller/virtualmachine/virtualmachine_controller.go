@@ -30,7 +30,7 @@ import (
 
 	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	helper "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/utils"
-	kubevirt "kubevirt.io/kubevirt/pkg/api/v1"
+	kubevirt "kubevirt.io/client-go/api/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
 

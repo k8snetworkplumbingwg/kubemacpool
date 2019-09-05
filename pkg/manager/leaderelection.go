@@ -21,7 +21,7 @@ func (k *KubeMacPoolManager) newLeaderElection(config *rest.Config, scheme *runt
 	resourceLock, err := manager_leaderelection.NewResourceLock(config, recorderProvider, manager_leaderelection.Options{
 		LeaderElection:          true,
 		LeaderElectionID:        "kubemacpool-election",
-		LeaderElectionNamespace: "kubemacpool-system",
+		LeaderElectionNamespace: k.podNamespace,
 	})
 	if err != nil {
 		return err

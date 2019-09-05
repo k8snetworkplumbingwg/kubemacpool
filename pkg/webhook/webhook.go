@@ -45,14 +45,14 @@ var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
+func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, managerNamespace string) error {
 	svr, err := runtimewebhook.NewServer(names.MUTATE_WEBHOOK, mgr, runtimewebhook.ServerOptions{
 		CertDir: "/tmp/cert",
 		Port:    8000,
 		BootstrapOptions: &runtimewebhook.BootstrapOptions{
 			MutatingWebhookConfigName: names.MUTATE_WEBHOOK_CONFIG,
 			Service: &runtimewebhook.Service{
-				Namespace: names.MANAGER_NAMESPACE,
+				Namespace: managerNamespace,
 				Name:      names.WEBHOOK_SERVICE,
 				// Selectors should select the pods that runs this webhook server.
 				Selectors: map[string]string{
@@ -90,8 +90,8 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 // of new pods and virtual machines objects.
 // We choose this solution because the sigs.k8s.io/controller-runtime package doesn't allow to customize
 // the ServerOptions object
-func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset) error {
-	managerDeployment, err := kubeClient.AppsV1().Deployments(names.MANAGER_NAMESPACE).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset, managerNamespace string) error {
+	managerDeployment, err := kubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}

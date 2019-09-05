@@ -37,15 +37,16 @@ const (
 var log = logf.Log.WithName("PoolManager")
 
 type PoolManager struct {
-	kubeClient      kubernetes.Interface         // kubernetes client
-	rangeStart      net.HardwareAddr             // fist mac in range
-	rangeEnd        net.HardwareAddr             // last mac in range
-	currentMac      net.HardwareAddr             // last given mac
-	macPoolMap      map[string]AllocationStatus  // allocated mac map and status
-	podToMacPoolMap map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	poolMutex       sync.Mutex                   // mutex for allocation an release
-	isLeader        bool                         // leader boolean
-	isKubevirt      bool                         // bool if kubevirt virtualmachine crd exist in the cluster
+	kubeClient       kubernetes.Interface // kubernetes client
+	rangeStart       net.HardwareAddr     // fist mac in range
+	rangeEnd         net.HardwareAddr     // last mac in range
+	currentMac       net.HardwareAddr     // last given mac
+	managerNamespace string
+	macPoolMap       map[string]AllocationStatus  // allocated mac map and status
+	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	poolMutex        sync.Mutex                   // mutex for allocation an release
+	isLeader         bool                         // leader boolean
+	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 }
 
 type AllocationStatus string
@@ -55,7 +56,7 @@ const (
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
 
-func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, kubevirtExist bool, waitTime int) (*PoolManager, error) {
+func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
@@ -73,14 +74,15 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 	copy(currentMac, rangeStart)
 
 	poolManger := &PoolManager{kubeClient: kubeClient,
-		isLeader:        false,
-		isKubevirt:      kubevirtExist,
-		rangeEnd:        rangeEnd,
-		rangeStart:      rangeStart,
-		currentMac:      currentMac,
-		podToMacPoolMap: map[string]map[string]string{},
-		macPoolMap:      map[string]AllocationStatus{},
-		poolMutex:       sync.Mutex{}}
+		isLeader:         false,
+		isKubevirt:       kubevirtExist,
+		rangeEnd:         rangeEnd,
+		rangeStart:       rangeStart,
+		currentMac:       currentMac,
+		managerNamespace: managerNamespace,
+		podToMacPoolMap:  map[string]map[string]string{},
+		macPoolMap:       map[string]AllocationStatus{},
+		poolMutex:        sync.Mutex{}}
 
 	err = poolManger.InitMaps()
 	if err != nil {

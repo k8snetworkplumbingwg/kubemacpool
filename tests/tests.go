@@ -27,7 +27,7 @@ import (
 const (
 	TestNamespace      = "kubemacpool-test"
 	OtherTestNamespace = "kubemacpool-test-alternative"
-	ManagerNamespce    = "kubemacpool-system"
+	ManagerNamespce    = names.MANAGER_NAMESPACE
 	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
 	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
 )

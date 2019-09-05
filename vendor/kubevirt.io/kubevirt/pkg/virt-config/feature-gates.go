@@ -20,45 +20,47 @@
 package virtconfig
 
 /*
- This module is intended for determining whether an optional feature is enabled or not at the system-level.
- Note that the virtconfig package needs to be initialized before using this (see config-map.Init)
+ This module is intended for determining whether an optional feature is enabled or not at the cluster-level.
 */
 
 import (
-	"os"
 	"strings"
 )
 
 const (
 	dataVolumesGate       = "DataVolumes"
 	cpuManager            = "CPUManager"
-	ignitionGate          = "ExperimentalIgnitionSupport"
+	IgnitionGate          = "ExperimentalIgnitionSupport"
 	liveMigrationGate     = "LiveMigration"
-	SRIOVGate             = "SRIOV"
 	CPUNodeDiscoveryGate  = "CPUNodeDiscovery"
 	HypervStrictCheckGate = "HypervStrictCheck"
+	SidecarGate           = "Sidecar"
 )
 
-func DataVolumesEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), dataVolumesGate)
+func (c *ClusterConfig) isFeatureGateEnabled(featureGate string) bool {
+	return strings.Contains(c.getConfig().FeatureGates, featureGate)
 }
 
-func CPUManagerEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), cpuManager)
+func (config *ClusterConfig) CPUManagerEnabled() bool {
+	return config.isFeatureGateEnabled(cpuManager)
 }
 
-func IgnitionEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), ignitionGate)
+func (config *ClusterConfig) IgnitionEnabled() bool {
+	return config.isFeatureGateEnabled(IgnitionGate)
 }
 
-func LiveMigrationEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), liveMigrationGate)
+func (config *ClusterConfig) LiveMigrationEnabled() bool {
+	return config.isFeatureGateEnabled(liveMigrationGate)
 }
 
-func SRIOVEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), SRIOVGate)
+func (config *ClusterConfig) HypervStrictCheckEnabled() bool {
+	return config.isFeatureGateEnabled(HypervStrictCheckGate)
 }
 
-func HypervStrictCheckEnabled() bool {
-	return strings.Contains(os.Getenv(featureGateEnvVar), HypervStrictCheckGate)
+func (config *ClusterConfig) CPUNodeDiscoveryEnabled() bool {
+	return config.isFeatureGateEnabled(CPUNodeDiscoveryGate)
+}
+
+func (config *ClusterConfig) SidecarEnabled() bool {
+	return config.isFeatureGateEnabled(SidecarGate)
 }

@@ -27,9 +27,11 @@ OUT_PATH="${OUT_DIR}/tools"
 
 mkdir -p "${OUT_PATH}/${FILE_INIT}" "${OUT_PATH}/${FILE_HOST}"
 
-DOCKER_REPO=""
+DOCKER_PREFIX=""
 
 ${BUILD_DIR}/build-copy-artifacts.sh "${FILE_INIT_PATH}"
 
 cp ${BUILD_DIR}/docker/${FILE_HOST}/* ${OUT_PATH}/${FILE_HOST}/
 cp "${CDI_DIR}/tests/images/tinyCore.iso" "${OUT_PATH}/${FILE_INIT}/"
+cp "${CDI_DIR}/tests/images/archive.tar" "${OUT_PATH}/${FILE_INIT}/"
+cp -R "${CDI_DIR}/tests/images/invalid_qcow_images" "${OUT_PATH}/${FILE_INIT}/"

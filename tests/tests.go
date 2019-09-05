@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
-	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
+	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"

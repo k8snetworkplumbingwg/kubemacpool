@@ -3,13 +3,14 @@ package framework
 import (
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/ghodss/yaml"
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
-
-	"github.com/golang/glog"
 	"github.com/pkg/errors"
+
 	v1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog"
 
 	cdiClientset "kubevirt.io/containerized-data-importer/pkg/client/clientset/versioned"
 	"kubevirt.io/containerized-data-importer/pkg/common"
@@ -38,12 +40,14 @@ const (
 
 // run-time flags
 var (
-	kubectlPath  *string
-	ocPath       *string
-	cdiInstallNs *string
-	kubeConfig   *string
-	master       *string
-	goCLIPath    *string
+	kubectlPath    *string
+	ocPath         *string
+	cdiInstallNs   *string
+	kubeConfig     *string
+	master         *string
+	goCLIPath      *string
+	snapshotSCName *string
+	blockSCName    *string
 )
 
 // Config provides some basic test config options
@@ -89,6 +93,10 @@ type Framework struct {
 	Master string
 	// GoCliPath is a test run-time flag to store the location of gocli
 	GoCLIPath string
+	// SnapshotSCName is the Storage Class name that supports Snapshots
+	SnapshotSCName string
+	// BlockSCName is the Storage Class name that supports block mode
+	BlockSCName string
 }
 
 // TODO: look into k8s' SynchronizedBeforeSuite() and SynchronizedAfterSuite() code and their general
@@ -106,6 +114,8 @@ func init() {
 	kubeConfig = flag.String("kubeconfig", "/var/run/kubernetes/admin.kubeconfig", "The absolute path to the kubeconfig file")
 	master = flag.String("master", "", "master url:port")
 	goCLIPath = flag.String("gocli-path", "cli.sh", "The path to cli script")
+	snapshotSCName = flag.String("snapshot-sc", "", "The Storage Class supporting snapshots")
+	blockSCName = flag.String("block-sc", "", "The Storage Class supporting block mode volumes")
 }
 
 // NewFrameworkOrDie calls NewFramework and handles errors by calling Fail. Config is optional, but
@@ -133,6 +143,16 @@ func NewFramework(prefix string, config Config) (*Framework, error) {
 	// handle run-time flags
 	if !flag.Parsed() {
 		flag.Parse()
+		klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
+		klog.InitFlags(klogFlags)
+		flag.CommandLine.VisitAll(func(f1 *flag.Flag) {
+			f2 := klogFlags.Lookup(f1.Name)
+			if f2 != nil {
+				value := f1.Value.String()
+				f2.Value.Set(value)
+			}
+		})
+
 		fmt.Fprintf(ginkgo.GinkgoWriter, "** Test flags:\n")
 		flag.Visit(func(f *flag.Flag) {
 			fmt.Fprintf(ginkgo.GinkgoWriter, "   %s = %q\n", f.Name, f.Value.String())
@@ -146,6 +166,8 @@ func NewFramework(prefix string, config Config) (*Framework, error) {
 	f.KubeConfig = *kubeConfig
 	f.Master = *master
 	f.GoCLIPath = *goCLIPath
+	f.SnapshotSCName = *snapshotSCName
+	f.BlockSCName = *blockSCName
 
 	restConfig, err := f.LoadConfig()
 	if err != nil {
@@ -211,6 +233,11 @@ func (f *Framework) AfterEach() {
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 		}
 	}()
+
+	if ginkgo.CurrentGinkgoTestDescription().Failed {
+		f.dumpLogs()
+	}
+
 	return
 }
 
@@ -233,7 +260,7 @@ func (f *Framework) CreateNamespace(prefix string, labels map[string]string) (*v
 		if err == nil || apierrs.IsAlreadyExists(err) {
 			return true, nil // done
 		}
-		glog.Warningf("Unexpected error while creating %q namespace: %v", ns.GenerateName, err)
+		klog.Warningf("Unexpected error while creating %q namespace: %v", ns.GenerateName, err)
 		return false, err // keep trying
 	})
 	if err != nil {
@@ -254,7 +281,7 @@ func DeleteNS(c *kubernetes.Clientset, ns string) error {
 	return wait.PollImmediate(2*time.Second, nsDeleteTime, func() (bool, error) {
 		err := c.CoreV1().Namespaces().Delete(ns, nil)
 		if err != nil && !apierrs.IsNotFound(err) {
-			glog.Warningf("namespace %q Delete api err: %v", ns, err)
+			klog.Warningf("namespace %q Delete api err: %v", ns, err)
 			return false, nil // keep trying
 		}
 		// see if ns is really deleted
@@ -263,7 +290,7 @@ func DeleteNS(c *kubernetes.Clientset, ns string) error {
 			return true, nil // deleted, done
 		}
 		if err != nil {
-			glog.Warningf("namespace %q Get api error: %v", ns, err)
+			klog.Warningf("namespace %q Get api error: %v", ns, err)
 		}
 		return false, nil // keep trying
 	})
@@ -279,6 +306,56 @@ func (f *Framework) GetCdiClient() (*cdiClientset.Clientset, error) {
 	if err != nil {
 		return nil, err
 	}
+	return cdiClient, nil
+}
+
+// GetCdiClientForServiceAccount returns a cdi client for a service account
+func (f *Framework) GetCdiClientForServiceAccount(namespace, name string) (*cdiClientset.Clientset, error) {
+	var secretName string
+
+	sl, err := f.K8sClient.CoreV1().Secrets(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, s := range sl.Items {
+		if s.Type == v1.SecretTypeServiceAccountToken {
+			n := s.Name
+			if len(n) > 12 && n[0:len(n)-12] == name {
+				secretName = s.Name
+				break
+			}
+		}
+	}
+
+	if len(secretName) == 0 {
+		return nil, fmt.Errorf("couldn't find service account secret")
+	}
+
+	secret, err := f.K8sClient.CoreV1().Secrets(namespace).Get(secretName, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	token, ok := secret.Data["token"]
+	if !ok {
+		return nil, fmt.Errorf("no token key")
+	}
+
+	cfg := &rest.Config{
+		Host:        f.RestConfig.Host,
+		APIPath:     f.RestConfig.APIPath,
+		BearerToken: string(token),
+		TLSClientConfig: rest.TLSClientConfig{
+			Insecure: true,
+		},
+	}
+
+	cdiClient, err := cdiClientset.NewForConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	return cdiClient, nil
 }
 
@@ -308,15 +385,15 @@ func (f *Framework) CreatePrometheusServiceInNs(namespace string) (*v1.Service, 
 			Name:      "kubevirt-prometheus-metrics",
 			Namespace: namespace,
 			Labels: map[string]string{
-				"prometheus.kubevirt.io": "",
-				"kubevirt.io":            "",
+				common.PrometheusLabel: "",
+				"kubevirt.io":          "",
 			},
 		},
 		Spec: v1.ServiceSpec{
 			Ports: []v1.ServicePort{
 				{
 					Name: "metrics",
-					Port: 443,
+					Port: 8443,
 					TargetPort: intstr.IntOrString{
 						StrVal: "metrics",
 					},
@@ -324,9 +401,84 @@ func (f *Framework) CreatePrometheusServiceInNs(namespace string) (*v1.Service, 
 				},
 			},
 			Selector: map[string]string{
-				"prometheus.kubevirt.io": "",
+				common.PrometheusLabel: "",
 			},
 		},
 	}
 	return f.K8sClient.CoreV1().Services(namespace).Create(service)
+}
+
+// IsSnapshotStorageClassAvailable checks if the snapshot storage class exists.
+func (f *Framework) IsSnapshotStorageClassAvailable() bool {
+	sc, err := f.K8sClient.StorageV1().StorageClasses().Get(f.SnapshotSCName, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	return sc.Name == f.SnapshotSCName
+}
+
+// IsBlockVolumeStorageClassAvailable checks if the block volume storage class exists.
+func (f *Framework) IsBlockVolumeStorageClassAvailable() bool {
+	sc, err := f.K8sClient.StorageV1().StorageClasses().Get(f.BlockSCName, metav1.GetOptions{})
+	if err != nil {
+		return false
+	}
+	return sc.Name == f.BlockSCName
+}
+
+func (f *Framework) dumpLogs() {
+	namespaces := []string{f.CdiInstallNs}
+
+	for _, nsp := range []*v1.Namespace{f.Namespace, f.Namespace2} {
+		if nsp != nil {
+			ns := *nsp
+			namespaces = append(namespaces, ns.Name)
+		}
+	}
+
+	for _, ns := range namespaces {
+		var allPods []v1.Pod
+
+		for _, label := range []string{"cdi.kubevirt.io", "operator.cdi.kubevirt.io", "cdi.kubevirt.io/testing"} {
+			podList, err := f.K8sClient.CoreV1().Pods(ns).List(metav1.ListOptions{LabelSelector: label})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error %+v getting pods in ns: %s, with label %s\n", err, ns, label)
+				continue
+			}
+
+			allPods = append(allPods, podList.Items...)
+		}
+
+		for _, pod := range allPods {
+			fmt.Printf("\n Dumping data for %s/%s\n", pod.Namespace, pod.Name)
+
+			data, err := yaml.Marshal(pod)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error %+v dumping %s/%s to yaml\n", err, pod.Namespace, pod.Name)
+				continue
+			}
+
+			fmt.Printf("\n%s\n", string(data))
+
+			for _, c := range append(pod.Spec.InitContainers, pod.Spec.Containers...) {
+				logOpts := &v1.PodLogOptions{
+					Container: c.Name,
+				}
+
+				// get all logs from "worker" pods, less from infra
+				if pod.Namespace == f.CdiInstallNs {
+					logLines := int64(64)
+					logOpts.TailLines = &logLines
+				}
+
+				log, err := f.K8sClient.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, logOpts).DoRaw()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error %+v dumping logs for %s/%s.%s\n", err, pod.Namespace, pod.Name, c.Name)
+					continue
+				}
+
+				fmt.Printf("\nLogs for container %s\n%s\n", c.Name, string(log))
+			}
+		}
+	}
 }

@@ -24,20 +24,27 @@
 
 set -ex
 
-export WORKSPACE="${WORKSPACE:-$PWD}"
+export NAMESPACE="cdi-$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 5 | head -n 1)"
+export CDI_NAMESPACE=$NAMESPACE
+
+echo "namespace: ${NAMESPACE}, cdi-namespace: ${CDI_NAMESPACE}"
+
 readonly ARTIFACTS_PATH="exported-artifacts"
 
-mkdir -p "${WORKSPACE}/${ARTIFACTS_PATH}"
+mkdir -p "${PWD}/${ARTIFACTS_PATH}"
 
 if [[ $TARGET =~ openshift-.* ]]; then
-  export KUBEVIRT_PROVIDER="os-3.11.0"
+  export KUBEVIRT_PROVIDER="os-3.11.0-crio"
+elif [[ $TARGET =~ okd-.* ]]; then
+  export KUBEVIRT_PROVIDER="okd-4.1.2"
 elif [[ $TARGET =~ k8s-.* ]]; then
-  export KUBEVIRT_PROVIDER="k8s-1.11.0"
+  export KUBEVIRT_PROVIDER="k8s-1.13.3"
+  export KUBEVIRT_PROVIDER_EXTRA_ARGS="--enable-ceph"
 fi
 
 export KUBEVIRT_NUM_NODES=2
 
-kubectl() { cluster/kubectl.sh "$@"; }
+kubectl() { cluster-up/kubectl.sh "$@"; }
 
 export CDI_NAMESPACE="${CDI_NAMESPACE:-cdi}"
 
@@ -69,7 +76,7 @@ make cluster-sync
 
 kubectl version
 
-ginko_params="--test-args=--ginkgo.noColor --junit-output=${WORKSPACE}/exported-artifacts/tests.junit.xml"
+ginko_params="--test-args=--ginkgo.noColor --junit-output=${PWD}/exported-artifacts/tests.junit.xml"
 
 # Run functional tests
 TEST_ARGS=$ginko_params make test-functional-ci

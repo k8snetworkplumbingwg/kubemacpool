@@ -22,15 +22,16 @@ package cmdserver
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
 	"k8s.io/apimachinery/pkg/util/json"
 
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/log"
 	cmdv1 "kubevirt.io/kubevirt/pkg/handler-launcher-com/cmd/v1"
-	"kubevirt.io/kubevirt/pkg/log"
 	grpcutil "kubevirt.io/kubevirt/pkg/util/net/grpc"
 	cmdclient "kubevirt.io/kubevirt/pkg/virt-handler/cmd-client"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap"
@@ -311,7 +312,18 @@ func RunServer(socketPath string,
 		select {
 		case <-stopChan:
 			log.Log.Info("stopping cmd server")
-			grpcServer.Stop()
+			stopped := make(chan struct{})
+			go func() {
+				grpcServer.Stop()
+				close(stopped)
+			}()
+
+			select {
+			case <-stopped:
+				log.Log.Info("cmd server stopped")
+			case <-time.After(1 * time.Second):
+				log.Log.Error("timeout on stopping the cmd server, continuing anyway.")
+			}
 			sock.Close()
 			os.Remove(socketPath)
 			close(done)

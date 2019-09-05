@@ -26,7 +26,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"kubevirt.io/kubevirt/pkg/kubecli"
+	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/pkg/virtctl/templates"
 )
 
@@ -92,7 +92,7 @@ func NewCommand(command string) *Command {
 
 func usage(cmd string) string {
 	usage := fmt.Sprintf("  # %s a virtual machine called 'myvm':\n", strings.Title(cmd))
-	usage += fmt.Sprintf("  virtctl %s myvm", cmd)
+	usage += fmt.Sprintf("  {{ProgramName}} %s myvm", cmd)
 	return usage
 }
 

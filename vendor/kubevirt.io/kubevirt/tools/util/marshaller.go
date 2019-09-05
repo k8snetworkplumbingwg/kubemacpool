@@ -23,7 +23,7 @@ import (
 	"io"
 	"strings"
 
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
+	v1 "kubevirt.io/client-go/api/v1"
 
 	"github.com/ghodss/yaml"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -42,6 +42,7 @@ func MarshallObject(obj interface{}, writer io.Writer) error {
 
 	// remove status and metadata.creationTimestamp
 	unstructured.RemoveNestedField(r.Object, "metadata", "creationTimestamp")
+	unstructured.RemoveNestedField(r.Object, "template", "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(r.Object, "spec", "template", "metadata", "creationTimestamp")
 	unstructured.RemoveNestedField(r.Object, "status")
 
@@ -70,6 +71,17 @@ func MarshallObject(obj interface{}, writer io.Writer) error {
 			}
 		}
 		unstructured.SetNestedSlice(r.Object, objects, "objects")
+	}
+
+	deployments, exists, err := unstructured.NestedSlice(r.Object, "spec", "install", "spec", "deployments")
+	if exists {
+		for _, obj := range deployments {
+			deployment := obj.(map[string]interface{})
+			unstructured.RemoveNestedField(deployment, "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(deployment, "spec", "template", "metadata", "creationTimestamp")
+			unstructured.RemoveNestedField(deployment, "status")
+		}
+		unstructured.SetNestedSlice(r.Object, deployments, "spec", "install", "spec", "deployments")
 	}
 
 	// remove "managed by operator" label...

@@ -1,0 +1,14 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+filters:
+  ".*":
+    reviewers:
+      - code-reviewers
+    approvers:
+      - approvers
+  "tests/.*":
+    reviewers:
+      - test-reviewers
+  "pkg/virt-api/.*":
+    reviewers:
+      - ux-reviewers

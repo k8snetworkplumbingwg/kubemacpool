@@ -7,14 +7,14 @@ docker run -d -p 5000:5000 --rm --network kubeadm-dind-net --name registry regis
 kubectl config view --raw > ./cluster/dind-cluster/config
 
 # Deploy CNA
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/namespace.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/network-addons-config.crd.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.9.0/operator.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/namespace.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/network-addons-config.crd.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/operator.yaml
 ./cluster/dind-cluster/kubectl create -f ./hack/cna/cna-cr.yaml
 
 # Deploy Kubevirt
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-operator.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.18.0/kubevirt-cr.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
 
 
 # Build kubemacpool
@@ -22,10 +22,10 @@ REGISTRY="localhost:5000" make docker-build
 REGISTRY="localhost:5000" make docker-push
 
 # wait for cluster operator
-./cluster/dind-cluster/kubectl wait networkaddonsconfig cluster --for condition=Ready --timeout=800s
+./cluster/dind-cluster/kubectl wait networkaddonsconfig cluster --for condition=Available --timeout=800s
 
 # wait for kubevirt
-./cluster/dind-cluster/kubectl wait -n kubevirt kv kubevirt --for condition=Ready --timeout 800s
+./cluster/dind-cluster/kubectl wait -n kubevirt kv kubevirt --for condition=Available --timeout 800s
 
 # enable emulation for kubevirt
 ./cluster/dind-cluster/kubectl create configmap kubevirt-config -n kubevirt --from-literal debug.useEmulation=true

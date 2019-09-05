@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
-	kubevirtv1 "kubevirt.io/kubevirt/pkg/api/v1"
+	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 
 const timeout = 60 * time.Second

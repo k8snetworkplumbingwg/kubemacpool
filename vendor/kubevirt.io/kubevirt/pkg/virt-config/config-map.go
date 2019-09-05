@@ -21,12 +21,13 @@ package virtconfig
 
 import (
 	"fmt"
-	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	k8sv1 "k8s.io/api/core/v1"
+	extv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,54 +35,31 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/tools/cache"
 
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/log"
-	"kubevirt.io/kubevirt/pkg/util"
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/log"
+	clientutil "kubevirt.io/client-go/util"
 )
 
 const (
-	configMapName          = "kubevirt-config"
-	featureGateEnvVar      = "FEATURE_GATES"
-	FeatureGatesKey        = "feature-gates"
-	emulatedMachinesEnvVar = "VIRT_EMULATED_MACHINES"
-	emulatedMachinesKey    = "emulated-machines"
-	machineTypeKey         = "machine-type"
-	useEmulationKey        = "debug.useEmulation"
-	imagePullPolicyKey     = "dev.imagePullPolicy"
-	migrationsConfigKey    = "migrations"
-	cpuModelKey            = "default-cpu-model"
-	cpuRequestKey          = "cpu-request"
-
-	ParallelOutboundMigrationsPerNodeDefault uint32 = 2
-	ParallelMigrationsPerClusterDefault      uint32 = 5
-	BandwithPerMigrationDefault                     = "64Mi"
-	MigrationProgressTimeout                 int64  = 150
-	MigrationCompletionTimeoutPerGiB         int64  = 800
-	DefaultMachineType                              = "q35"
-	DefaultCPURequest                               = "100m"
-
-	NodeDrainTaintDefaultKey = "kubevirt.io/drain"
+	configMapName             = "kubevirt-config"
+	FeatureGatesKey           = "feature-gates"
+	EmulatedMachinesKey       = "emulated-machines"
+	MachineTypeKey            = "machine-type"
+	useEmulationKey           = "debug.useEmulation"
+	ImagePullPolicyKey        = "dev.imagePullPolicy"
+	MigrationsConfigKey       = "migrations"
+	CpuModelKey               = "default-cpu-model"
+	CpuRequestKey             = "cpu-request"
+	MemoryOvercommitKey       = "memory-overcommit"
+	LessPVCSpaceTolerationKey = "pvc-tolerate-less-space-up-to-percent"
+	NodeSelectorsKey          = "node-selectors"
+	NetworkInterfaceKey       = "default-network-interface"
+	PermitSlirpInterface      = "permitSlirpInterface"
+	NodeDrainTaintDefaultKey  = "kubevirt.io/drain"
 )
 
-// We cannot rely on automatic invocation of 'init' method because this initialization
-// code assumes a cluster is available to pull the configmap from
-func Init() {
-	InitFromConfigMap(getConfigMap())
-}
-
-func InitFromConfigMap(cfgMap *k8sv1.ConfigMap) {
-	if val, ok := cfgMap.Data[FeatureGatesKey]; ok {
-		os.Setenv(featureGateEnvVar, val)
-	}
-	if val, ok := cfgMap.Data[emulatedMachinesKey]; ok {
-		os.Setenv(emulatedMachinesEnvVar, val)
-	}
-}
-
-func Clear() {
-	os.Unsetenv(featureGateEnvVar)
-	os.Unsetenv(emulatedMachinesEnvVar)
-}
+type ConfigModifiedFn func()
 
 func getConfigMap() *k8sv1.ConfigMap {
 	virtClient, err := kubecli.GetKubevirtClient()
@@ -92,7 +70,7 @@ func getConfigMap() *k8sv1.ConfigMap {
 	var cfgMap *k8sv1.ConfigMap
 	err = wait.PollImmediate(time.Second*1, time.Second*10, func() (bool, error) {
 
-		namespace, curErr := util.GetNamespace()
+		namespace, curErr := clientutil.GetNamespace()
 		if err != nil {
 			return false, err
 		}
@@ -124,16 +102,71 @@ func getConfigMap() *k8sv1.ConfigMap {
 // 1. Check if the config exists. If it does not exist, return the default config
 // 2. Check if the config got updated. If so, try to parse and return it
 // 3. In case of errors or no updates (resource version stays the same), it returns the values from the last good config
-func NewClusterConfig(configMapInformer cache.Store, namespace string) *ClusterConfig {
+func NewClusterConfig(configMapInformer cache.SharedIndexInformer, crdInformer cache.SharedIndexInformer, namespace string) *ClusterConfig {
 
 	c := &ClusterConfig{
-		store:           configMapInformer,
-		lock:            &sync.Mutex{},
-		namespace:       namespace,
-		lastValidConfig: defaultClusterConfig(),
-		defaultConfig:   defaultClusterConfig(),
+		configMapInformer: configMapInformer,
+		crdInformer:       crdInformer,
+		lock:              &sync.Mutex{},
+		namespace:         namespace,
+		lastValidConfig:   defaultClusterConfig(),
+		defaultConfig:     defaultClusterConfig(),
 	}
+
+	c.configMapInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.configAddedDeleted,
+		DeleteFunc: c.configAddedDeleted,
+		UpdateFunc: c.configUpdated,
+	})
+
+	c.crdInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.crdAddedDeleted,
+		DeleteFunc: c.crdAddedDeleted,
+		UpdateFunc: c.crdUpdated,
+	})
+
 	return c
+}
+
+func (c *ClusterConfig) configAddedDeleted(obj interface{}) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.configModifiedCallback != nil {
+		go c.configModifiedCallback()
+	}
+}
+func (c *ClusterConfig) configUpdated(old, cur interface{}) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.configModifiedCallback != nil {
+		go c.configModifiedCallback()
+	}
+}
+
+func isDataVolumeCrd(crd *extv1beta1.CustomResourceDefinition) bool {
+	if crd.Spec.Names.Kind == "DataVolume" {
+		return true
+	}
+
+	return false
+
+}
+
+func (c *ClusterConfig) crdAddedDeleted(obj interface{}) {
+	crd := obj.(*extv1beta1.CustomResourceDefinition)
+	if !isDataVolumeCrd(crd) {
+		return
+	}
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.configModifiedCallback != nil {
+		go c.configModifiedCallback()
+	}
+}
+
+func (c *ClusterConfig) crdUpdated(old, cur interface{}) {
+	c.crdAddedDeleted(cur)
 }
 
 func defaultClusterConfig() *Config {
@@ -141,13 +174,17 @@ func defaultClusterConfig() *Config {
 	parallelMigrationsPerClusterDefault := ParallelMigrationsPerClusterDefault
 	bandwithPerMigrationDefault := resource.MustParse(BandwithPerMigrationDefault)
 	nodeDrainTaintDefaultKey := NodeDrainTaintDefaultKey
+	allowAutoConverge := MigrationAllowAutoConverge
 	progressTimeout := MigrationProgressTimeout
 	completionTimeoutPerGiB := MigrationCompletionTimeoutPerGiB
 	cpuRequestDefault := resource.MustParse(DefaultCPURequest)
+	emulatedMachinesDefault := strings.Split(DefaultEmulatedMachines, ",")
+	nodeSelectorsDefault, _ := parseNodeSelectors(DefaultNodeSelectors)
+	defaultNetworkInterface := DefaultNetworkInterface
 	return &Config{
 		ResourceVersion: "0",
-		ImagePullPolicy: k8sv1.PullIfNotPresent,
-		UseEmulation:    false,
+		ImagePullPolicy: DefaultImagePullPolicy,
+		UseEmulation:    DefaultUseEmulation,
 		MigrationConfig: &MigrationConfig{
 			ParallelMigrationsPerCluster:      &parallelMigrationsPerClusterDefault,
 			ParallelOutboundMigrationsPerNode: &parallelOutboundMigrationsPerNodeDefault,
@@ -155,21 +192,35 @@ func defaultClusterConfig() *Config {
 			NodeDrainTaintKey:                 &nodeDrainTaintDefaultKey,
 			ProgressTimeout:                   &progressTimeout,
 			CompletionTimeoutPerGiB:           &completionTimeoutPerGiB,
-			UnsafeMigrationOverride:           false,
+			UnsafeMigrationOverride:           DefaultUnsafeMigrationOverride,
+			AllowAutoConverge:                 allowAutoConverge,
 		},
-		MachineType: DefaultMachineType,
-		CPURequest:  cpuRequestDefault,
+		MachineType:            DefaultMachineType,
+		CPURequest:             cpuRequestDefault,
+		MemoryOvercommit:       DefaultMemoryOvercommit,
+		EmulatedMachines:       emulatedMachinesDefault,
+		LessPVCSpaceToleration: DefaultLessPVCSpaceToleration,
+		NodeSelectors:          nodeSelectorsDefault,
+		NetworkInterface:       defaultNetworkInterface,
+		PermitSlirpInterface:   DefaultPermitSlirpInterface,
 	}
 }
 
 type Config struct {
-	ResourceVersion string
-	UseEmulation    bool
-	MigrationConfig *MigrationConfig
-	ImagePullPolicy k8sv1.PullPolicy
-	MachineType     string
-	CPUModel        string
-	CPURequest      resource.Quantity
+	ResourceVersion        string
+	UseEmulation           bool
+	MigrationConfig        *MigrationConfig
+	ImagePullPolicy        k8sv1.PullPolicy
+	MachineType            string
+	CPUModel               string
+	CPURequest             resource.Quantity
+	MemoryOvercommit       int
+	EmulatedMachines       []string
+	FeatureGates           string
+	LessPVCSpaceToleration int
+	NodeSelectors          map[string]string
+	NetworkInterface       string
+	PermitSlirpInterface   bool
 }
 
 type MigrationConfig struct {
@@ -180,39 +231,25 @@ type MigrationConfig struct {
 	ProgressTimeout                   *int64             `json:"progressTimeout,omitempty"`
 	CompletionTimeoutPerGiB           *int64             `json:"completionTimeoutPerGiB,omitempty"`
 	UnsafeMigrationOverride           bool               `json:"unsafeMigrationOverride"`
+	AllowAutoConverge                 bool               `json:"allowAutoConverge"`
 }
 
 type ClusterConfig struct {
-	store                            cache.Store
+	configMapInformer                cache.SharedIndexInformer
+	crdInformer                      cache.SharedIndexInformer
 	namespace                        string
 	lock                             *sync.Mutex
 	lastValidConfig                  *Config
 	defaultConfig                    *Config
 	lastInvalidConfigResourceVersion string
+	configModifiedCallback           ConfigModifiedFn
 }
 
-func (c *ClusterConfig) IsUseEmulation() bool {
-	return c.getConfig().UseEmulation
-}
-
-func (c *ClusterConfig) GetMigrationConfig() *MigrationConfig {
-	return c.getConfig().MigrationConfig
-}
-
-func (c *ClusterConfig) GetImagePullPolicy() (policy k8sv1.PullPolicy) {
-	return c.getConfig().ImagePullPolicy
-}
-
-func (c *ClusterConfig) GetMachineType() string {
-	return c.getConfig().MachineType
-}
-
-func (c *ClusterConfig) GetCPUModel() string {
-	return c.getConfig().CPUModel
-}
-
-func (c *ClusterConfig) GetCPURequest() resource.Quantity {
-	return c.getConfig().CPURequest
+func (c *ClusterConfig) SetConfigModifiedCallback(cb ConfigModifiedFn) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.configModifiedCallback = cb
+	go c.configModifiedCallback()
 }
 
 // setConfig parses the provided config map and updates the provided config.
@@ -223,7 +260,7 @@ func setConfig(config *Config, configMap *k8sv1.ConfigMap) error {
 	config.ResourceVersion = configMap.ResourceVersion
 
 	// set migration options
-	rawConfig := strings.TrimSpace(configMap.Data[migrationsConfigKey])
+	rawConfig := strings.TrimSpace(configMap.Data[MigrationsConfigKey])
 	if rawConfig != "" {
 		// only sets values if they were specified, default values stay intact
 		err := yaml.NewYAMLOrJSONDecoder(strings.NewReader(rawConfig), 1024).Decode(config.MigrationConfig)
@@ -233,7 +270,7 @@ func setConfig(config *Config, configMap *k8sv1.ConfigMap) error {
 	}
 
 	// set image pull policy
-	policy := strings.TrimSpace(configMap.Data[imagePullPolicyKey])
+	policy := strings.TrimSpace(configMap.Data[ImagePullPolicyKey])
 	switch policy {
 	case "":
 		// keep the default
@@ -261,18 +298,77 @@ func setConfig(config *Config, configMap *k8sv1.ConfigMap) error {
 	}
 
 	// set machine type
-	if machineType := strings.TrimSpace(configMap.Data[machineTypeKey]); machineType != "" {
+	if machineType := strings.TrimSpace(configMap.Data[MachineTypeKey]); machineType != "" {
 		config.MachineType = machineType
 	}
 
-	if cpuModel := strings.TrimSpace(configMap.Data[cpuModelKey]); cpuModel != "" {
+	if cpuModel := strings.TrimSpace(configMap.Data[CpuModelKey]); cpuModel != "" {
 		config.CPUModel = cpuModel
 	}
 
-	if cpuRequest := strings.TrimSpace(configMap.Data[cpuRequestKey]); cpuRequest != "" {
+	if cpuRequest := strings.TrimSpace(configMap.Data[CpuRequestKey]); cpuRequest != "" {
 		config.CPURequest = resource.MustParse(cpuRequest)
 	}
 
+	if memoryOvercommit := strings.TrimSpace(configMap.Data[MemoryOvercommitKey]); memoryOvercommit != "" {
+		if value, err := strconv.Atoi(memoryOvercommit); err == nil && value > 0 {
+			config.MemoryOvercommit = value
+		} else {
+			return fmt.Errorf("Invalid memoryOvercommit in ConfigMap: %s", memoryOvercommit)
+		}
+	}
+
+	if emulatedMachines := strings.TrimSpace(configMap.Data[EmulatedMachinesKey]); emulatedMachines != "" {
+		vals := strings.Split(emulatedMachines, ",")
+		for i := range vals {
+			vals[i] = strings.TrimSpace(vals[i])
+		}
+		config.EmulatedMachines = vals
+	}
+
+	if featureGates := strings.TrimSpace(configMap.Data[FeatureGatesKey]); featureGates != "" {
+		config.FeatureGates = featureGates
+	}
+
+	if toleration := strings.TrimSpace(configMap.Data[LessPVCSpaceTolerationKey]); toleration != "" {
+		if value, err := strconv.Atoi(toleration); err != nil || value < 0 || value > 100 {
+			return fmt.Errorf("Invalid lessPVCSpaceToleration in ConfigMap: %s", toleration)
+		} else {
+			config.LessPVCSpaceToleration = value
+		}
+	}
+
+	if nodeSelectors := strings.TrimSpace(configMap.Data[NodeSelectorsKey]); nodeSelectors != "" {
+		if selectors, err := parseNodeSelectors(nodeSelectors); err != nil {
+			return err
+		} else {
+			config.NodeSelectors = selectors
+		}
+	}
+
+	// disable slirp
+	permitSlirp := strings.TrimSpace(configMap.Data[PermitSlirpInterface])
+	switch permitSlirp {
+	case "":
+		// keep the default
+	case "true":
+		config.PermitSlirpInterface = true
+	case "false":
+		config.PermitSlirpInterface = false
+	default:
+		return fmt.Errorf("invalid value for permitSlirpInterfaces in config: %v", permitSlirp)
+	}
+
+	// set default network interface
+	iface := strings.TrimSpace(configMap.Data[NetworkInterfaceKey])
+	switch iface {
+	case "":
+		// keep the default
+	case string(v1.BridgeInterface), string(v1.SlirpInterface), string(v1.MasqueradeInterface):
+		config.NetworkInterface = iface
+	default:
+		return fmt.Errorf("invalid default-network-interface in config: %v", iface)
+	}
 	return nil
 }
 
@@ -284,7 +380,7 @@ func (c *ClusterConfig) getConfig() (config *Config) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if obj, exists, err := c.store.GetByKey(c.namespace + "/" + configMapName); err != nil {
+	if obj, exists, err := c.configMapInformer.GetStore().GetByKey(c.namespace + "/" + configMapName); err != nil {
 		log.DefaultLogger().Reason(err).Errorf("Error loading the cluster config from cache, falling back to last good resource version '%s'", c.lastValidConfig.ResourceVersion)
 		return c.lastValidConfig
 	} else if !exists {
@@ -305,4 +401,31 @@ func (c *ClusterConfig) getConfig() (config *Config) {
 		c.lastValidConfig = config
 		return c.lastValidConfig
 	}
+}
+
+func (c *ClusterConfig) HasDataVolumeAPI() bool {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	objects := c.crdInformer.GetStore().List()
+	for _, obj := range objects {
+		if crd, ok := obj.(*extv1beta1.CustomResourceDefinition); ok && crd.DeletionTimestamp == nil {
+			if isDataVolumeCrd(crd) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func parseNodeSelectors(str string) (map[string]string, error) {
+	nodeSelectors := make(map[string]string)
+	for _, s := range strings.Split(strings.TrimSpace(str), "\n") {
+		v := strings.Split(s, "=")
+		if len(v) != 2 {
+			return nil, fmt.Errorf("Invalid node selector: %s", s)
+		}
+		nodeSelectors[v[0]] = v[1]
+	}
+	return nodeSelectors, nil
 }

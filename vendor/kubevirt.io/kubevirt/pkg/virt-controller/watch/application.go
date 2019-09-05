@@ -25,6 +25,7 @@ import (
 	golog "log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/emicklei/go-restful"
 	"github.com/golang/glog"
@@ -39,21 +40,20 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/log"
+	clientutil "kubevirt.io/client-go/util"
 	"kubevirt.io/kubevirt/pkg/certificates"
-
-	"kubevirt.io/kubevirt/pkg/virt-controller/watch/drain/disruptionbudget"
-	"kubevirt.io/kubevirt/pkg/virt-controller/watch/drain/evacuation"
-
 	containerdisk "kubevirt.io/kubevirt/pkg/container-disk"
 	"kubevirt.io/kubevirt/pkg/controller"
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/log"
 	"kubevirt.io/kubevirt/pkg/service"
 	"kubevirt.io/kubevirt/pkg/util"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	"kubevirt.io/kubevirt/pkg/virt-controller/leaderelectionconfig"
 	"kubevirt.io/kubevirt/pkg/virt-controller/rest"
 	"kubevirt.io/kubevirt/pkg/virt-controller/services"
+	"kubevirt.io/kubevirt/pkg/virt-controller/watch/drain/disruptionbudget"
+	"kubevirt.io/kubevirt/pkg/virt-controller/watch/drain/evacuation"
 )
 
 const (
@@ -70,6 +70,10 @@ const (
 	ephemeralDiskDir = virtShareDir + "-ephemeral-disks"
 
 	controllerThreads = 3
+)
+
+var (
+	containerDiskDir = filepath.Join(util.VirtShareDir, "/container-disks")
 )
 
 type VirtControllerApp struct {
@@ -89,8 +93,7 @@ type VirtControllerApp struct {
 	vmiInformer   cache.SharedIndexInformer
 	vmiRecorder   record.EventRecorder
 
-	configMapCache    cache.Store
-	configMapInformer cache.SharedIndexInformer
+	clusterConfig *virtconfig.ClusterConfig
 
 	persistentVolumeClaimCache    cache.Store
 	persistentVolumeClaimInformer cache.SharedIndexInformer
@@ -111,11 +114,20 @@ type VirtControllerApp struct {
 	launcherImage              string
 	imagePullSecret            string
 	virtShareDir               string
+	virtLibDir                 string
 	ephemeralDiskDir           string
+	containerDiskDir           string
 	readyChan                  chan bool
 	kubevirtNamespace          string
 	evacuationController       *evacuation.EvacuationController
 	disruptionBudgetController *disruptionbudget.DisruptionBudgetController
+
+	ctx context.Context
+
+	// indicates if controllers were started with or without CDI/DataVolume support
+	hasCDI bool
+	// the channel used to trigger re-initialization.
+	reInitChan chan string
 }
 
 var _ service.Service = &VirtControllerApp{}
@@ -127,8 +139,6 @@ func Execute() {
 	app.LeaderElection = leaderelectionconfig.DefaultLeaderElectionConfiguration()
 
 	service.Setup(&app)
-
-	virtconfig.Init()
 
 	app.readyChan = make(chan bool, 1)
 
@@ -147,11 +157,27 @@ func Execute() {
 	restful.Add(webService)
 
 	// Bootstrapping. From here on the initialization order is important
-	app.kubevirtNamespace, err = util.GetNamespace()
+	app.kubevirtNamespace, err = clientutil.GetNamespace()
 	if err != nil {
 		golog.Fatalf("Error searching for namespace: %v", err)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopChan := ctx.Done()
+	app.ctx = ctx
+
 	app.informerFactory = controller.NewKubeInformerFactory(app.restClient, app.clientSet, app.kubevirtNamespace)
+
+	configMapInformer := app.informerFactory.ConfigMap()
+	crdInformer := app.informerFactory.CRD()
+	app.informerFactory.Start(stopChan)
+
+	cache.WaitForCacheSync(stopChan, configMapInformer.HasSynced, crdInformer.HasSynced)
+	app.clusterConfig = virtconfig.NewClusterConfig(configMapInformer, crdInformer, app.kubevirtNamespace)
+
+	app.reInitChan = make(chan string, 10)
+	app.hasCDI = app.clusterConfig.HasDataVolumeAPI()
+	app.clusterConfig.SetConfigModifiedCallback(app.configModificationCallback)
 
 	app.vmiInformer = app.informerFactory.VMI()
 	app.podInformer = app.informerFactory.KubeVirtPod()
@@ -162,9 +188,6 @@ func Execute() {
 
 	app.rsInformer = app.informerFactory.VMIReplicaSet()
 
-	app.configMapInformer = app.informerFactory.ConfigMap()
-	app.configMapCache = app.configMapInformer.GetStore()
-
 	app.persistentVolumeClaimInformer = app.informerFactory.PersistentVolumeClaim()
 	app.persistentVolumeClaimCache = app.persistentVolumeClaimInformer.GetStore()
 
@@ -174,15 +197,15 @@ func Execute() {
 
 	app.migrationInformer = app.informerFactory.VirtualMachineInstanceMigration()
 
-	if virtconfig.DataVolumesEnabled() {
+	if app.hasCDI {
 		app.dataVolumeInformer = app.informerFactory.DataVolume()
-		log.Log.Infof("DataVolume integration enabled")
+		log.Log.Infof("CDI detected, DataVolume integration enabled")
 	} else {
 		// Add a dummy DataVolume informer in the event datavolume support
 		// is disabled. This lets the controller continue to work without
 		// requiring a separate branching code path.
 		app.dataVolumeInformer = app.informerFactory.DummyDataVolume()
-		log.Log.Infof("DataVolume integration disabled")
+		log.Log.Infof("CDI not detected, DataVolume integration disabled")
 	}
 
 	app.initCommon()
@@ -190,11 +213,32 @@ func Execute() {
 	app.initVirtualMachines()
 	app.initDisruptionBudgetController()
 	app.initEvacuationController()
-	app.Run()
+	go app.Run()
+
+	select {
+	case <-app.reInitChan:
+		cancel()
+	}
+}
+
+// Detects if a config has been applied that requires
+// re-initializing virt-controller.
+func (vca *VirtControllerApp) configModificationCallback() {
+	newHasCDI := vca.clusterConfig.HasDataVolumeAPI()
+	if newHasCDI != vca.hasCDI {
+		if newHasCDI {
+			log.Log.Infof("Reinitialize virt-controller, cdi api has been introduced")
+		} else {
+			log.Log.Infof("Reinitialize virt-controller, cdi api has been removed")
+		}
+		vca.reInitChan <- "reinit"
+	}
 }
 
 func (vca *VirtControllerApp) Run() {
 	logger := log.Log
+
+	stop := vca.ctx.Done()
 
 	certsDirectory, err := ioutil.TempDir("", "certsdir")
 	if err != nil {
@@ -206,8 +250,6 @@ func (vca *VirtControllerApp) Run() {
 	if err != nil {
 		glog.Fatalf("unable to generate certificates: %v", err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go func() {
 		httpLogger := logger.With("service", "http")
 		httpLogger.Level(log.INFO).Log("action", "listening", "interface", vca.BindAddress, "port", vca.Port)
@@ -244,7 +286,6 @@ func (vca *VirtControllerApp) Run() {
 			RetryPeriod:   vca.LeaderElection.RetryPeriod.Duration,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
-					stop := ctx.Done()
 					vca.informerFactory.Start(stop)
 					go vca.evacuationController.Run(controllerThreads, stop)
 					go vca.disruptionBudgetController.Run(controllerThreads, stop)
@@ -265,7 +306,7 @@ func (vca *VirtControllerApp) Run() {
 		golog.Fatal(err)
 	}
 
-	leaderElector.Run(ctx)
+	leaderElector.Run(vca.ctx)
 	panic("unreachable")
 }
 
@@ -286,16 +327,19 @@ func (vca *VirtControllerApp) initCommon() {
 	containerdisk.SetLocalDirectory(vca.ephemeralDiskDir + "/container-disk-data")
 	vca.templateService = services.NewTemplateService(vca.launcherImage,
 		vca.virtShareDir,
+		vca.virtLibDir,
 		vca.ephemeralDiskDir,
+		vca.containerDiskDir,
 		vca.imagePullSecret,
-		vca.configMapCache,
 		vca.persistentVolumeClaimCache,
-		virtClient)
+		virtClient,
+		vca.clusterConfig,
+	)
 
-	vca.vmiController = NewVMIController(vca.templateService, vca.vmiInformer, vca.podInformer, vca.vmiRecorder, vca.clientSet, vca.configMapInformer, vca.dataVolumeInformer)
+	vca.vmiController = NewVMIController(vca.templateService, vca.vmiInformer, vca.podInformer, vca.vmiRecorder, vca.clientSet, vca.dataVolumeInformer)
 	recorder := vca.getNewRecorder(k8sv1.NamespaceAll, "node-controller")
 	vca.nodeController = NewNodeController(vca.clientSet, vca.nodeInformer, vca.vmiInformer, recorder)
-	vca.migrationController = NewMigrationController(vca.templateService, vca.vmiInformer, vca.podInformer, vca.migrationInformer, vca.vmiRecorder, vca.clientSet, virtconfig.NewClusterConfig(vca.configMapInformer.GetStore(), vca.kubevirtNamespace))
+	vca.migrationController = NewMigrationController(vca.templateService, vca.vmiInformer, vca.podInformer, vca.migrationInformer, vca.vmiRecorder, vca.clientSet, vca.clusterConfig)
 }
 
 func (vca *VirtControllerApp) initReplicaSet() {
@@ -333,7 +377,7 @@ func (vca *VirtControllerApp) initEvacuationController() {
 		vca.nodeInformer,
 		recorder,
 		vca.clientSet,
-		virtconfig.NewClusterConfig(vca.configMapInformer.GetStore(), vca.kubevirtNamespace),
+		vca.clusterConfig,
 	)
 }
 
@@ -369,9 +413,14 @@ func (vca *VirtControllerApp) AddFlags() {
 	flag.StringVar(&vca.imagePullSecret, "image-pull-secret", imagePullSecret,
 		"Secret to use for pulling virt-launcher and/or registry disks")
 
-	flag.StringVar(&vca.virtShareDir, "kubevirt-share-dir", virtShareDir,
+	flag.StringVar(&vca.virtShareDir, "kubevirt-share-dir", util.VirtShareDir,
 		"Shared directory between virt-handler and virt-launcher")
+
+	flag.StringVar(&vca.virtLibDir, "kubevirt-lib-dir", util.VirtLibDir,
+		"Shared lib directory between virt-handler and virt-launcher")
 
 	flag.StringVar(&vca.ephemeralDiskDir, "ephemeral-disk-dir", ephemeralDiskDir,
 		"Base directory for ephemeral disk data")
+	flag.StringVar(&vca.containerDiskDir, "container-disk-dir", containerDiskDir,
+		"Base directory for container disk data")
 }

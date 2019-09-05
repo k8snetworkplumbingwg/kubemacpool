@@ -47,17 +47,19 @@ http_archive(
 # Libvirt dependencies
 http_file(
     name = "libvirt_libs",
-    sha256 = "95d317fd645fb52745d642578263a9bcb0d796beadf00aeadebc0d692f5529ba",
+    sha256 = "f9c70f8f45af8623f85c06e2a84b0c37c5ec30764d1bccc381d43b01436dce1c",
     urls = [
-        "https://libvirt.org/sources/libvirt-libs-5.0.0-1.fc28.x86_64.rpm",
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-x86_64/00967888-libvirt/libvirt-libs-5.0.0-1.fc30.x86_64.rpm",
+        "https://storage.googleapis.com/builddeps/f9c70f8f45af8623f85c06e2a84b0c37c5ec30764d1bccc381d43b01436dce1c",
     ],
 )
 
 http_file(
     name = "libvirt_devel",
-    sha256 = "6573a047d777ed00f6858c2e75c780053b1f898ae1c3f7415e991c94c5ccdd70",
+    sha256 = "7d8e7a2d92fc3b5d8d660637683f16475779a036466484b93a0bb6a54b256027",
     urls = [
-        "https://libvirt.org/sources/libvirt-devel-5.0.0-1.fc28.x86_64.rpm",
+        "https://copr-be.cloud.fedoraproject.org/results/%40virtmaint-sig/for-kubevirt/fedora-30-x86_64/00967888-libvirt/libvirt-devel-5.0.0-1.fc30.x86_64.rpm",
+        "https://storage.googleapis.com/builddeps/7d8e7a2d92fc3b5d8d660637683f16475779a036466484b93a0bb6a54b256027",
     ],
 )
 
@@ -83,12 +85,22 @@ http_file(
     sha256 = "a30549d620bf6bf41d30a9a58626e59dfa70bb011fd7d50f6c4511ad2e479a39",
     urls = [
         "https://download.fedoraproject.org/pub/fedora/linux/releases/29/Cloud/x86_64/images/Fedora-Cloud-Base-29-1.2.x86_64.qcow2",
+        "https://storage.googleapis.com/builddeps/a30549d620bf6bf41d30a9a58626e59dfa70bb011fd7d50f6c4511ad2e479a39",
+    ],
+)
+
+http_file(
+    name = "fedora30_image",
+    sha256 = "72b6ae7b4ed09a4dccd6e966e1b3ac69bd97da419de9760b410e837ba00b4e26",
+    urls = [
+        "https://download.fedoraproject.org/pub/fedora/linux/releases/30/Cloud/x86_64/images/Fedora-Cloud-Base-30-1.2.x86_64.qcow2",
+        "https://storage.googleapis.com/builddeps/72b6ae7b4ed09a4dccd6e966e1b3ac69bd97da419de9760b410e837ba00b4e26",
     ],
 )
 
 http_file(
     name = "virtio_win_image",
-    sha256 = "594678f509ba6827c7b75d076ecfb64d45c6ad95e9fccba7258e6eee9a6a3560",
+    sha256 = "7bf7f53e30c69a360f89abb3d2cc19cc978f533766b1b2270c2d8344edf9b3ef",
     urls = [
         "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/latest-virtio/virtio-win.iso",
     ],
@@ -130,6 +142,68 @@ go_repository(
     importpath = "github.com/masterzen/winrm-cli",
 )
 
+# Winrmcp deps
+go_repository(
+    name = "com_github_packer_community_winrmcp",
+    commit = "c76d91c1e7db27b0868c5d09e292bb540616c9a2",
+    importpath = "github.com/packer-community/winrmcp",
+)
+
+go_repository(
+    name = "com_github_masterzen_winrm_cli",
+    commit = "6f0c57dee4569c04f64c44c335752b415e5d73a7",
+    importpath = "github.com/masterzen/winrm-cli",
+)
+
+go_repository(
+    name = "com_github_masterzen_winrm",
+    commit = "1d17eaf15943ca3554cdebb3b1b10aaa543a0b7e",
+    importpath = "github.com/masterzen/winrm",
+)
+
+go_repository(
+    name = "com_github_nu7hatch_gouuid",
+    commit = "179d4d0c4d8d407a32af483c2354df1d2c91e6c3",
+    importpath = "github.com/nu7hatch/gouuid",
+)
+
+go_repository(
+    name = "com_github_dylanmei_iso8601",
+    commit = "2075bf119b58e5576c6ed9f867b8f3d17f2e54d4",
+    importpath = "github.com/dylanmei/iso8601",
+)
+
+go_repository(
+    name = "com_github_gofrs_uuid",
+    commit = "abfe1881e60ef34074c1b8d8c63b42565c356ed6",
+    importpath = "github.com/gofrs/uuid",
+)
+
+go_repository(
+    name = "com_github_christrenkamp_goxpath",
+    commit = "c5096ec8773dd9f554971472081ddfbb0782334e",
+    importpath = "github.com/ChrisTrenkamp/goxpath",
+)
+
+go_repository(
+    name = "com_github_azure_go_ntlmssp",
+    commit = "4a21cbd618b459155f8b8ee7f4491cd54f5efa77",
+    importpath = "github.com/Azure/go-ntlmssp",
+)
+
+go_repository(
+    name = "com_github_masterzen_simplexml",
+    commit = "31eea30827864c9ab643aa5a0d5b2d4988ec8409",
+    importpath = "github.com/masterzen/simplexml",
+)
+
+go_repository(
+    name = "org_golang_x_crypto",
+    commit = "4def268fd1a49955bfb3dda92fe3db4f924f2285",
+    importpath = "golang.org/x/crypto",
+)
+
+# bazel docker rules
 load(
     "@io_bazel_rules_docker//container:container.bzl",
     "container_image",
@@ -145,16 +219,16 @@ container_repositories()
 # Pull base image fedora28
 container_pull(
     name = "fedora",
-    digest = "sha256:57d86e03971841e79585379f8346289ceb5a3e8ee06933fbd5064b4f004659d1",
+    digest = "sha256:9c78c69f748953ba8fdb6eb9982e1abefe281d9b931a13f251eb8aec988353de",
     registry = "index.docker.io",
     repository = "library/fedora",
-    #tag = "28",
+    #tag = "30",
 )
 
 # Pull base image libvirt
 container_pull(
     name = "libvirt",
-    digest = "sha256:081f113a73748775e5f37d8fb877a574f595df1551e39e48ebbe8e8afd501d3b",
+    digest = "sha256:71d10b2ae0af286e4ff0674a7ecfb86ac2455e529fafc97810101f5700b4a416",
     registry = "index.docker.io",
     repository = "kubevirt/libvirt",
     #tag = "5.0.0",
@@ -167,6 +241,14 @@ container_pull(
     registry = "index.docker.io",
     repository = "kubevirtci/kubevirt-testing",
     #tag = "28",
+)
+
+# Pull nfs-server image
+container_pull(
+    name = "nfs-server",
+    digest = "sha256:2a8c1cad9156165d0be1ee2c78fb2342f8368193acff72eb276ff276512508fa",
+    registry = "index.docker.io",
+    repository = "slintes/nfs-ganesha",  # see https://github.com/slintes/docker-nfs-ganesha
 )
 
 load(
@@ -186,9 +268,9 @@ http_archive(
 # Get container-disk-v1alpha RPM's
 http_file(
     name = "qemu-img",
-    sha256 = "611d6ff8e08eca0d543486f3e8b437f7ddbc362e4d281c7422677d712d017d61",
+    sha256 = "eadbd81fe25827a9d7712d0d96b134ab834bfab9e7332a8e9cf54dedd3c02581",
     urls = [
-        "https://dl.fedoraproject.org/pub/fedora/linux/updates/28/Everything/x86_64/Packages/q/qemu-img-2.11.2-4.fc28.x86_64.rpm",
+        "https://dl.fedoraproject.org/pub/fedora/linux/updates/28/Everything/x86_64/Packages/q/qemu-img-2.11.2-5.fc28.x86_64.rpm",
     ],
 )
 
@@ -226,9 +308,9 @@ http_file(
 
 http_file(
     name = "qemu-guest-agent",
-    sha256 = "1d76ae3e482017439412e9cc8e179afb8f47ab415a8a9a7ceaa9b4ee4f9c85e8",
+    sha256 = "d9c5072ab2476fbf9e50dd374b2bc680d3accadd2e70d52cae4eb515b6a893f4",
     urls = [
-        "https://dl.fedoraproject.org/pub/fedora/linux/updates/28/Everything/x86_64/Packages/q/qemu-guest-agent-2.11.2-4.fc28.x86_64.rpm",
+        "https://dl.fedoraproject.org/pub/fedora/linux/updates/28/Everything/x86_64/Packages/q/qemu-guest-agent-2.11.2-5.fc28.x86_64.rpm",
     ],
 )
 

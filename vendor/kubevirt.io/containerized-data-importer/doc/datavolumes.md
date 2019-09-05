@@ -12,12 +12,13 @@ The following statuses are possible.
 * PVCBound: The PVC associated with the operation has been bound.
 * Import/Clone/UploadScheduled: The operation (import/clone/upload) has been scheduled.
 * Import/Clone/UploadInProgress: The operation (import/clone/upload) is in progress.
+* SnapshotForSmartClone/SmartClonePVCInProgress: The Smart-Cloning operation is in progress.
 * Succeeded: The operation has succeeded.
 * Failed: The operation has failed.
 * Unknown: Unknown status.
 
 ## HTTP/S3/Registry source
-Data Volumes are an abstraction on top of the annotations one can put on PVCs to trigger CDI. As such DVs have the notion of a 'source' that allows one to specify the source of the data. To import data from an external source, the source has to be either 'http' ,'S3' or 'registry'. If your source requires authentication, you can also pass in a secretRef to a Kubernetes [Secret](../manifest/example/endpoint-secret.yaml) containing the authentication information.
+DataVolumes are an abstraction on top of the annotations one can put on PVCs to trigger CDI. As such DVs have the notion of a 'source' that allows one to specify the source of the data. To import data from an external source, the source has to be either 'http' ,'S3' or 'registry'. If your source requires authentication, you can also pass in a `secretRef` to a Kubernetes [Secret](../manifest/example/endpoint-secret.yaml) containing the authentication information.  TLS certificates for https/registry sources may be specified in a [ConfigMap](../manifests/example/cert-configmap.yaml) and referenced by `certConfigMap`.  `secretRef` and `certConfigMap` must be in the same namespace as the DataVolume.
 
 ```yaml
 apiVersion: cdi.kubevirt.io/v1alpha1
@@ -29,6 +30,7 @@ spec:
       http:
          url: "https://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img" # Or S3
          secretRef: "" # Optional
+         certConfigMap: "" # Optional
   pvc:
     accessModes:
       - ReadWriteOnce
@@ -36,8 +38,15 @@ spec:
       requests:
         storage: "64Mi"
 ```
-[Get example](../manifests/example/example-import-dv.yaml)
-[Get secret example](../manifest/example/endpoint-secret.yaml)
+[Get example](../manifests/example/import-kubevirt-datavolume.yaml)
+[Get secret example](../manifests/example/endpoint-secret.yaml)
+[Get certificate example](../manifests/example/cert-configmap.yaml)
+
+Alternatively, if your certificate is stored in a local file, you can create the `ConfigMap` like this:
+
+```bash
+kubectl create configmap import-certs --from-file=ca.pem
+```
 
 ### Content-type
 You can specify the content type of the source image. The following content-type is valid:
@@ -85,7 +94,7 @@ spec:
       requests:
         storage: "128Mi"
 ```
-[Get example](../manifests/example/example-clone-dv.yaml)
+[Get example](../manifests/example/clone-datavolume.yaml)
 
 ## Upload Data Volumes
 You can upload a virtual disk image directly into a data volume as well, just like with PVCs. The steps to follow are identical as [upload for PVC](upload.md) except that the yaml for a Data Volume is slightly different.
@@ -123,6 +132,30 @@ spec:
         storage: 1Gi
 ```
 
+## Block Volume Mode
+You can import, clone and upload a disk image to a raw block persistent volume.
+This is done by assigning the value 'Block' to the PVC volumeMode field in the DataVolume yaml.
+The following is an exmaple to import disk image to a raw block volume:
+```yaml
+apiVersion: cdi.kubevirt.io/v1alpha1
+kind: DataVolume
+metadata:
+  name: "example-import-dv"
+spec:
+  source:
+      http:
+         url: "https://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img" # Or S3
+         secretRef: "" # Optional
+         certConfigMap: "" # Optional
+  pvc:
+    volumeMode: Block
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: "64Mi"
+```
+
 ## Kubevirt integration
 [Kubevirt](https://github.com/kubevirt/kubevirt) is an extension to Kubernetes that allows one to run Virtual Machines(VM) on the same infra structure as the containers managed by Kubernetes. CDI provides a mechanism to get a disk image into a PVC in order for Kubevirt to consume it. The following steps have to be taken in order for Kubevirt to consume a CDI provided disk image.
 1. Create a PVC with an annotation to for instance import from an external URL.
@@ -141,53 +174,53 @@ We now have a fully controlled mechanism where we can define a VM using a DV wit
 
 ### Example VM using DV
 ```yaml
-apiVersion: kubevirt.io/v1alpha2
+apiVersion: kubevirt.io/v1alpha3
 kind: VirtualMachine
 metadata:
+  creationTimestamp: null
   labels:
-    kubevirt.io/vm: example-vm
-  name: example-vm
+    kubevirt.io/vm: vm-fedora-datavolume
+  name: vm-fedora-datavolume
 spec:
   dataVolumeTemplates:
   - metadata:
-      name: example-dv
+      creationTimestamp: null
+      name: fedora-dv
     spec:
       pvc:
         accessModes:
         - ReadWriteOnce
         resources:
           requests:
-            storage: 64Mi
+            storage: 100M
+        storageClassName: hdd
       source:
-          http:
-             url: "https://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img"
+        http:
+          url: https://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img
   running: false
   template:
     metadata:
       labels:
-        kubevirt.io/vm: example-vm
+        kubevirt.io/vm: vm-datavolume
     spec:
       domain:
-        cpu:
-          cores: 1
         devices:
           disks:
           - disk:
               bus: virtio
-            name: disk0
-            volumeName: example-datavolume
+            name: datavolumevolume
         machine:
-          type: q35
+          type: ""
         resources:
           requests:
-            memory: 64Mi
+            memory: 64M
       terminationGracePeriodSeconds: 0
       volumes:
       - dataVolume:
-          name: example-dv
-        name: example-datavolume
+          name: fedora-dv
+        name: datavolumevolume
 ```
-[Get example](../manifests/example/example-vm-dv.yaml)
+[Get example](../manifests/example/vm-dv.yaml)
 
 This example combines all the different pieces into a single yaml.
 * Creation of a VM definition (example-vm)

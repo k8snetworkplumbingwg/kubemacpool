@@ -7,6 +7,7 @@ import (
 
 	"github.com/onsi/ginkgo"
 	k8sv1 "k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -54,21 +55,15 @@ func DeletePod(clientSet *kubernetes.Clientset, pod *k8sv1.Pod, namespace string
 
 // NewPodWithPVC creates a new pod that mounts the given PVC
 func NewPodWithPVC(podName, cmd string, pvc *k8sv1.PersistentVolumeClaim) *k8sv1.Pod {
-	return &k8sv1.Pod{
+	pod := &k8sv1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: podName},
 		Spec: k8sv1.PodSpec{
 			RestartPolicy: k8sv1.RestartPolicyNever,
 			Containers: []k8sv1.Container{
 				{
 					Name:    "runner",
-					Image:   "fedora:28",
+					Image:   "registry.fedoraproject.org/fedora-minimal:30",
 					Command: []string{"/bin/sh", "-c", cmd},
-					VolumeMounts: []k8sv1.VolumeMount{
-						{
-							Name:      pvc.GetName(),
-							MountPath: DefaultPvcMountPath,
-						},
-					},
 				},
 			},
 			Volumes: []k8sv1.Volume{
@@ -83,6 +78,35 @@ func NewPodWithPVC(podName, cmd string, pvc *k8sv1.PersistentVolumeClaim) *k8sv1
 			},
 		},
 	}
+
+	volumeMode := pvc.Spec.VolumeMode
+	if volumeMode != nil && *volumeMode == v1.PersistentVolumeBlock {
+		pod.Spec.Containers[0].VolumeDevices = addVolumeDevices(pvc)
+	} else {
+		pod.Spec.Containers[0].VolumeMounts = addVolumeMounts(pvc)
+	}
+	return pod
+}
+
+func addVolumeDevices(pvc *k8sv1.PersistentVolumeClaim) []v1.VolumeDevice {
+	volumeDevices := []v1.VolumeDevice{
+		{
+			Name:       pvc.GetName(),
+			DevicePath: DefaultPvcMountPath,
+		},
+	}
+	return volumeDevices
+}
+
+// this is being called for pods using PV with filesystem volume mode
+func addVolumeMounts(pvc *k8sv1.PersistentVolumeClaim) []v1.VolumeMount {
+	volumeMounts := []v1.VolumeMount{
+		{
+			Name:      pvc.GetName(),
+			MountPath: DefaultPvcMountPath,
+		},
+	}
+	return volumeMounts
 }
 
 // FindPodByPrefix finds the first pod which has the passed in prefix. Returns error if multiple pods with the same prefix are found.
@@ -139,11 +163,6 @@ func WaitTimeoutForPodStatus(clientSet *kubernetes.Clientset, podName, namespace
 	return wait.PollImmediate(2*time.Second, timeout, podStatus(clientSet, podName, namespace, status))
 }
 
-// IsExpectedNode waits to check if the specified pod is schedule on the specified node
-func IsExpectedNode(clientSet *kubernetes.Clientset, nodeName, podName, namespace string, timeout time.Duration) error {
-	return wait.PollImmediate(2*time.Second, timeout, isExpectedNode(clientSet, nodeName, podName, namespace))
-}
-
 func podStatus(clientSet *kubernetes.Clientset, podName, namespace string, status k8sv1.PodPhase) wait.ConditionFunc {
 	return func() (bool, error) {
 		pod, err := clientSet.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
@@ -156,24 +175,6 @@ func podStatus(clientSet *kubernetes.Clientset, podName, namespace string, statu
 		fmt.Fprintf(ginkgo.GinkgoWriter, "INFO: Checking POD phase: %s\n", string(pod.Status.Phase))
 		switch pod.Status.Phase {
 		case status:
-			return true, nil
-		}
-		return false, nil
-	}
-}
-
-// returns true is the specified pod running on the specified nodeName. Otherwise returns false
-func isExpectedNode(clientSet *kubernetes.Clientset, nodeName, podName, namespace string) wait.ConditionFunc {
-	return func() (bool, error) {
-		pod, err := clientSet.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				return false, nil
-			}
-			return false, err
-		}
-		fmt.Fprintf(ginkgo.GinkgoWriter, "INFO: Checking Node name: %s\n", string(pod.Spec.NodeName))
-		if pod.Spec.NodeName == nodeName {
 			return true, nil
 		}
 		return false, nil
@@ -205,4 +206,27 @@ func WaitPodDeleted(clientSet *kubernetes.Clientset, podName, namespace string, 
 		return false, nil
 	})
 	return result, err
+}
+
+// IsExpectedNode waits to check if the specified pod is schedule on the specified node
+func IsExpectedNode(clientSet *kubernetes.Clientset, nodeName, podName, namespace string, timeout time.Duration) error {
+	return wait.PollImmediate(2*time.Second, timeout, isExpectedNode(clientSet, nodeName, podName, namespace))
+}
+
+// returns true is the specified pod running on the specified nodeName. Otherwise returns false
+func isExpectedNode(clientSet *kubernetes.Clientset, nodeName, podName, namespace string) wait.ConditionFunc {
+	return func() (bool, error) {
+		pod, err := clientSet.CoreV1().Pods(namespace).Get(podName, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		fmt.Fprintf(ginkgo.GinkgoWriter, "INFO: Checking Node name: %s\n", string(pod.Spec.NodeName))
+		if pod.Spec.NodeName == nodeName {
+			return true, nil
+		}
+		return false, nil
+	}
 }

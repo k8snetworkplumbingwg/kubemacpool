@@ -34,7 +34,7 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"kubevirt.io/kubevirt/pkg/kubecli"
+	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/kubevirt/pkg/virtctl/templates"
 )
 
@@ -290,7 +290,6 @@ func remoteViewerArgs(port int) (args []string) {
 }
 
 func usage() string {
-	usage := "  # Connect to 'testvmi' via remote-viewer:\n"
-	usage += "  virtctl vnc testvmi"
-	return usage
+	return `  # Connect to 'testvmi' via remote-viewer:\n"
+  {{ProgramName}} vnc testvmi`
 }

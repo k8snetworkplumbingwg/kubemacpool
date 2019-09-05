@@ -8,6 +8,8 @@ metadata:
 spec:
   group: kubevirt.io
   names:
+    categories:
+    - all
     kind: VirtualMachineInstancePreset
     plural: virtualmachineinstancepresets
     shortNames:
@@ -16,3 +18,7 @@ spec:
     singular: virtualmachineinstancepreset
   scope: Namespaced
   version: v1alpha3
+  versions:
+  - name: v1alpha3
+    served: true
+    storage: true

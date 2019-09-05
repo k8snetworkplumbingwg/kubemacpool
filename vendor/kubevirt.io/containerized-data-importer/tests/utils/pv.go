@@ -4,14 +4,15 @@ import (
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	//"time"
+
 	"fmt"
+	"time"
+
 	"github.com/onsi/ginkgo"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"time"
 )
 
 const (
@@ -24,15 +25,7 @@ const (
 // An example of creating a PVC without annotations looks like this:
 // CreatePVCFromDefinition(client, namespace, NewPVCDefinition(name, size, nil, nil))
 func CreatePVFromDefinition(clientSet *kubernetes.Clientset, def *k8sv1.PersistentVolume) (*k8sv1.PersistentVolume, error) {
-	var pv *k8sv1.PersistentVolume
-	err := wait.PollImmediate(pvPollInterval, pvCreateTime, func() (bool, error) {
-		var err error
-		pv, err = clientSet.CoreV1().PersistentVolumes().Create(def)
-		if err == nil || apierrs.IsAlreadyExists(err) {
-			return true, nil
-		}
-		return false, err
-	})
+	pv, err := clientSet.CoreV1().PersistentVolumes().Create(def)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +33,7 @@ func CreatePVFromDefinition(clientSet *kubernetes.Clientset, def *k8sv1.Persiste
 }
 
 // NewPVDefinition creates a PV definition.
-func NewPVDefinition(pvName string, size string, labels map[string]string, storageClassName string) *k8sv1.PersistentVolume {
+func NewPVDefinition(pvName, size, storageClassName, node string, labels map[string]string) *k8sv1.PersistentVolume {
 	return &k8sv1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   pvName,
@@ -52,7 +45,6 @@ func NewPVDefinition(pvName string, size string, labels map[string]string, stora
 			Capacity: k8sv1.ResourceList{
 				k8sv1.ResourceName(k8sv1.ResourceStorage): resource.MustParse(size),
 			},
-			StorageClassName: storageClassName,
 			PersistentVolumeSource: k8sv1.PersistentVolumeSource{
 				Local: &k8sv1.LocalVolumeSource{
 					Path: "/mnt/local-storage/local/disk2",
@@ -67,13 +59,14 @@ func NewPVDefinition(pvName string, size string, labels map[string]string, stora
 								{
 									Key:      "kubernetes.io/hostname",
 									Operator: k8sv1.NodeSelectorOpIn,
-									Values:   []string{"node01"},
+									Values:   []string{node},
 								},
 							},
 						},
 					},
 				},
 			},
+			StorageClassName: storageClassName,
 		},
 	}
 }

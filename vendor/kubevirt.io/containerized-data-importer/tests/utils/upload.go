@@ -10,8 +10,17 @@ import (
 )
 
 const (
+	// UploadFile is the file to upload
+	UploadFile = "./images/tinyCore.iso"
+
+	// UploadFileSize is the size of UploadFile
+	UploadFileSize = 18874368
+
 	// UploadFileMD5 is the expected MD5 of the uploaded file
 	UploadFileMD5 = "2a7a52285c846314d1dbd79e9818270d"
+
+	// UploadFileMD5Extended is the size of the image after being extended
+	UploadFileMD5Extended = "bbd634a97ffa672834717993b40e0ab7"
 
 	uploadTargetAnnotation = "cdi.kubevirt.io/storage.upload.target"
 	uploadStatusAnnotation = "cdi.kubevirt.io/storage.pod.phase"
@@ -26,6 +35,12 @@ func UploadPodName(pvc *k8sv1.PersistentVolumeClaim) string {
 func UploadPVCDefinition() *k8sv1.PersistentVolumeClaim {
 	annotations := map[string]string{uploadTargetAnnotation: ""}
 	return NewPVCDefinition("upload-test", "1G", annotations, nil)
+}
+
+// UploadBlockPVCDefinition creates a PVC with the upload target annotation for block PV
+func UploadBlockPVCDefinition(storageClass string) *k8sv1.PersistentVolumeClaim {
+	annotations := map[string]string{uploadTargetAnnotation: ""}
+	return NewBlockPVCDefinition("upload-test", "500M", annotations, nil, storageClass)
 }
 
 // WaitPVCUploadPodStatusRunning waits for the upload server pod status annotation to be Running

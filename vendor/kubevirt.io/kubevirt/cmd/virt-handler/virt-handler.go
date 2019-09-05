@@ -23,16 +23,20 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/emicklei/go-restful"
 	"github.com/golang/glog"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	flag "github.com/spf13/pflag"
-	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/certificate"
+
+	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -41,24 +45,27 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/cert"
-	"k8s.io/client-go/util/cert/triple"
 
-	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
-
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/log"
+	clientutil "kubevirt.io/client-go/util"
 	"kubevirt.io/kubevirt/pkg/certificates"
+	"kubevirt.io/kubevirt/pkg/certificates/triple"
 	"kubevirt.io/kubevirt/pkg/controller"
 	inotifyinformer "kubevirt.io/kubevirt/pkg/inotify-informer"
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/log"
 	_ "kubevirt.io/kubevirt/pkg/monitoring/client/prometheus"    // import for prometheus metrics
 	_ "kubevirt.io/kubevirt/pkg/monitoring/reflector/prometheus" // import for prometheus metrics
 	promvm "kubevirt.io/kubevirt/pkg/monitoring/vms/prometheus"  // import for prometheus metrics
 	_ "kubevirt.io/kubevirt/pkg/monitoring/workqueue/prometheus" // import for prometheus metrics
 	"kubevirt.io/kubevirt/pkg/service"
 	"kubevirt.io/kubevirt/pkg/util"
+	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	virthandler "kubevirt.io/kubevirt/pkg/virt-handler"
 	virtcache "kubevirt.io/kubevirt/pkg/virt-handler/cache"
+	"kubevirt.io/kubevirt/pkg/virt-handler/isolation"
+	"kubevirt.io/kubevirt/pkg/virt-handler/rest"
+	"kubevirt.io/kubevirt/pkg/virt-handler/selinux"
 	virtlauncher "kubevirt.io/kubevirt/pkg/virt-launcher"
 	virt_api "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
@@ -76,8 +83,6 @@ const (
 
 	podIpAddress = ""
 
-	virtShareDir = "/var/run/kubevirt"
-
 	// This value is derived from default MaxPods in Kubelet Config
 	maxDevices = 110
 
@@ -87,6 +92,9 @@ const (
 
 	// selfsigned cert secret name
 	virtHandlerCertSecretName = "kubevirt-virt-handler-certs"
+	maxRequestsInFlight       = 3
+	// Default port that virt-handler listens to console requests
+	defaultConsoleServerPort = 8186
 )
 
 type virtHandlerApp struct {
@@ -94,8 +102,10 @@ type virtHandlerApp struct {
 	HostOverride            string
 	PodIpAddress            string
 	VirtShareDir            string
+	VirtLibDir              string
 	WatchdogTimeoutDuration time.Duration
 	MaxDevices              int
+	MaxRequestsInFlight     int
 
 	signingCertBytes []byte
 	clientCertBytes  []byte
@@ -105,6 +115,7 @@ type virtHandlerApp struct {
 	namespace string
 
 	migrationTLSConfig *tls.Config
+	consoleServerPort  int
 }
 
 var _ service.Service = &virtHandlerApp{}
@@ -112,62 +123,48 @@ var _ service.Service = &virtHandlerApp{}
 func (app *virtHandlerApp) getSelfSignedCert() error {
 	var ok bool
 
-	generateCerts := false
-	secret, err := app.virtCli.CoreV1().Secrets(app.namespace).Get(virtHandlerCertSecretName, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			generateCerts = true
-		} else {
-			return err
-		}
+	caKeyPair, _ := triple.NewCA("kubevirt.io")
+	clientKeyPair, _ := triple.NewClientKeyPair(caKeyPair,
+		"kubevirt.io:system:node:virt-handler",
+		nil,
+	)
+
+	secret := &k8sv1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      virtHandlerCertSecretName,
+			Namespace: app.namespace,
+			Labels: map[string]string{
+				v1.AppLabel: "virt-api-aggregator",
+			},
+		},
+		Type: "Opaque",
+		Data: map[string][]byte{
+			clientCertBytesValue:  cert.EncodeCertPEM(clientKeyPair.Cert),
+			clientKeyBytesValue:   cert.EncodePrivateKeyPEM(clientKeyPair.Key),
+			signingCertBytesValue: cert.EncodeCertPEM(caKeyPair.Cert),
+		},
 	}
-
-	if generateCerts {
-		// Generate new certs if secret doesn't already exist
-		caKeyPair, _ := triple.NewCA("kubevirt.io")
-
-		clientKeyPair, _ := triple.NewClientKeyPair(caKeyPair,
-			"kubevirt.io:system:node:virt-handler",
-			nil,
-		)
-
-		app.clientKeyBytes = cert.EncodePrivateKeyPEM(clientKeyPair.Key)
-		app.clientCertBytes = cert.EncodeCertPEM(clientKeyPair.Cert)
-		app.signingCertBytes = cert.EncodeCertPEM(caKeyPair.Cert)
-
-		secret := k8sv1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      virtHandlerCertSecretName,
-				Namespace: app.namespace,
-				Labels: map[string]string{
-					v1.AppLabel: "virt-api-aggregator",
-				},
-			},
-			Type: "Opaque",
-			Data: map[string][]byte{
-				clientCertBytesValue:  app.clientCertBytes,
-				clientKeyBytesValue:   app.clientKeyBytes,
-				signingCertBytesValue: app.signingCertBytes,
-			},
-		}
-		_, err := app.virtCli.CoreV1().Secrets(app.namespace).Create(&secret)
+	_, err := app.virtCli.CoreV1().Secrets(app.namespace).Create(secret)
+	if errors.IsAlreadyExists(err) {
+		secret, err = app.virtCli.CoreV1().Secrets(app.namespace).Get(virtHandlerCertSecretName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
-	} else {
-		// retrieve self signed cert info from secret
-		app.clientCertBytes, ok = secret.Data[clientCertBytesValue]
-		if !ok {
-			return fmt.Errorf("%s value not found in %s virt-api secret", clientCertBytesValue, virtHandlerCertSecretName)
-		}
-		app.clientKeyBytes, ok = secret.Data[clientKeyBytesValue]
-		if !ok {
-			return fmt.Errorf("%s value not found in %s virt-api secret", clientKeyBytesValue, virtHandlerCertSecretName)
-		}
-		app.signingCertBytes, ok = secret.Data[signingCertBytesValue]
-		if !ok {
-			return fmt.Errorf("%s value not found in %s virt-api secret", signingCertBytesValue, virtHandlerCertSecretName)
-		}
+	} else if err != nil {
+		return err
+	}
+	// retrieve self signed cert info from secret
+	app.clientCertBytes, ok = secret.Data[clientCertBytesValue]
+	if !ok {
+		return fmt.Errorf("%s value not found in %s virt-api secret", clientCertBytesValue, virtHandlerCertSecretName)
+	}
+	app.clientKeyBytes, ok = secret.Data[clientKeyBytesValue]
+	if !ok {
+		return fmt.Errorf("%s value not found in %s virt-api secret", clientKeyBytesValue, virtHandlerCertSecretName)
+	}
+	app.signingCertBytes, ok = secret.Data[signingCertBytesValue]
+	if !ok {
+		return fmt.Errorf("%s value not found in %s virt-api secret", signingCertBytesValue, virtHandlerCertSecretName)
 	}
 	return nil
 }
@@ -188,9 +185,40 @@ func (app *virtHandlerApp) Run() {
 
 	logger := log.Log
 	logger.V(1).Level(log.INFO).Log("hostname", app.HostOverride)
-
-	// Create event recorder
 	var err error
+
+	// Copy container-disk binary
+	targetFile := filepath.Join(app.VirtLibDir, "/init/usr/bin/container-disk")
+	err = os.MkdirAll(filepath.Dir(targetFile), os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	err = copy("/usr/bin/container-disk", targetFile)
+	if err != nil {
+		panic(err)
+	}
+
+	se, exists, err := selinux.NewSELinux()
+	if err == nil && exists {
+		for _, dir := range []string{app.VirtShareDir, app.VirtLibDir} {
+			if labeled, err := se.IsLabeled(dir); err != nil {
+				panic(err)
+			} else if !labeled {
+				err := se.Label("container_file_t", dir)
+				if err != nil {
+					panic(err)
+				}
+			}
+			err := se.Restore(dir)
+			if err != nil {
+				panic(err)
+			}
+		}
+	} else if err != nil {
+		//an error occured
+		panic(fmt.Errorf("failed to detect the presence of selinux: %v", err))
+	}
+	// Create event recorder
 	app.virtCli, err = kubecli.GetKubevirtClient()
 	if err != nil {
 		panic(err)
@@ -199,10 +227,6 @@ func (app *virtHandlerApp) Run() {
 	broadcaster.StartRecordingToSink(&k8coresv1.EventSinkImpl{Interface: app.virtCli.CoreV1().Events(k8sv1.NamespaceAll)})
 	// Scheme is used to create an ObjectReference from an Object (e.g. VirtualMachineInstance) during Event creation
 	recorder := broadcaster.NewRecorder(scheme.Scheme, k8sv1.EventSource{Component: "virt-handler", Host: app.HostOverride})
-
-	if err != nil {
-		panic(err)
-	}
 
 	vmiSourceLabel, err := labels.Parse(fmt.Sprintf(v1.NodeNameLabel+" in (%s)", app.HostOverride))
 	if err != nil {
@@ -237,7 +261,7 @@ func (app *virtHandlerApp) Run() {
 
 	virtlauncher.InitializeSharedDirectories(app.VirtShareDir)
 
-	app.namespace, err = util.GetNamespace()
+	app.namespace, err = clientutil.GetNamespace()
 	if err != nil {
 		glog.Fatalf("Error searching for namespace: %v", err)
 	}
@@ -259,6 +283,9 @@ func (app *virtHandlerApp) Run() {
 		0,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 
+	podIsolationDetector := isolation.NewSocketBasedIsolationDetector(app.VirtShareDir)
+	vmiInformer := factory.VMI()
+
 	vmController := virthandler.NewController(
 		recorder,
 		app.virtCli,
@@ -271,8 +298,14 @@ func (app *virtHandlerApp) Run() {
 		gracefulShutdownInformer,
 		int(app.WatchdogTimeoutDuration.Seconds()),
 		app.MaxDevices,
-		virtconfig.NewClusterConfig(factory.ConfigMap().GetStore(), app.namespace),
+		virtconfig.NewClusterConfig(factory.ConfigMap(), factory.CRD(), app.namespace),
 		app.migrationTLSConfig,
+		podIsolationDetector,
+	)
+
+	consoleHandler := rest.NewConsoleHandler(
+		podIsolationDetector,
+		vmiInformer,
 	)
 
 	certsDirectory, err := ioutil.TempDir("", "certsdir")
@@ -286,22 +319,42 @@ func (app *virtHandlerApp) Run() {
 		glog.Fatalf("unable to generate certificates: %v", err)
 	}
 
-	promvm.SetupCollector(app.VirtShareDir)
+	promvm.SetupCollector(app.virtCli, app.VirtShareDir, app.HostOverride)
 
 	// Bootstrapping. From here on the startup order matters
 	stop := make(chan struct{})
 	defer close(stop)
 	factory.Start(stop)
-	cache.WaitForCacheSync(stop, factory.ConfigMap().HasSynced)
+	cache.WaitForCacheSync(stop, factory.ConfigMap().HasSynced, vmiInformer.HasSynced)
 
-	go vmController.Run(3, stop)
+	go vmController.Run(10, stop)
 
-	http.Handle("/metrics", promhttp.Handler())
-	err = http.ListenAndServeTLS(app.ServiceListen.Address(), certStore.CurrentPath(), certStore.CurrentPath(), nil)
-	if err != nil {
-		log.Log.Reason(err).Error("Serving prometheus failed.")
-		panic(err)
+	errCh := make(chan error)
+	go app.runPrometheusServer(errCh, certStore)
+	go app.runConsoleServer(errCh, consoleHandler)
+
+	// wait for one of the servers to exit
+	<-errCh
+}
+
+func (app *virtHandlerApp) runPrometheusServer(errCh chan error, certStore certificate.FileStore) {
+	log.Log.V(1).Infof("metrics: max concurrent requests=%d", app.MaxRequestsInFlight)
+	http.Handle("/metrics", promvm.Handler(app.MaxRequestsInFlight))
+	errCh <- http.ListenAndServeTLS(app.ServiceListen.Address(), certStore.CurrentPath(), certStore.CurrentPath(), nil)
+}
+
+func (app *virtHandlerApp) runConsoleServer(errCh chan error, consoleHandler *rest.ConsoleHandler) {
+	ws := new(restful.WebService)
+	ws.Route(ws.GET("/v1/namespaces/{namespace}/virtualmachineinstances/{name}/console").To(consoleHandler.SerialHandler))
+	ws.Route(ws.GET("/v1/namespaces/{namespace}/virtualmachineinstances/{name}/vnc").To(consoleHandler.VNCHandler))
+	restful.DefaultContainer.Add(ws)
+	server := &http.Server{
+		Addr:    fmt.Sprintf("%s:%d", app.ServiceListen.BindAddress, app.consoleServerPort),
+		Handler: restful.DefaultContainer,
+		// we use migration TLS also for console connections (initiated by virt-api)
+		TLSConfig: app.migrationTLSConfig,
 	}
+	errCh <- server.ListenAndServeTLS("", "")
 }
 
 func (app *virtHandlerApp) AddFlags() {
@@ -318,8 +371,11 @@ func (app *virtHandlerApp) AddFlags() {
 	flag.StringVar(&app.PodIpAddress, "pod-ip-address", podIpAddress,
 		"The pod ip address")
 
-	flag.StringVar(&app.VirtShareDir, "kubevirt-share-dir", virtShareDir,
+	flag.StringVar(&app.VirtShareDir, "kubevirt-share-dir", util.VirtShareDir,
 		"Shared directory between virt-handler and virt-launcher")
+
+	flag.StringVar(&app.VirtLibDir, "kubevirt-lib-dir", util.VirtLibDir,
+		"Shared lib directory between virt-handler and virt-launcher")
 
 	flag.DurationVar(&app.WatchdogTimeoutDuration, "watchdog-timeout", defaultWatchdogTimeout,
 		"Watchdog file timeout")
@@ -329,6 +385,12 @@ func (app *virtHandlerApp) AddFlags() {
 	// This should be deprecated if the API allows for shared resources in the future
 	flag.IntVar(&app.MaxDevices, "max-devices", maxDevices,
 		"Number of devices to register with Kubernetes device plugin framework")
+
+	flag.IntVar(&app.MaxRequestsInFlight, "max-metric-requests", maxRequestsInFlight,
+		"Number of concurrent requests to the metrics endpoint")
+
+	flag.IntVar(&app.consoleServerPort, "console-server-port", defaultConsoleServerPort,
+		"The port virt-handler listens on for console requests")
 }
 
 func (app *virtHandlerApp) setupTLS() error {
@@ -393,4 +455,30 @@ func main() {
 	service.Setup(app)
 	log.InitializeLogging("virt-handler")
 	app.Run()
+}
+
+func copy(sourceFile string, targetFile string) error {
+
+	if err := os.RemoveAll(targetFile); err != nil {
+		return fmt.Errorf("failed to remove target file: %v", err)
+	}
+	target, err := os.Create(targetFile)
+	if err != nil {
+		return fmt.Errorf("failed to crate target file: %v", err)
+	}
+	defer target.Close()
+	source, err := os.Open(sourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to open source file: %v", err)
+	}
+	defer source.Close()
+	_, err = io.Copy(target, source)
+	if err != nil {
+		return fmt.Errorf("failed to copy file: %v", err)
+	}
+	err = os.Chmod(targetFile, 0555)
+	if err != nil {
+		return fmt.Errorf("failed to make file executable: %v", err)
+	}
+	return nil
 }

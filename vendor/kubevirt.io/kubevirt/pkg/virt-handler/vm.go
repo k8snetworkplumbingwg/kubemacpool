@@ -41,13 +41,14 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
+	container_disk "kubevirt.io/kubevirt/pkg/virt-handler/container-disk"
+
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/log"
 	cloudinit "kubevirt.io/kubevirt/pkg/cloud-init"
 	"kubevirt.io/kubevirt/pkg/controller"
 	hostdisk "kubevirt.io/kubevirt/pkg/host-disk"
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/log"
-	"kubevirt.io/kubevirt/pkg/precond"
 	pvcutils "kubevirt.io/kubevirt/pkg/util/types"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	cmdclient "kubevirt.io/kubevirt/pkg/virt-handler/cmd-client"
@@ -73,6 +74,7 @@ func NewController(
 	maxDevices int,
 	clusterConfig *virtconfig.ClusterConfig,
 	tlsConfig *tls.Config,
+	podIsolationDetector isolation.PodIsolationDetector,
 ) *VirtualMachineController {
 
 	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
@@ -91,7 +93,8 @@ func NewController(
 		heartBeatInterval:        1 * time.Minute,
 		watchdogTimeoutSeconds:   watchdogTimeoutSeconds,
 		migrationProxy:           migrationproxy.NewMigrationProxyManager(virtShareDir, tlsConfig),
-		podIsolationDetector:     isolation.NewSocketBasedIsolationDetector(virtShareDir),
+		podIsolationDetector:     podIsolationDetector,
+		containerDiskMounter:     &container_disk.Mounter{PodIsolationDetector: podIsolationDetector},
 		clusterConfig:            clusterConfig,
 	}
 
@@ -144,6 +147,7 @@ type VirtualMachineController struct {
 	kvmController            *device_manager.DeviceController
 	migrationProxy           migrationproxy.ProxyManager
 	podIsolationDetector     isolation.PodIsolationDetector
+	containerDiskMounter     *container_disk.Mounter
 	clusterConfig            *virtconfig.ClusterConfig
 }
 
@@ -432,8 +436,21 @@ func (d *VirtualMachineController) updateVMIStatus(vmi *v1.VirtualMachineInstanc
 			liveMigrationCondition.Status = k8sv1.ConditionFalse
 			liveMigrationCondition.Message = err.Error()
 			liveMigrationCondition.Reason = v1.VirtualMachineInstanceReasonDisksNotMigratable
+			vmi.Status.Conditions = append(vmi.Status.Conditions, liveMigrationCondition)
 		}
-		vmi.Status.Conditions = append(vmi.Status.Conditions, liveMigrationCondition)
+		err = d.checkNetworkInterfacesForMigration(vmi)
+		if err != nil {
+			liveMigrationCondition = v1.VirtualMachineInstanceCondition{
+				Type:    v1.VirtualMachineInstanceIsMigratable,
+				Status:  k8sv1.ConditionFalse,
+				Message: err.Error(),
+				Reason:  v1.VirtualMachineInstanceReasonInterfaceNotMigratable,
+			}
+			vmi.Status.Conditions = append(vmi.Status.Conditions, liveMigrationCondition)
+		}
+		if liveMigrationCondition.Status == k8sv1.ConditionTrue {
+			vmi.Status.Conditions = append(vmi.Status.Conditions, liveMigrationCondition)
+		}
 
 		// Set VMI Migration Method
 		if isBlockMigration {
@@ -770,17 +787,18 @@ func (d *VirtualMachineController) defaultExecute(key string,
 
 	// Determine removal of VirtualMachineInstance from cache should result in deletion.
 	if !vmiExists {
-		if domainAlive {
+		switch {
+		case domainAlive:
 			// The VirtualMachineInstance is deleted on the cluster, and domain is alive,
 			// then shut down the domain.
 			log.Log.Object(vmi).V(3).Info("Shutting down domain for deleted VirtualMachineInstance object.")
 			shouldShutdown = true
-		} else if domainExists {
+		case domainExists:
 			// The VirtualMachineInstance is deleted on the cluster, and domain is not alive
 			// then delete the domain.
 			log.Log.Object(vmi).V(3).Info("Shutting down domain for deleted VirtualMachineInstance object.")
 			shouldDelete = true
-		} else {
+		default:
 			// If neither the domain nor the vmi object exist locally,
 			// then ensure any remaining local ephemeral data is cleaned up.
 			shouldCleanUp = true
@@ -789,13 +807,14 @@ func (d *VirtualMachineController) defaultExecute(key string,
 
 	// Determine if VirtualMachineInstance is being deleted.
 	if vmiExists && vmi.ObjectMeta.DeletionTimestamp != nil {
-		if domainAlive {
+		switch {
+		case domainAlive:
 			log.Log.Object(vmi).V(3).Info("Shutting down domain for VirtualMachineInstance with deletion timestamp.")
 			shouldShutdown = true
-		} else if domainExists {
+		case domainExists:
 			log.Log.Object(vmi).V(3).Info("Deleting domain for VirtualMachineInstance with deletion timestamp.")
 			shouldDelete = true
-		} else {
+		default:
 			shouldCleanUp = true
 		}
 	}
@@ -848,21 +867,22 @@ func (d *VirtualMachineController) defaultExecute(key string,
 	// * Shutdown and Deletion due to VirtualMachineInstance deletion, process stopping, graceful shutdown trigger, etc...
 	// * Cleanup of already shutdown and Deleted VMIs
 	// * Update due to spec change and initial start flow.
-	if forceIgnoreSync {
+	switch {
+	case forceIgnoreSync:
 		log.Log.Object(vmi).V(3).Info("No update processing required: forced ignore")
-	} else if shouldShutdown {
+	case shouldShutdown:
 		log.Log.Object(vmi).V(3).Info("Processing shutdown.")
 		syncErr = d.processVmShutdown(vmi, domain)
-	} else if shouldDelete {
+	case shouldDelete:
 		log.Log.Object(vmi).V(3).Info("Processing deletion.")
 		syncErr = d.processVmDelete(vmi, domain)
-	} else if shouldCleanUp {
+	case shouldCleanUp:
 		log.Log.Object(vmi).V(3).Info("Processing local ephemeral data cleanup for shutdown domain.")
 		syncErr = d.processVmCleanup(vmi)
-	} else if shouldUpdate {
+	case shouldUpdate:
 		log.Log.Object(vmi).V(3).Info("Processing vmi update")
 		syncErr = d.processVmUpdate(vmi)
-	} else {
+	default:
 		log.Log.Object(vmi).V(3).Info("No update processing required")
 	}
 
@@ -963,20 +983,6 @@ func (d *VirtualMachineController) execute(key string) error {
 
 }
 
-func (d *VirtualMachineController) injectCloudInitSecrets(vmi *v1.VirtualMachineInstance) error {
-	cloudInitSpec := cloudinit.GetCloudInitNoCloudSource(vmi)
-	if cloudInitSpec == nil {
-		return nil
-	}
-	namespace := precond.MustNotBeEmpty(vmi.GetObjectMeta().GetNamespace())
-
-	err := cloudinit.ResolveSecrets(cloudInitSpec, namespace, d.clientset)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (d *VirtualMachineController) processVmCleanup(vmi *v1.VirtualMachineInstance) error {
 	err := virtlauncher.VmGracefulShutdownTriggerClear(d.virtShareDir, vmi)
 	if err != nil {
@@ -987,6 +993,12 @@ func (d *VirtualMachineController) processVmCleanup(vmi *v1.VirtualMachineInstan
 
 	d.migrationProxy.StopTargetListener(string(vmi.UID))
 	d.migrationProxy.StopSourceListener(string(vmi.UID))
+
+	// Unmount container disks and clean up remaining files
+	err = d.containerDiskMounter.Unmount(vmi)
+	if err != nil {
+		return err
+	}
 
 	// Watch dog file must be the last thing removed here
 	err = watchdog.WatchdogFileRemove(d.virtShareDir, vmi)
@@ -1202,6 +1214,19 @@ func (d *VirtualMachineController) isPreMigrationTarget(vmi *v1.VirtualMachineIn
 	return false
 }
 
+func (d *VirtualMachineController) checkNetworkInterfacesForMigration(vmi *v1.VirtualMachineInstance) error {
+	networks := map[string]*v1.Network{}
+	for _, network := range vmi.Spec.Networks {
+		networks[network.Name] = network.DeepCopy()
+	}
+	for _, iface := range vmi.Spec.Domain.Devices.Interfaces {
+		if iface.Bridge != nil && networks[iface.Name].Pod != nil {
+			return fmt.Errorf("cannot migrate VMI with a bridge interface connected to a pod network")
+		}
+	}
+	return nil
+}
+
 func (d *VirtualMachineController) checkVolumesForMigration(vmi *v1.VirtualMachineInstance) (blockMigrate bool, err error) {
 	// Check if all VMI volumes can be shared between the source and the destination
 	// of a live migration. blockMigrate will be returned as false, only if all volumes
@@ -1324,7 +1349,7 @@ func (d *VirtualMachineController) processVmUpdate(origVMI *v1.VirtualMachineIns
 		return err
 	}
 
-	err = d.injectCloudInitSecrets(vmi)
+	err = cloudinit.InjectCloudInitSecrets(vmi, d.clientset)
 	if err != nil {
 		return err
 	}
@@ -1341,9 +1366,15 @@ func (d *VirtualMachineController) processVmUpdate(origVMI *v1.VirtualMachineIns
 	}
 
 	if d.isPreMigrationTarget(vmi) {
-		err = client.SyncMigrationTarget(vmi)
-		if err != nil {
+
+		// Mount container disks
+		if err := d.containerDiskMounter.Mount(vmi, false); err != nil {
+			return err
+		}
+
+		if err := client.SyncMigrationTarget(vmi); err != nil {
 			return fmt.Errorf("syncing migration target failed: %v", err)
+
 		}
 		d.recorder.Event(vmi, k8sv1.EventTypeNormal, v1.PreparingTarget.String(), "VirtualMachineInstance Migration Target Prepared.")
 
@@ -1366,6 +1397,7 @@ func (d *VirtualMachineController) processVmUpdate(origVMI *v1.VirtualMachineIns
 				ProgressTimeout:         *d.clusterConfig.GetMigrationConfig().ProgressTimeout,
 				CompletionTimeoutPerGiB: *d.clusterConfig.GetMigrationConfig().CompletionTimeoutPerGiB,
 				UnsafeMigration:         d.clusterConfig.GetMigrationConfig().UnsafeMigrationOverride,
+				AllowAutoConverge:       d.clusterConfig.GetMigrationConfig().AllowAutoConverge,
 			}
 			err = client.MigrateVirtualMachine(vmi, options)
 			if err != nil {
@@ -1374,6 +1406,13 @@ func (d *VirtualMachineController) processVmUpdate(origVMI *v1.VirtualMachineIns
 			d.recorder.Event(vmi, k8sv1.EventTypeNormal, v1.Migrating.String(), "VirtualMachineInstance is migrating.")
 		}
 	} else {
+
+		if !vmi.IsRunning() && !vmi.IsFinal() {
+			if err := d.containerDiskMounter.Mount(vmi, true); err != nil {
+				return err
+			}
+		}
+
 		err = client.SyncVirtualMachine(vmi)
 		if err != nil {
 			return err
@@ -1395,7 +1434,8 @@ func (d *VirtualMachineController) setVmPhaseForStatusReason(domain *api.Domain,
 func (d *VirtualMachineController) calculateVmPhaseForStatusReason(domain *api.Domain, vmi *v1.VirtualMachineInstance) (v1.VirtualMachineInstancePhase, error) {
 
 	if domain == nil {
-		if vmi.IsScheduled() {
+		switch {
+		case vmi.IsScheduled():
 			isExpired, err := watchdog.WatchdogFileIsExpired(d.watchdogTimeoutSeconds, d.virtShareDir, vmi)
 
 			if err != nil {
@@ -1408,9 +1448,9 @@ func (d *VirtualMachineController) calculateVmPhaseForStatusReason(domain *api.D
 				return v1.Failed, nil
 			}
 			return v1.Scheduled, nil
-		} else if !vmi.IsRunning() && !vmi.IsFinal() {
+		case !vmi.IsRunning() && !vmi.IsFinal():
 			return v1.Scheduled, nil
-		} else if !vmi.IsFinal() {
+		case !vmi.IsFinal():
 			// That is unexpected. We should not be able to delete a VirtualMachineInstance before we stop it.
 			// However, if someone directly interacts with libvirt it is possible
 			return v1.Failed, nil
@@ -1520,8 +1560,7 @@ func (d *VirtualMachineController) heartBeat(interval time.Duration, stopCh chan
 			log.DefaultLogger().V(4).Infof("Heartbeat sent")
 			// Label the node if cpu manager is running on it
 			// This is a temporary workaround until k8s bug #66525 is resolved
-			virtconfig.Init()
-			if virtconfig.CPUManagerEnabled() {
+			if d.clusterConfig.CPUManagerEnabled() {
 				d.updateNodeCpuManagerLabel()
 			}
 		}, interval, 1.2, true, stopCh)
@@ -1538,7 +1577,10 @@ func (d *VirtualMachineController) updateNodeCpuManagerLabel() {
 	isEnabled := false
 	for _, entry := range entries {
 		content, err := ioutil.ReadFile(entry)
-		if err != nil {
+		if os.IsNotExist(err) {
+			// processes can disappear anytime, it is ok if they don't exist anymore
+			continue
+		} else if err != nil {
 			log.DefaultLogger().Reason(err).Errorf("failed to set a cpu manager label on host %s", d.host)
 			return
 		}

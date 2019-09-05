@@ -3,7 +3,7 @@
 A quick start guide to get KubeVirt up and running inside our container based
 development cluster.
 
-## I just want it built and run it on my cluser
+## I just want it built and run it on my cluster
 
 First, point the `Makefile` to the docker registry of your choice:
 
@@ -60,7 +60,7 @@ In additional it runs dnsmasq and docker registry containers.
 
 ### Compatibility
 
-The minimum compatible Kubernetes version is 1.10.0. Important features required
+The minimum compatible Kubernetes version is 1.11.0. Important features required
 for scheduling and memory are missing or incompatible with previous versions.
 
 ### Compile and run it
@@ -69,8 +69,8 @@ To build all required artifacts and launch the
 dockerizied environment, clone the KubeVirt repository, `cd` into it, and:
 
 ```bash
-# Build and deploy KubeVirt on Kubernetes 1.10.4 in our vms inside containers
-export KUBEVIRT_PROVIDER=k8s-1.10.11 # this is also the default if no KUBEVIRT_PROVIDER is set
+# Build and deploy KubeVirt on Kubernetes in our vms inside containers
+export KUBEVIRT_PROVIDER=k8s-1.13.3 # this is also the default if no KUBEVIRT_PROVIDER is set
 make cluster-up
 make cluster-sync
 ```
@@ -148,7 +148,7 @@ After a successful build you can run the *unit tests*:
 
 They do not need a running KubeVirt environment to succeed.
 To run the *functional tests*, make sure you have set
-up a dockerizied environment. Then run
+up a dockerized environment. Then run
 
 ```bash
     make cluster-sync # synchronize with your code, if necessary

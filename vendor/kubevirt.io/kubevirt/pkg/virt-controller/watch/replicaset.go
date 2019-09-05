@@ -33,10 +33,10 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	virtv1 "kubevirt.io/kubevirt/pkg/api/v1"
+	virtv1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/log"
 	"kubevirt.io/kubevirt/pkg/controller"
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/log"
 )
 
 // Reasons for replicaset events
@@ -152,6 +152,15 @@ func (c *VMIReplicaSet) execute(key string) error {
 	rs := obj.(*virtv1.VirtualMachineInstanceReplicaSet)
 
 	logger := log.Log.Object(rs)
+
+	// this must be first step in execution. Writing the object
+	// when api version changes ensures our api stored version is updated.
+	if !controller.ObservedLatestApiVersionAnnotation(rs) {
+		rs := rs.DeepCopy()
+		controller.SetLatestApiVersionAnnotation(rs)
+		_, err = c.clientset.ReplicaSet(rs.ObjectMeta.Namespace).Update(rs)
+		return err
+	}
 
 	//TODO default rs if necessary, the aggregated apiserver will do that in the future
 	if rs.Spec.Template == nil || rs.Spec.Selector == nil || len(rs.Spec.Template.ObjectMeta.Labels) == 0 {

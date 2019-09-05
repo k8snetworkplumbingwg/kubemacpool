@@ -19,6 +19,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -30,7 +32,7 @@ import (
 // CDIConfigsGetter has a method to return a CDIConfigInterface.
 // A group's client should implement this interface.
 type CDIConfigsGetter interface {
-	CDIConfigs(namespace string) CDIConfigInterface
+	CDIConfigs() CDIConfigInterface
 }
 
 // CDIConfigInterface has methods to work with CDIConfig resources.
@@ -50,14 +52,12 @@ type CDIConfigInterface interface {
 // cDIConfigs implements CDIConfigInterface
 type cDIConfigs struct {
 	client rest.Interface
-	ns     string
 }
 
 // newCDIConfigs returns a CDIConfigs
-func newCDIConfigs(c *CdiV1alpha1Client, namespace string) *cDIConfigs {
+func newCDIConfigs(c *CdiV1alpha1Client) *cDIConfigs {
 	return &cDIConfigs{
 		client: c.RESTClient(),
-		ns:     namespace,
 	}
 }
 
@@ -65,7 +65,6 @@ func newCDIConfigs(c *CdiV1alpha1Client, namespace string) *cDIConfigs {
 func (c *cDIConfigs) Get(name string, options v1.GetOptions) (result *v1alpha1.CDIConfig, err error) {
 	result = &v1alpha1.CDIConfig{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
@@ -76,11 +75,15 @@ func (c *cDIConfigs) Get(name string, options v1.GetOptions) (result *v1alpha1.C
 
 // List takes label and field selectors, and returns the list of CDIConfigs that match those selectors.
 func (c *cDIConfigs) List(opts v1.ListOptions) (result *v1alpha1.CDIConfigList, err error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
 	result = &v1alpha1.CDIConfigList{}
 	err = c.client.Get().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
 		Do().
 		Into(result)
 	return
@@ -88,11 +91,15 @@ func (c *cDIConfigs) List(opts v1.ListOptions) (result *v1alpha1.CDIConfigList, 
 
 // Watch returns a watch.Interface that watches the requested cDIConfigs.
 func (c *cDIConfigs) Watch(opts v1.ListOptions) (watch.Interface, error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
 	opts.Watch = true
 	return c.client.Get().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
 		Watch()
 }
 
@@ -100,7 +107,6 @@ func (c *cDIConfigs) Watch(opts v1.ListOptions) (watch.Interface, error) {
 func (c *cDIConfigs) Create(cDIConfig *v1alpha1.CDIConfig) (result *v1alpha1.CDIConfig, err error) {
 	result = &v1alpha1.CDIConfig{}
 	err = c.client.Post().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		Body(cDIConfig).
 		Do().
@@ -112,7 +118,6 @@ func (c *cDIConfigs) Create(cDIConfig *v1alpha1.CDIConfig) (result *v1alpha1.CDI
 func (c *cDIConfigs) Update(cDIConfig *v1alpha1.CDIConfig) (result *v1alpha1.CDIConfig, err error) {
 	result = &v1alpha1.CDIConfig{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		Name(cDIConfig.Name).
 		Body(cDIConfig).
@@ -127,7 +132,6 @@ func (c *cDIConfigs) Update(cDIConfig *v1alpha1.CDIConfig) (result *v1alpha1.CDI
 func (c *cDIConfigs) UpdateStatus(cDIConfig *v1alpha1.CDIConfig) (result *v1alpha1.CDIConfig, err error) {
 	result = &v1alpha1.CDIConfig{}
 	err = c.client.Put().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		Name(cDIConfig.Name).
 		SubResource("status").
@@ -140,7 +144,6 @@ func (c *cDIConfigs) UpdateStatus(cDIConfig *v1alpha1.CDIConfig) (result *v1alph
 // Delete takes name of the cDIConfig and deletes it. Returns an error if one occurs.
 func (c *cDIConfigs) Delete(name string, options *v1.DeleteOptions) error {
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		Name(name).
 		Body(options).
@@ -150,10 +153,14 @@ func (c *cDIConfigs) Delete(name string, options *v1.DeleteOptions) error {
 
 // DeleteCollection deletes a collection of objects.
 func (c *cDIConfigs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.ListOptions) error {
+	var timeout time.Duration
+	if listOptions.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOptions.TimeoutSeconds) * time.Second
+	}
 	return c.client.Delete().
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
+		Timeout(timeout).
 		Body(options).
 		Do().
 		Error()
@@ -163,7 +170,6 @@ func (c *cDIConfigs) DeleteCollection(options *v1.DeleteOptions, listOptions v1.
 func (c *cDIConfigs) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (result *v1alpha1.CDIConfig, err error) {
 	result = &v1alpha1.CDIConfig{}
 	err = c.client.Patch(pt).
-		Namespace(c.ns).
 		Resource("cdiconfigs").
 		SubResource(subresources...).
 		Name(name).

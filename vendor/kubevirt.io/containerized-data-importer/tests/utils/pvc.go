@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/onsi/ginkgo"
+	corev1 "k8s.io/api/core/v1"
 	k8sv1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,7 +18,7 @@ import (
 
 const (
 	defaultPollInterval = 2 * time.Second
-	defaultPollPeriod   = 60 * time.Second
+	defaultPollPeriod   = 90 * time.Second
 
 	// DefaultPvcMountPath is the default mount path used
 	DefaultPvcMountPath = "/pvc"
@@ -43,6 +44,26 @@ func CreatePVCFromDefinition(clientSet *kubernetes.Clientset, namespace string, 
 			return true, nil
 		}
 		return false, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return pvc, nil
+}
+
+// WaitForPVC waits for a PVC
+func WaitForPVC(clientSet *kubernetes.Clientset, namespace, name string) (*k8sv1.PersistentVolumeClaim, error) {
+	var pvc *k8sv1.PersistentVolumeClaim
+	err := wait.PollImmediate(pvcPollInterval, pvcCreateTime, func() (bool, error) {
+		var err error
+		pvc, err = FindPVC(clientSet, namespace, name)
+		if err != nil {
+			if apierrs.IsNotFound(err) {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
 	})
 	if err != nil {
 		return nil, err
@@ -78,7 +99,7 @@ func WaitForPVCAnnotation(clientSet *kubernetes.Clientset, namespace string, pvc
 	return result, called, err
 }
 
-// WaitForPVCAnnotationWithValue waits  for an annotation with a specific value on a PVC
+// WaitForPVCAnnotationWithValue waits for an annotation with a specific value on a PVC
 func WaitForPVCAnnotationWithValue(clientSet *kubernetes.Clientset, namespace string, pvc *k8sv1.PersistentVolumeClaim, annotation, expected string) (bool, error) {
 	var result bool
 	err := pollPVCAnnotation(clientSet, namespace, pvc, annotation, func(value string) bool {
@@ -86,6 +107,21 @@ func WaitForPVCAnnotationWithValue(clientSet *kubernetes.Clientset, namespace st
 		return result
 	})
 	return result, err
+}
+
+// WaitPVCPodStatusRunning waits for the pod status annotation to be Running
+func WaitPVCPodStatusRunning(clientSet *kubernetes.Clientset, pvc *k8sv1.PersistentVolumeClaim) (bool, error) {
+	return WaitForPVCAnnotationWithValue(clientSet, pvc.Namespace, pvc, uploadStatusAnnotation, string(k8sv1.PodRunning))
+}
+
+// WaitPVCPodStatusSucceeded waits for the pod status annotation to be Succeeded
+func WaitPVCPodStatusSucceeded(clientSet *kubernetes.Clientset, pvc *k8sv1.PersistentVolumeClaim) (bool, error) {
+	return WaitForPVCAnnotationWithValue(clientSet, pvc.Namespace, pvc, uploadStatusAnnotation, string(k8sv1.PodSucceeded))
+}
+
+// WaitPVCPodStatusFailed waits for the pod status annotation to be Failed
+func WaitPVCPodStatusFailed(clientSet *kubernetes.Clientset, pvc *k8sv1.PersistentVolumeClaim) (bool, error) {
+	return WaitForPVCAnnotationWithValue(clientSet, pvc.Namespace, pvc, uploadStatusAnnotation, string(k8sv1.PodFailed))
 }
 
 type pollPVCAnnotationFunc = func(string) bool
@@ -107,8 +143,7 @@ func pollPVCAnnotation(clientSet *kubernetes.Clientset, namespace string, pvc *k
 }
 
 // NewPVCDefinitionWithSelector creates a PVC definition.
-func NewPVCDefinitionWithSelector(pvcName, size string, selector map[string]string, annotations, labels map[string]string,
-	storageClassName string) *k8sv1.PersistentVolumeClaim {
+func NewPVCDefinitionWithSelector(pvcName, size, storageClassName string, selector map[string]string, annotations, labels map[string]string) *k8sv1.PersistentVolumeClaim {
 	return &k8sv1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        pvcName,
@@ -122,10 +157,10 @@ func NewPVCDefinitionWithSelector(pvcName, size string, selector map[string]stri
 					k8sv1.ResourceName(k8sv1.ResourceStorage): resource.MustParse(size),
 				},
 			},
-			StorageClassName: &storageClassName,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: selector,
 			},
+			StorageClassName: &storageClassName,
 		},
 	}
 }
@@ -152,6 +187,15 @@ func NewPVCDefinition(pvcName string, size string, annotations, labels map[strin
 			},
 		},
 	}
+}
+
+// NewBlockPVCDefinition creates a PVC definition with volumeMode 'Block'
+func NewBlockPVCDefinition(pvcName string, size string, annotations, labels map[string]string, storageClassName string) *k8sv1.PersistentVolumeClaim {
+	pvcDef := NewPVCDefinition(pvcName, size, annotations, labels)
+	pvcDef.Spec.StorageClassName = &storageClassName
+	volumeMode := corev1.PersistentVolumeBlock
+	pvcDef.Spec.VolumeMode = &volumeMode
+	return pvcDef
 }
 
 // WaitForPersistentVolumeClaimPhase waits for the PVC to be in a particular phase (Pending, Bound, or Lost)

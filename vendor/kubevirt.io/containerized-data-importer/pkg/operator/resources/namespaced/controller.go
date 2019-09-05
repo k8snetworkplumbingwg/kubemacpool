@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"kubevirt.io/containerized-data-importer/pkg/common"
+	"kubevirt.io/containerized-data-importer/pkg/controller"
+	utils "kubevirt.io/containerized-data-importer/pkg/operator/resources/utils"
 )
 
 const (
@@ -34,9 +36,10 @@ const (
 	privilegedAccountPrefix  = "system:serviceaccount"
 )
 
-func getControllerPrivilegedAccounts(args *FactoryArgs) []string {
-	return []string{
-		fmt.Sprintf("%s:%s:%s", privilegedAccountPrefix, args.Namespace, controllerServiceAccount),
+func getControllerPrivilegedAccounts(args *FactoryArgs) map[string][]string {
+	csa := fmt.Sprintf("%s:%s:%s", privilegedAccountPrefix, args.Namespace, controllerServiceAccount)
+	return map[string][]string{
+		"anyuid": {csa},
 	}
 }
 
@@ -56,12 +59,12 @@ func createControllerResources(args *FactoryArgs) []runtime.Object {
 }
 
 func createControllerServiceAccount() *corev1.ServiceAccount {
-	return createServiceAccount(controllerServiceAccount)
+	return utils.CreateServiceAccount(controllerServiceAccount)
 }
 
 func createControllerDeployment(repo, controllerImage, importerImage, clonerImage, uploadServerImage, tag, verbosity, pullPolicy string) *appsv1.Deployment {
-	deployment := createDeployment("cdi-deployment", "app", "containerized-data-importer", controllerServiceAccount, int32(1))
-	container := createContainer("cdi-controller", repo, controllerImage, tag, verbosity, corev1.PullPolicy(pullPolicy))
+	deployment := utils.CreateDeployment("cdi-deployment", "app", "containerized-data-importer", controllerServiceAccount, int32(1))
+	container := utils.CreateContainer("cdi-controller", repo, controllerImage, tag, verbosity, corev1.PullPolicy(pullPolicy))
 	container.Env = []corev1.EnvVar{
 		{
 			Name:  "IMPORTER_IMAGE",
@@ -78,6 +81,41 @@ func createControllerDeployment(repo, controllerImage, importerImage, clonerImag
 		{
 			Name:  "UPLOADPROXY_SERVICE",
 			Value: uploadProxyResourceName,
+		},
+		{
+			Name:  "PULL_POLICY",
+			Value: pullPolicy,
+		},
+	}
+	container.ReadinessProbe = &corev1.Probe{
+		Handler: corev1.Handler{
+			Exec: &corev1.ExecAction{
+				Command: []string{"cat", "/tmp/ready"},
+			},
+		},
+		InitialDelaySeconds: 2,
+		PeriodSeconds:       5,
+	}
+	container.VolumeMounts = []corev1.VolumeMount{
+		{
+			Name:      "cdi-api-signing-key",
+			MountPath: controller.APIServerPublicKeyDir,
+		},
+	}
+	deployment.Spec.Template.Spec.Volumes = []corev1.Volume{
+		{
+			Name: "cdi-api-signing-key",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "cdi-api-signing-key",
+					Items: []corev1.KeyToPath{
+						{
+							Key:  "id_rsa.pub",
+							Path: "id_rsa.pub",
+						},
+					},
+				},
+			},
 		},
 	}
 	deployment.Spec.Template.Spec.Containers = []corev1.Container{container}
@@ -118,9 +156,13 @@ func createPrometheusService() *corev1.Service {
 
 func createInsecureRegConfigMap() *corev1.ConfigMap {
 	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ConfigMap",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   common.InsecureRegistryConfigMap,
-			Labels: withCommonLabels(nil),
+			Labels: utils.WithCommonLabels(nil),
 		},
 	}
 }

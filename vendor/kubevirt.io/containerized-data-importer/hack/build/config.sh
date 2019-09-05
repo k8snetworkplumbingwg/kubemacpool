@@ -19,15 +19,17 @@ APISERVER="cdi-apiserver"
 UPLOADPROXY="cdi-uploadproxy"
 UPLOADSERVER="cdi-uploadserver"
 OPERATOR="cdi-operator"
+CDI_OLM_CATALOG="cdi-olm-catalog"
 FUNC_TEST_INIT="cdi-func-test-file-host-init"
 FUNC_TEST_HTTP="cdi-func-test-file-host-http"
 FUNC_TEST_REGISTRY="cdi-func-test-registry"
 FUNC_TEST_REGISTRY_POPULATE="cdi-func-test-registry-populate"
 FUNC_TEST_REGISTRY_INIT="cdi-func-test-registry-init"
 
-BINARIES="cmd/${CONTROLLER} cmd/${IMPORTER} cmd/${CLONER} cmd/${APISERVER} cmd/${UPLOADPROXY} cmd/${UPLOADSERVER} cmd/${OPERATOR} tools/${FUNC_TEST_INIT} tools/${FUNC_TEST_REGISTRY_INIT}"
+BINARIES="cmd/${OPERATOR} cmd/${CONTROLLER} cmd/${IMPORTER} cmd/${CLONER} cmd/${APISERVER} cmd/${UPLOADPROXY} cmd/${UPLOADSERVER} cmd/${OPERATOR} tools/${FUNC_TEST_INIT} tools/${FUNC_TEST_REGISTRY_INIT}" 
 CDI_PKGS="cmd/ pkg/ test/"
 
+OPERATOR_MAIN="cmd/${OPERATOR}"
 CONTROLLER_MAIN="cmd/${CONTROLLER}"
 IMPORTER_MAIN="cmd/${IMPORTER}"
 CLONER_MAIN="cmd/${CLONER}"
@@ -35,8 +37,8 @@ APISERVER_MAIN="cmd/${APISERVER}"
 UPLOADPROXY_MAIN="cmd/${UPLOADPROXY}"
 UPLOADSERVER_MAIN="cmd/${UPLOADSERVER}"
 
-DOCKER_IMAGES="cmd/${CONTROLLER} cmd/${IMPORTER} cmd/${CLONER} cmd/${APISERVER} cmd/${UPLOADPROXY} cmd/${UPLOADSERVER} cmd/${OPERATOR} tools/${FUNC_TEST_INIT} tools/${FUNC_TEST_HTTP} tools/${FUNC_TEST_REGISTRY} tools/${FUNC_TEST_REGISTRY_POPULATE} tools/${FUNC_TEST_REGISTRY_INIT}"
-DOCKER_REPO=${DOCKER_REPO:-kubevirt}
+DOCKER_IMAGES="cmd/${OPERATOR} cmd/${CONTROLLER} cmd/${IMPORTER} cmd/${CLONER} cmd/${APISERVER} cmd/${UPLOADPROXY} cmd/${UPLOADSERVER} cmd/${OPERATOR} tools/${FUNC_TEST_INIT} tools/${FUNC_TEST_HTTP} tools/${FUNC_TEST_REGISTRY} tools/${FUNC_TEST_REGISTRY_POPULATE} tools/${FUNC_TEST_REGISTRY_INIT} tools/${CDI_OLM_CATALOG}"
+DOCKER_PREFIX=${DOCKER_PREFIX:-kubevirt}
 CONTROLLER_IMAGE_NAME=${CONTROLLER_IMAGE_NAME:-cdi-controller}
 IMPORTER_IMAGE_NAME=${IMPORTER_IMAGE_NAME:-cdi-importer}
 CLONER_IMAGE_NAME=${CLONER_IMAGE_NAME:-cdi-cloner}
@@ -48,12 +50,12 @@ DOCKER_TAG=${DOCKER_TAG:-latest}
 VERBOSITY=${VERBOSITY:-1}
 PULL_POLICY=${PULL_POLICY:-IfNotPresent}
 NAMESPACE=${NAMESPACE:-cdi}
+CSV_VERSION=${CSV_VERSION:-0.0.0}
+QUAY_REPOSITORY=${QUAY_REPOSITORY:-cdi-operatorhub}
+QUAY_NAMESPACE=${QUAY_NAMESPACE:-kubevirt}
+CDI_LOGO_PATH=${CDI_LOGO_PATH:-"assets/cdi_logo.png"}
 
-KUBERNETES_IMAGE="k8s-1.11.0@sha256:3412f158ecad53543c9b0aa8468db84dd043f01832a66f0db90327b7dc36a8e8"
-OPENSHIFT_IMAGE="os-3.11.0-crio@sha256:3f11a6f437fcdf2d70de4fcc31e0383656f994d0d05f9a83face114ea7254bc0"
-
-
-KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.11.0}
+KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.13.3}
 
 function allPkgs() {
     ret=$(sed "s,kubevirt.io/containerized-data-importer,${CDI_DIR},g" <(go list ./... | grep -v "pkg/client" | sort -u))
@@ -81,15 +83,18 @@ function parseTestOpts() {
     done
 }
 
-function getClusterType() {
-    local image
+function getTestPullPolicy() {
+    local pp
     case "${KUBEVIRT_PROVIDER}" in
-    "k8s-1.11.0")
-        image=$KUBERNETES_IMAGE
+    "k8s-1.13.3")
+        pp=$PULL_POLICY
         ;;
     "os-3.11.0")
-        image=$OPENSHIFT_IMAGE
+        pp=Always
+        ;;
+    "okd-4.1.2")
+        pp=Always
         ;;
     esac
-    echo "$image"
+    echo "$pp"
 }

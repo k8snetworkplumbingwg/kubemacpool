@@ -1,33 +1,59 @@
 package controller
 
 import (
+	"crypto/rsa"
 	"fmt"
+	"strconv"
+	"time"
 
-	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	"k8s.io/api/core/v1"
-	storageV1 "k8s.io/api/storage/v1"
+	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
+	"k8s.io/klog"
+
 	"kubevirt.io/containerized-data-importer/pkg/common"
+	"kubevirt.io/containerized-data-importer/pkg/token"
 )
 
 const (
+	cloneControllerAgentName = "clone-controller"
+
 	//AnnCloneRequest sets our expected annotation for a CloneRequest
 	AnnCloneRequest = "k8s.io/CloneRequest"
 	//AnnCloneOf is used to indicate that cloning was complete
 	AnnCloneOf = "k8s.io/CloneOf"
+	// AnnCloneToken is the annotation containing the clone token
+	AnnCloneToken = "cdi.kubevirt.io/storage.clone.token"
+
 	//CloneUniqueID is used as a special label to be used when we search for the pod
 	CloneUniqueID = "cdi.kubevirt.io/storage.clone.cloneUniqeId"
-	//AnnTargetPodNamespace is being used as a pod label to find the related target PVC
-	AnnTargetPodNamespace = "cdi.kubevirt.io/storage.clone.targetPod.namespace"
+
+	// ErrIncompatiblePVC provides a const to indicate a clone is not possible due to an incompatible PVC
+	ErrIncompatiblePVC = "ErrIncompatiblePVC"
+
+	// APIServerPublicKeyDir is the path to the apiserver public key dir
+	APIServerPublicKeyDir = "/var/run/cdi/apiserver/key"
+
+	// APIServerPublicKeyPath is the path to the apiserver public key
+	APIServerPublicKeyPath = APIServerPublicKeyDir + "/id_rsa.pub"
+
+	cloneFinalizerName = "cdi.kubevirt.io/cloneSource"
+
+	cloneTokenLeeway = 10 * time.Second
 )
 
 // CloneController represents the CDI Clone Controller
 type CloneController struct {
 	Controller
+	recorder       record.EventRecorder
+	tokenValidator token.Validator
 }
 
 // NewCloneController sets up a Clone Controller, and returns a pointer to
@@ -37,165 +63,185 @@ func NewCloneController(client kubernetes.Interface,
 	podInformer coreinformers.PodInformer,
 	image string,
 	pullPolicy string,
-	verbose string) *CloneController {
+	verbose string,
+	apiServerKey *rsa.PublicKey) *CloneController {
+
+	// Create event broadcaster
+	klog.V(3).Info("Creating event broadcaster")
+	eventBroadcaster := record.NewBroadcaster()
+	eventBroadcaster.StartLogging(klog.V(2).Infof)
+	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: client.CoreV1().Events("")})
+	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: cloneControllerAgentName})
+
 	c := &CloneController{
-		Controller: *NewController(client, pvcInformer, podInformer, image, pullPolicy, verbose),
+		Controller:     *NewController(client, pvcInformer, podInformer, image, pullPolicy, verbose),
+		recorder:       recorder,
+		tokenValidator: newCloneTokenValidator(apiServerKey),
 	}
 	return c
 }
 
-func (cc *CloneController) findClonePodsFromCache(pvc *v1.PersistentVolumeClaim) (*v1.Pod, *v1.Pod, error) {
-	var sourcePod, targetPod *v1.Pod
+func newCloneTokenValidator(key *rsa.PublicKey) token.Validator {
+	return token.NewValidator(common.CloneTokenIssuer, key, cloneTokenLeeway)
+}
+
+func (cc *CloneController) findCloneSourcePodFromCache(pvc *v1.PersistentVolumeClaim) (*v1.Pod, error) {
+	var sourcePod *v1.Pod
 	annCloneRequest := pvc.GetAnnotations()[AnnCloneRequest]
 	if annCloneRequest != "" {
 		sourcePvcNamespace, _ := ParseSourcePvcAnnotation(annCloneRequest, "/")
 		if sourcePvcNamespace == "" {
-			return nil, nil, errors.Errorf("Bad CloneRequest Annotation")
+			return nil, errors.Errorf("Bad CloneRequest Annotation")
 		}
 		//find the source pod
-		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CloneUniqueID: pvc.Name + "-source-pod"}})
+		selector, err := metav1.LabelSelectorAsSelector(&metav1.LabelSelector{
+			MatchLabels: map[string]string{
+				CloneUniqueID: string(pvc.GetUID()) + "-source-pod",
+			},
+		})
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		podList, err := cc.podLister.Pods(sourcePvcNamespace).List(selector)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if len(podList) == 0 {
-			return nil, nil, nil
+			return nil, nil
 		} else if len(podList) > 1 {
-			return nil, nil, errors.Errorf("multiple source pods found for clone PVC %s/%s", pvc.Namespace, pvc.Name)
+			return nil, errors.Errorf("multiple source pods found for clone PVC %s/%s", pvc.Namespace, pvc.Name)
 		}
 		sourcePod = podList[0]
-		//find target pod
-		selector, err = metav1.LabelSelectorAsSelector(&metav1.LabelSelector{MatchLabels: map[string]string{CloneUniqueID: pvc.Name + "-target-pod"}})
-		if err != nil {
-			return nil, nil, err
-		}
-		podList, err = cc.podLister.Pods(pvc.Namespace).List(selector)
-		if err != nil {
-			return nil, nil, err
-		}
-		if len(podList) == 0 {
-			return nil, nil, nil
-		} else if len(podList) > 1 {
-			return nil, nil, errors.Errorf("multiple target pods found for clone PVC %s/%s", pvc.Namespace, pvc.Name)
-		}
-		targetPod = podList[0]
 	}
-	return sourcePod, targetPod, nil
+	return sourcePod, nil
 }
 
 // Create the cloning source and target pods based the pvc. The pvc is checked (again) to ensure that we are not already
 // processing this pvc, which would result in multiple pods for the same pvc.
 func (cc *CloneController) processPvcItem(pvc *v1.PersistentVolumeClaim) error {
-	anno := map[string]string{}
-
-	// find cloning source and target Pods
-	sourcePod, targetPod, err := cc.findClonePodsFromCache(pvc)
+	ready, err := cc.waitTargetPodRunningOrSucceeded(pvc)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error unsuring target upload pod running")
+	}
+
+	if !ready {
+		return nil
 	}
 
 	pvcKey, err := cache.MetaNamespaceKeyFunc(pvc)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error getting pvcKey")
 	}
 
-	// Pods must be controlled by this PVC
-	if sourcePod != nil && !metav1.IsControlledBy(sourcePod, pvc) {
-		return errors.Errorf("found pod %s/%s not owned by pvc %s/%s", sourcePod.Namespace, sourcePod.Name, pvc.Namespace, pvc.Name)
-	}
-	if targetPod != nil && !metav1.IsControlledBy(sourcePod, pvc) {
-		return errors.Errorf("found pod %s/%s not owned by pvc %s/%s", targetPod.Namespace, targetPod.Name, pvc.Namespace, pvc.Name)
-	}
-
-	// expectations prevent us from creating multiple pods. An expectation forces
-	// us to observe a pod's creation in the cache.
-	needsSync := cc.podExpectations.SatisfiedExpectations(pvcKey)
-
-	// make sure not to reprocess a PVC that has already completed successfully,
-	// even if the pod no longer exists
-	phase, exists := pvc.ObjectMeta.Annotations[AnnPodPhase]
-	if exists && (phase == string(v1.PodSucceeded)) {
-		needsSync = false
-	}
-
-	if needsSync && (sourcePod == nil || targetPod == nil) {
-		err := cc.initializeExpectations(pvcKey)
-		if err != nil {
-			return err
-		}
-		//create random string to be used for pod labeling and hostpath name
-		if sourcePod == nil {
-			cr, err := getCloneRequestPVC(pvc)
-			if err != nil {
-				return err
-			}
-			// all checks passed, let's create the cloner pods!
-			cc.raisePodCreate(pvcKey)
-			//create the source pod
-			sourcePod, err = CreateCloneSourcePod(cc.clientset, cc.image, cc.pullPolicy, cr, pvc)
-			if err != nil {
-				cc.observePodCreate(pvcKey)
-				return err
-			}
-		}
-		if targetPod == nil {
-			cc.raisePodCreate(pvcKey)
-			//create the target pod
-			targetPod, err = CreateCloneTargetPod(cc.clientset, cc.image, cc.pullPolicy, pvc, sourcePod.ObjectMeta.Namespace)
-			if err != nil {
-				cc.observePodCreate(pvcKey)
-				return err
-			}
-		}
+	// source pod not seen yet
+	if !cc.podExpectations.SatisfiedExpectations(pvcKey) {
 		return nil
 	}
 
-	// update pvc with cloner pod name and optional cdi label
-	//we update the target PVC according to the target pod. Only the target pods indicates the real status of the cloning.
-	anno[AnnPodPhase] = string(targetPod.Status.Phase)
-	//add the following annotation only if the pod pahse is succeeded, meaning job is completed
-	if phase == string(v1.PodSucceeded) {
-		anno[AnnCloneOf] = "true"
-	}
-	var lab map[string]string
-	if !checkIfLabelExists(pvc, common.CDILabelKey, common.CDILabelValue) {
-		lab = map[string]string{common.CDILabelKey: common.CDILabelValue}
-	}
-	pvc, err = updatePVC(cc.clientset, pvc, anno, lab)
+	sourcePod, err := cc.findCloneSourcePodFromCache(pvc)
 	if err != nil {
-		return errors.WithMessage(err, "could not update pvc %q annotation and/or label")
-	} else if pvc.Annotations[AnnCloneOf] == "true" {
-		cc.deleteClonePods(sourcePod.Namespace, sourcePod.Name, targetPod.Name)
+		return errors.Wrap(err, "error getting clone source pod")
 	}
+
+	if sourcePod == nil {
+		if err = cc.validateSourceAndTarget(pvc); err != nil {
+			return errors.Wrap(err, "error validating pvc before creating source")
+		}
+
+		crann, err := getCloneRequestPVCAnnotation(pvc)
+		if err != nil {
+			return errors.Wrap(err, "error getting clone request annotation")
+		}
+
+		pvc, err = cc.addFinalizer(pvc)
+		if err != nil {
+			return errors.Wrap(err, "error adding finalizer")
+		}
+
+		cc.raisePodCreate(pvcKey)
+		pod, err := CreateCloneSourcePod(cc.clientset, cc.image, cc.pullPolicy, crann, pvc)
+		if err != nil {
+			cc.observePodCreate(pvcKey)
+			return errors.Wrap(err, "error creating clone source pod")
+		}
+
+		klog.V(3).Infof("Created pod %s/%s", pod.Namespace, pod.Name)
+	}
+
+	klog.V(3).Infof("Pod phase for PVC %s/%s is %s", pvc.Namespace, pvc.Name, pvc.Annotations[AnnPodPhase])
+
+	if podSucceededFromPVC(pvc) && pvc.Annotations[AnnCloneOf] != "true" {
+		klog.V(1).Infof("Adding CloneOf annotation to PVC %s/%s", pvc.Namespace, pvc.Name)
+		pvc.Annotations[AnnCloneOf] = "true"
+
+		_, err := cc.clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(pvc)
+		if err != nil {
+			return errors.Wrap(err, "error updating pvc")
+		}
+	}
+
 	return nil
 }
 
-func (cc *CloneController) deleteClonePods(namespace, srcName, tgtName string) {
-	srcReq := podDeleteRequest{
-		namespace: namespace,
-		podName:   srcName,
-		podLister: cc.Controller.podLister,
-		k8sClient: cc.Controller.clientset,
+func (cc *CloneController) waitTargetPodRunningOrSucceeded(pvc *v1.PersistentVolumeClaim) (bool, error) {
+	rs, ok := pvc.Annotations[AnnPodReady]
+	if !ok {
+		klog.V(3).Infof("clone target pod for %s/%s not ready", pvc.Namespace, pvc.Name)
+		return false, nil
 	}
-	tgtReq := podDeleteRequest{
-		namespace: namespace,
-		podName:   tgtName,
-		podLister: cc.Controller.podLister,
-		k8sClient: cc.Controller.clientset,
+
+	ready, err := strconv.ParseBool(rs)
+	if err != nil {
+		return false, errors.Wrapf(err, "error parsing %s annotation", AnnPodReady)
 	}
-	deletePod(srcReq)
-	deletePod(tgtReq)
+
+	if !ready {
+		klog.V(3).Infof("clone target pod for %s/%s not ready", pvc.Namespace, pvc.Name)
+		return podSucceededFromPVC(pvc), nil
+	}
+
+	return true, nil
 }
 
-func (c *Controller) initializeExpectations(pvcKey string) error {
-	return c.podExpectations.SetExpectations(pvcKey, 0, 0)
+func (cc *CloneController) addFinalizer(pvc *v1.PersistentVolumeClaim) (*v1.PersistentVolumeClaim, error) {
+	if hasFinalizer(pvc, cloneFinalizerName) {
+		return pvc, nil
+	}
+
+	cpy := pvc.DeepCopy()
+	cpy.Finalizers = append(cpy.Finalizers, cloneFinalizerName)
+	cpy, err := cc.clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(cpy)
+	if err != nil {
+		return pvc, errors.Wrap(err, "error updating PVC")
+	}
+
+	return cpy, nil
+}
+
+func (cc *CloneController) removeFinalizer(pvc *v1.PersistentVolumeClaim) (*v1.PersistentVolumeClaim, error) {
+	if !hasFinalizer(pvc, cloneFinalizerName) {
+		return pvc, nil
+	}
+
+	var finalizers []string
+	for _, f := range pvc.Finalizers {
+		if f != cloneFinalizerName {
+			finalizers = append(finalizers, f)
+		}
+	}
+
+	cpy := pvc.DeepCopy()
+	cpy.Finalizers = finalizers
+	cpy, err := cc.clientset.CoreV1().PersistentVolumeClaims(pvc.Namespace).Update(cpy)
+	if err != nil {
+		return pvc, errors.Wrap(err, "error updating PVC")
+	}
+
+	return cpy, nil
 }
 
 func (c *Controller) raisePodCreate(pvcKey string) {
-	c.podExpectations.RaiseExpectations(pvcKey, 1, 0)
+	c.podExpectations.ExpectCreations(pvcKey, 1)
 }
 
 // Select only pvcs with the 'CloneRequest' annotation and that are not being processed.
@@ -212,7 +258,7 @@ func (cc *CloneController) ProcessNextPvcItem() bool {
 
 	err := cc.syncPvc(key.(string))
 	if err != nil { // processPvcItem errors may not have been logged so log here
-		glog.Errorf("error processing pvc %q: %v", key, err)
+		klog.Errorf("error processing pvc %q: %v", key, err)
 		return true
 	}
 	return cc.forgetKey(key, fmt.Sprintf("ProcessNextPvcItem: processing pvc %q completed", key))
@@ -221,51 +267,67 @@ func (cc *CloneController) ProcessNextPvcItem() bool {
 func (cc *CloneController) syncPvc(key string) error {
 	pvc, exists, err := cc.pvcFromKey(key)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "error getting PVC")
 	} else if !exists {
-		cc.podExpectations.DeleteExpectations(key)
-	}
-
-	if pvc == nil {
-		return nil
-	}
-	//check if AnnoCloneRequest annotation exists
-	if !checkPVC(pvc, AnnCloneRequest) {
 		return nil
 	}
 
-	pvcPhase := pvc.Status.Phase
-	glog.V(3).Infof("PVC phase for PVC \"%s/%s\" is %s", pvc.Namespace, pvc.Name, pvcPhase)
-	if pvc.Spec.StorageClassName != nil {
-		storageClassName := *pvc.Spec.StorageClassName
-		glog.V(3).Infof("storageClassName used by PVC \"%s/%s\" is \"%s\"", pvc.Namespace, pvc.Name, storageClassName)
-		storageclass, err := cc.clientset.StorageV1().StorageClasses().Get(storageClassName, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
+	if !checkPVC(pvc, AnnCloneRequest) || metav1.HasAnnotation(pvc.ObjectMeta, AnnCloneOf) {
+		cc.cleanup(key, pvc)
+		return nil
+	}
 
-		//Do not schedule the clone pods unless the target PVC is either Bound or Pending/WaitFirstConsumer.
-		if !(pvcPhase == v1.ClaimBound || (pvcPhase == v1.ClaimPending && *storageclass.VolumeBindingMode == storageV1.VolumeBindingWaitForFirstConsumer)) {
-			glog.V(3).Infof("PVC \"%s/%s\" is either not bound or is in pending phase and VolumeBindingMode is not VolumeBindingWaitForFirstConsumer."+
-				" Ignoring this PVC.", pvc.Namespace, pvc.Name)
-			glog.V(3).Infof("PVC phase is %s", pvcPhase)
-			glog.V(3).Infof("VolumeBindingMode is %s", *storageclass.VolumeBindingMode)
+	klog.V(3).Infof("ProcessNextPvcItem: next pvc to process: \"%s/%s\"\n", pvc.Namespace, pvc.Name)
+	return cc.processPvcItem(pvc)
+}
+
+func (cc *CloneController) cleanup(key string, pvc *v1.PersistentVolumeClaim) error {
+	klog.V(3).Infof("Cleaning up for PVC %s/%s", pvc.Namespace, pvc.Name)
+
+	pod, err := cc.findCloneSourcePodFromCache(pvc)
+	if err != nil {
+		return errors.Wrap(err, "error getting clone source pod")
+	}
+
+	if pod != nil && pod.DeletionTimestamp == nil {
+		if podSucceededFromPVC(pvc) && pod.Status.Phase == v1.PodRunning {
+			klog.V(3).Infof("Clone succeeded, waiting for source pod %s/%s to stop running", pod.Namespace, pod.Name)
 			return nil
 		}
+
+		if err = cc.clientset.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return errors.Wrap(err, "error deleting clone source pod")
+			}
+		}
 	}
 
-	//checking for CloneOf annotation indicating that the clone was already taken care of by the provisioner (smart clone).
-	if metav1.HasAnnotation(pvc.ObjectMeta, AnnCloneOf) {
-		glog.V(3).Infof("pvc annotation %q exists indicating cloning completed, skipping pvc \"%s/%s\"\n", AnnCloneOf, pvc.Namespace, pvc.Name)
-		return nil
+	_, err = cc.removeFinalizer(pvc)
+	if err != nil {
+		return errors.Wrap(err, "error removing finalizer")
 	}
-	glog.V(3).Infof("ProcessNextPvcItem: next pvc to process: \"%s/%s\"\n", pvc.Namespace, pvc.Name)
-	return cc.processPvcItem(pvc)
+
+	cc.podExpectations.DeleteExpectations(key)
+
+	return nil
+}
+
+func (cc *CloneController) validateSourceAndTarget(targetPvc *v1.PersistentVolumeClaim) error {
+	sourcePvc, err := getCloneRequestSourcePVC(targetPvc, cc.Controller.pvcLister)
+	if err != nil {
+		return err
+	}
+
+	if err = validateCloneToken(cc.tokenValidator, sourcePvc, targetPvc); err != nil {
+		return err
+	}
+
+	return ValidateCanCloneSourceAndTargetSpec(&sourcePvc.Spec, &targetPvc.Spec)
 }
 
 //Run is being called from cdi-controller (cmd)
 func (cc *CloneController) Run(threadiness int, stopCh <-chan struct{}) error {
-	cc.Controller.run(threadiness, stopCh, cc)
+	cc.Controller.run(threadiness, stopCh, cc.runPVCWorkers)
 	return nil
 }
 

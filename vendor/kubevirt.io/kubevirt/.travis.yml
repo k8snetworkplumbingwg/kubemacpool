@@ -11,16 +11,18 @@ install:
 script:
 - export KUBEVIRT_UPDATE_CACHE_FROM="${TRAVIS_BRANCH}"
 - export KUBEVIRT_CACHE_FROM="${TRAVIS_BRANCH}"
-- if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]]; then make pull-cache; fi # only use the cache in PRs, rebuild otherwise
+- if [[ "${TRAVIS_PULL_REQUEST}" != "false" ]]; then make builder-cache-pull; fi # only use the cache in PRs, rebuild otherwise
 - make generate
 - if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run
   `make generate`. Please run it and commit the changes"; git status --porcelain; false; fi
 - if diff <(git grep -c '') <(git grep -cI '') | egrep -v -e 'docs/.*\.png|swagger-ui' -e 'vendor/*' -e 'assets/*'
   | grep '^<'; then echo "Binary files are present in git repostory."; false; fi
-- make build
+- make
 - if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run
   `make`. Please run it and commit the changes"; git status --porcelain; false; fi
+- make build-verify # verify that we set version on the packages built by bazel
 - if [[ $TRAVIS_REPO_SLUG == "kubevirt/kubevirt" ]]; then make goveralls; else make bazel-tests; fi
+- make build-verify # verify that we set version on the packages built by go(goveralls depends on go-build target)
 - make apidocs
 - make client-python
 - make manifests DOCKER_PREFIX="docker.io/kubevirt" DOCKER_TAG=$TRAVIS_TAG # skip getting old CSVs here (no QUAY_REPOSITORY), verification might fail because of stricter rules over time; falls back to latest if not on a tag
@@ -33,7 +35,12 @@ deploy:
   on:
     branch: master
 - provider: script
-  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" && KUBEVIRT_UPDATE_CACHE_FROM="${TRAVIS_BRANCH}" make push-cache
+  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" && DOCKER_PREFIX="index.docker.io/kubevirt" DOCKER_TAG="latest" make functest-image-push
+  skip_cleanup: true
+  on:
+    branch: master
+- provider: script
+  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" && KUBEVIRT_UPDATE_CACHE_FROM="${TRAVIS_BRANCH}" make builder-cache-push
   skip_cleanup: true
   on:
     tags: false
@@ -42,7 +49,7 @@ deploy:
 - provider: script
   script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" && DOCKER_PREFIX="index.docker.io/kubevirt"
     DOCKER_TAG="$TRAVIS_TAG" QUAY_REPOSITORY="kubevirt" PACKAGE_NAME="kubevirt-operatorhub"
-    sh -c 'make bazel-push-images && make manifests && make olm-push'
+    sh -c 'make bazel-push-images && make manifests'
   skip_cleanup: true
   file:
   on:
@@ -62,7 +69,7 @@ deploy:
   - _out/templates/manifests/release/kubevirt-operator.yaml.j2
   - _out/templates/manifests/release/kubevirt-cr.yaml.j2
   - _out/manifests/release/olm/kubevirt-operatorsource.yaml
-  - _out/manifests/release/olm/bundle/kubevirtoperator.*.csv.yaml
+  - _out/manifests/release/olm/bundle/kubevirtoperator.$TRAVIS_TAG.clusterserviceversion.yaml
   prerelease: true
   overwrite: true
   name: $TRAVIS_TAG
@@ -84,6 +91,22 @@ deploy:
   script: bash hack/gen-client-python/deploy.sh
   on:
     branch: master
+- provider: script
+  skip_cleanup: true
+  script: hack/publish-staging.sh
+  on:
+    tags: true
+- provider: script
+  skip_cleanup: true
+  script: hack/publish-staging.sh
+  on:
+    branch: master
+- provider: script
+  script: DOCKER_TAG="$TRAVIS_TAG" QUAY_REPOSITORY="kubevirt" PACKAGE_NAME="kubevirt-operatorhub" make olm-push
+  skip_cleanup: true
+  file:
+  on:
+    tags: true
 
 env:
   global:

@@ -13,6 +13,7 @@ required = [
     "sigs.k8s.io/controller-runtime/pkg/runtime/signals",
     "sigs.k8s.io/controller-runtime/pkg/source",
     "sigs.k8s.io/testing_frameworks/integration", # for integration testing
+    "kubevirt.io/kubevirt",
 ]
 
 [prune]
@@ -36,7 +37,14 @@ version="v1.4.7"
   name = "github.com/intel/multus-cni"
   branch = "master"
 
+[[override]]
+  name = "kubevirt.io/kubevirt"
+  version = "=v0.20.4"
+
 [[constraint]]
-  name= "kubevirt.io/kubevirt"
-  source = "https://github.com/kubevirt/kubevirt.git"
-  version = "v0.17.0"
+  name = "kubevirt.io/client-go"
+  version = "=v0.20.4"
+
+[[override]]
+  name = "kubevirt.io/containerized-data-importer"
+  version = "=v1.10.1"

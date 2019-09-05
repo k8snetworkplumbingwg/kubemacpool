@@ -29,9 +29,9 @@ import (
 
 	"github.com/vishvananda/netlink"
 
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
-	"kubevirt.io/kubevirt/pkg/log"
-	"kubevirt.io/kubevirt/pkg/precond"
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/log"
+	"kubevirt.io/client-go/precond"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
 
@@ -516,7 +516,13 @@ func (p *MasqueradePodInterface) createBridge() error {
 }
 
 func (p *MasqueradePodInterface) createNatRules() error {
+	if Handler.UseIptables() {
+		return p.createNatRulesUsingIptables()
+	}
+	return p.createNatRulesUsingNftables()
+}
 
+func (p *MasqueradePodInterface) createNatRulesUsingIptables() error {
 	err := Handler.IptablesNewChain("nat", "KUBEVIRT_PREINBOUND")
 	if err != nil {
 		return err
@@ -539,6 +545,15 @@ func (p *MasqueradePodInterface) createNatRules() error {
 
 	err = Handler.IptablesAppendRule("nat", "POSTROUTING", "-o", p.bridgeInterfaceName, "-j", "KUBEVIRT_POSTINBOUND")
 	if err != nil {
+		return err
+	}
+
+	if len(p.iface.Ports) == 0 {
+		err = Handler.IptablesAppendRule("nat", "KUBEVIRT_PREINBOUND",
+			"-j",
+			"DNAT",
+			"--to-destination", p.vif.IP.IP.String())
+
 		return err
 	}
 
@@ -584,7 +599,83 @@ func (p *MasqueradePodInterface) createNatRules() error {
 			return err
 		}
 	}
-	return err
+
+	return nil
+}
+
+func (p *MasqueradePodInterface) createNatRulesUsingNftables() error {
+	err := Handler.NftablesLoad("ipv4-nat")
+	if err != nil {
+		return err
+	}
+
+	err = Handler.NftablesNewChain("nat", "KUBEVIRT_PREINBOUND")
+	if err != nil {
+		return err
+	}
+
+	err = Handler.NftablesNewChain("nat", "KUBEVIRT_POSTINBOUND")
+	if err != nil {
+		return err
+	}
+
+	err = Handler.NftablesAppendRule("nat", "postrouting", "ip", "saddr", p.vif.IP.IP.String(), "counter", "masquerade")
+	if err != nil {
+		return err
+	}
+
+	err = Handler.NftablesAppendRule("nat", "prerouting", "iifname", p.podInterfaceName, "counter", "jump", "KUBEVIRT_PREINBOUND")
+	if err != nil {
+		return err
+	}
+
+	err = Handler.NftablesAppendRule("nat", "postrouting", "oifname", p.bridgeInterfaceName, "counter", "jump", "KUBEVIRT_POSTINBOUND")
+	if err != nil {
+		return err
+	}
+
+	if len(p.iface.Ports) == 0 {
+		err = Handler.NftablesAppendRule("nat", "KUBEVIRT_PREINBOUND",
+			"counter", "dnat", "to", p.vif.IP.IP.String())
+
+		return err
+	}
+
+	for _, port := range p.iface.Ports {
+		if port.Protocol == "" {
+			port.Protocol = "tcp"
+		}
+
+		err = Handler.NftablesAppendRule("nat", "KUBEVIRT_POSTINBOUND",
+			strings.ToLower(port.Protocol),
+			"dport",
+			strconv.Itoa(int(port.Port)),
+			"counter", "snat", "to", p.gatewayAddr.IP.String())
+		if err != nil {
+			return err
+		}
+
+		err = Handler.NftablesAppendRule("nat", "KUBEVIRT_PREINBOUND",
+			strings.ToLower(port.Protocol),
+			"dport",
+			strconv.Itoa(int(port.Port)),
+			"counter", "dnat", "to", p.vif.IP.IP.String())
+		if err != nil {
+			return err
+		}
+
+		err = Handler.NftablesAppendRule("nat", "output",
+			"ip", "daddr", "127.0.0.1",
+			strings.ToLower(port.Protocol),
+			"dport",
+			strconv.Itoa(int(port.Port)),
+			"counter", "dnat", "to", p.vif.IP.IP.String())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type SlirpPodInterface struct {

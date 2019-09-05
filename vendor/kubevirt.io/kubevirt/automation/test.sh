@@ -31,6 +31,7 @@ set -ex
 export WORKSPACE="${WORKSPACE:-$PWD}"
 readonly ARTIFACTS_PATH="${ARTIFACTS-$WORKSPACE/exported-artifacts}"
 readonly TEMPLATES_SERVER="https://templates.ovirt.org/kubevirt/"
+readonly BAZEL_CACHE="${BAZEL_CACHE:-http://bazel-cache.kubevirt-prow.svc.cluster.local:8080/kubevirt.io/kubevirt}"
 
 if [[ $TARGET =~ windows.* ]]; then
   export KUBEVIRT_PROVIDER="k8s-1.11.0"
@@ -38,7 +39,7 @@ else
   export KUBEVIRT_PROVIDER=$TARGET
 fi
 
-if [ ! -d "cluster/$KUBEVIRT_PROVIDER" ]; then
+if [ ! -d "cluster-up/cluster/$KUBEVIRT_PROVIDER" ]; then
   echo "The cluster provider $KUBEVIRT_PROVIDER does not exist"
   exit 1
 fi
@@ -51,7 +52,11 @@ if [[ $TARGET =~ os-.* ]]; then
   export KUBEVIRT_MEMORY_SIZE=6144M
 fi
 
-export KUBEVIRT_NUM_NODES=2
+if [[ "$TARGET" =~ .*sriov.* ]]; then
+  export KUBEVIRT_NUM_NODES=1 # to be sure the guest lands on the master node
+else
+  export KUBEVIRT_NUM_NODES=2 
+fi
 export RHEL_NFS_DIR=${RHEL_NFS_DIR:-/var/lib/stdci/shared/kubevirt-images/rhel7}
 export RHEL_LOCK_PATH=${RHEL_LOCK_PATH:-/var/lib/stdci/shared/download_rhel_image.lock}
 export WINDOWS_NFS_DIR=${WINDOWS_NFS_DIR:-/var/lib/stdci/shared/kubevirt-images/windows2016}
@@ -114,7 +119,7 @@ safe_download() (
     fi
 )
 
-if [[ $TARGET =~ os-.* ]]; then
+if [[ $TARGET =~ os-.* ]] || [[ $TARGET =~ okd-.* ]]; then
     # Create images directory
     if [[ ! -d $RHEL_NFS_DIR ]]; then
         mkdir -p $RHEL_NFS_DIR
@@ -138,7 +143,7 @@ if [[ $TARGET =~ windows.* ]]; then
   safe_download "$WINDOWS_LOCK_PATH" "$win_image_url" "$win_image" || exit 1
 fi
 
-kubectl() { cluster/kubectl.sh "$@"; }
+kubectl() { cluster-up/kubectl.sh "$@"; }
 
 export NAMESPACE="${NAMESPACE:-kubevirt}"
 
@@ -147,9 +152,9 @@ trap '{ make cluster-down; }' EXIT SIGINT SIGTERM SIGSTOP
 
 
 # Check if we are on a pull request in jenkins.
-export KUBEVIRT_CACHE_FROM=${ghprbTargetBranch}
+export KUBEVIRT_CACHE_FROM=${PULL_BASE_REF}
 if [ -n "${KUBEVIRT_CACHE_FROM}" ]; then
-    make pull-cache
+    make builder-cache-pull
 fi
 
 make cluster-down
@@ -158,7 +163,8 @@ make cluster-down
 cat >.bazelrc <<EOF
 startup --host_jvm_args=-Dbazel.DigestFunction=sha256
 build --remote_local_fallback
-build --remote_http_cache=http://bazel-cache.kubevirt-prow.svc.cluster.local:8080/kubevirt.io/kubevirt
+build --remote_http_cache=${BAZEL_CACHE}
+build --jobs=4
 EOF
 
 # build all images with the basic repeat logic
@@ -190,7 +196,14 @@ set -e
 echo "Nodes are ready:"
 kubectl get nodes
 
-make cluster-sync
+make cluster-build
+
+# I do not have good indication that OKD API server ready to serve requests, so I will just
+# repeat cluster-deploy until it succeeds
+until make cluster-deploy; do
+    sleep 1
+done
+
 hack/dockerized bazel shutdown
 
 # OpenShift is running important containers under default namespace
@@ -263,8 +276,10 @@ elif [[ $TARGET =~ multus.* ]]; then
   ginko_params="$ginko_params --ginkgo.focus=Multus|Networking|VMIlifecycle|Expose"
 elif [[ $TARGET =~ genie.* ]]; then
   ginko_params="$ginko_params --ginkgo.focus=Genie|Networking|VMIlifecycle|Expose"
+elif [[ $TARGET =~ sriov.* ]]; then
+  ginko_params="$ginko_params --ginkgo.focus=SRIOV" 
 else
-  ginko_params="$ginko_params --ginkgo.skip=Multus|Genie"
+  ginko_params="$ginko_params --ginkgo.skip=Multus|Genie|SRIOV"
 fi
 
 # Prepare RHEL PV for Template testing

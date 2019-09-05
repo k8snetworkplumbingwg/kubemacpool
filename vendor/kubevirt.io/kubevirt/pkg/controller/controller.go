@@ -32,9 +32,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
+	v1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/log"
 	cdiv1 "kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1"
-	v1 "kubevirt.io/kubevirt/pkg/api/v1"
-	"kubevirt.io/kubevirt/pkg/log"
 )
 
 const (
@@ -161,4 +161,32 @@ func RemoveFinalizer(object metav1.Object, finalizer string) {
 		}
 	}
 	object.SetFinalizers(filtered)
+}
+
+func ObservedLatestApiVersionAnnotation(object metav1.Object) bool {
+	annotations := object.GetAnnotations()
+	if annotations == nil {
+		return false
+	}
+
+	version, ok := annotations[v1.ControllerAPILatestVersionObservedAnnotation]
+	if !ok || version != v1.ApiLatestVersion {
+		return false
+	}
+	version, ok = annotations[v1.ControllerAPIStorageVersionObservedAnnotation]
+	if !ok || version != v1.ApiStorageVersion {
+		return false
+	}
+	return true
+}
+
+func SetLatestApiVersionAnnotation(object metav1.Object) {
+	annotations := object.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	annotations[v1.ControllerAPILatestVersionObservedAnnotation] = v1.ApiLatestVersion
+	annotations[v1.ControllerAPIStorageVersionObservedAnnotation] = v1.ApiStorageVersion
+	object.SetAnnotations(annotations)
 }

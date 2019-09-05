@@ -6,8 +6,8 @@ import (
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"kubevirt.io/kubevirt/pkg/kubecli"
-	"kubevirt.io/kubevirt/pkg/version"
+	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/client-go/version"
 	"kubevirt.io/kubevirt/pkg/virtctl/templates"
 )
 
@@ -31,7 +31,7 @@ func VersionCommand(clientConfig clientcmd.ClientConfig) *cobra.Command {
 
 func usage() string {
 	usage := "  # Print the client and server versions for the current context:\n"
-	usage += "  virtctl version"
+	usage += "  {{ProgramName}} version"
 	return usage
 }
 

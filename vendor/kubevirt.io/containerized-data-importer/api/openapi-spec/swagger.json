@@ -30,12 +30,6 @@
       },
       "404": {
        "description": "Not Found"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.APIGroupList"
-       }
       }
      }
     }
@@ -56,12 +50,6 @@
       },
       "404": {
        "description": "Not Found"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.APIGroup"
-       }
       }
      }
     }
@@ -82,12 +70,6 @@
       },
       "404": {
        "description": "Not Found"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.APIResourceList"
-       }
       }
      }
     }
@@ -160,12 +142,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDIList"
-       }
       }
      }
     }
@@ -238,12 +214,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolumeList"
-       }
       }
      }
     }
@@ -324,12 +294,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDIList"
-       }
       }
      }
     },
@@ -383,12 +347,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDI"
-       }
       }
      }
     },
@@ -458,12 +416,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.Status"
-       }
       }
      }
     }
@@ -516,12 +468,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDI"
-       }
       }
      }
     },
@@ -577,12 +523,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDI"
-       }
       }
      }
     },
@@ -650,12 +590,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.Status"
-       }
       }
      }
     },
@@ -704,12 +638,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.CDI"
-       }
       }
      }
     }
@@ -790,12 +718,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolumeList"
-       }
       }
      }
     },
@@ -849,12 +771,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolume"
-       }
       }
      }
     },
@@ -924,12 +840,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.Status"
-       }
       }
      }
     }
@@ -982,12 +892,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolume"
-       }
       }
      }
     },
@@ -1043,12 +947,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolume"
-       }
       }
      }
     },
@@ -1116,12 +1014,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.Status"
-       }
       }
      }
     },
@@ -1170,12 +1062,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.DataVolume"
-       }
       }
      }
     }
@@ -1246,12 +1132,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.WatchEvent"
-       }
       }
      }
     }
@@ -1322,12 +1202,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.WatchEvent"
-       }
       }
      }
     }
@@ -1406,12 +1280,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.WatchEvent"
-       }
       }
      }
     }
@@ -1490,12 +1358,6 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.WatchEvent"
-       }
       }
      }
     }
@@ -1516,12 +1378,6 @@
       },
       "404": {
        "description": "Not Found"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.APIGroup"
-       }
       }
      }
     }
@@ -1542,12 +1398,6 @@
       },
       "404": {
        "description": "Not Found"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1.APIResourceList"
-       }
       }
      }
     }
@@ -1601,12 +1451,16 @@
       },
       "401": {
        "description": "Unauthorized"
-      },
-      "default": {
-       "description": "OK",
-       "schema": {
-        "$ref": "#/definitions/v1alpha1.UploadTokenRequest"
-       }
+      }
+     }
+    }
+   },
+   "/healthz": {
+    "get": {
+     "operationId": "healthzHandler",
+     "responses": {
+      "200": {
+       "description": "OK"
       }
      }
     }
@@ -2073,7 +1927,7 @@
     }
    },
    "v1.OwnerReference": {
-    "description": "OwnerReference contains enough information to let you identify an owning object. Currently, an owning object must be in the same namespace, so there is no namespace field.",
+    "description": "OwnerReference contains enough information to let you identify an owning object. An owning object must be in the same namespace as the dependent, or be cluster-scoped, so there is no namespace field.",
     "required": [
      "apiVersion",
      "kind",
@@ -2141,7 +1995,7 @@
       "type": "string"
      },
      "volumeMode": {
-      "description": "volumeMode defines what type of volume is required by the claim. Value of Filesystem is implied when not included in claim spec. This is an alpha feature and may change in the future.",
+      "description": "volumeMode defines what type of volume is required by the claim. Value of Filesystem is implied when not included in claim spec. This is a beta feature.",
       "$ref": "#/definitions/v1.PersistentVolumeMode"
      },
      "volumeName": {
@@ -2175,6 +2029,21 @@
       "type": "object",
       "additionalProperties": {
        "$ref": "#/definitions/resource.Quantity"
+      }
+     }
+    }
+   },
+   "v1.RootPaths": {
+    "description": "RootPaths lists the paths available at root. For example: \"/healthz\", \"/apis\".",
+    "required": [
+     "paths"
+    ],
+    "properties": {
+     "paths": {
+      "description": "paths are the paths available at root.",
+      "type": "array",
+      "items": {
+       "type": "string"
       }
      }
     }
@@ -2411,6 +2280,12 @@
     "properties": {
      "imagePullPolicy": {
       "type": "string"
+     },
+     "imageRegistry": {
+      "type": "string"
+     },
+     "imageTag": {
+      "type": "string"
      }
     }
    },
@@ -2602,6 +2477,9 @@
     "properties": {
      "phase": {
       "description": "Phase is the current phase of the data volume",
+      "type": "string"
+     },
+     "progress": {
       "type": "string"
      }
     }

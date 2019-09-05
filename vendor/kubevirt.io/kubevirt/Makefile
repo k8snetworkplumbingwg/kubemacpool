@@ -18,7 +18,7 @@ bazel-build-images:
 	hack/dockerized "DOCKER_PREFIX=${DOCKER_PREFIX} DOCKER_TAG=${DOCKER_TAG} DOCKER_TAG_ALT=${DOCKER_TAG_ALT} ./hack/bazel-build-images.sh"
 
 bazel-push-images:
-	hack/dockerized "hack/bazel-fmt.sh && DOCKER_PREFIX=${DOCKER_PREFIX} DOCKER_TAG=${DOCKER_TAG} DOCKER_TAG_ALT=${DOCKER_TAG_ALT} ./hack/bazel-push-images.sh"
+	hack/dockerized "hack/bazel-fmt.sh && DOCKER_PREFIX=${DOCKER_PREFIX} DOCKER_TAG=${DOCKER_TAG} DOCKER_TAG_ALT=${DOCKER_TAG_ALT} PUSH_LOG_FILE=${PUSH_LOG_FILE} KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER} ./hack/bazel-push-images.sh"
 
 push: bazel-push-images
 
@@ -35,8 +35,8 @@ generate:
 apidocs:
 	hack/dockerized "./hack/generate.sh && ./hack/gen-swagger-doc/gen-swagger-docs.sh v1 html"
 
-client-python:
-	hack/dockerized "./hack/generate.sh && TRAVIS_TAG=${TRAVIS_TAG} ./hack/gen-client-python/generate.sh"
+client-python: generate
+	hack/dockerized "TRAVIS_TAG=${TRAVIS_TAG} ./hack/gen-client-python/generate.sh"
 
 go-build:
 	hack/dockerized "KUBEVIRT_VERSION=${KUBEVIRT_VERSION} ./hack/build-go.sh install ${WHAT}" && ./hack/build-copy-artifacts.sh ${WHAT}
@@ -56,43 +56,37 @@ functest:
 	hack/dockerized "hack/build-func-tests.sh"
 	hack/functests.sh
 
+functest-image-build:
+	hack/func-tests-image.sh build
+
+functest-image-push: functest-image-build
+	hack/func-tests-image.sh push
+
 clean:
 	hack/dockerized "./hack/build-go.sh clean ${WHAT} && rm _out/* -rf"
 	hack/dockerized "bazel clean --expunge"
 	rm -f tools/openapispec/openapispec tools/resource-generator/resource-generator tools/manifest-templator/manifest-templator tools/vms-generator/vms-generator tools/marketplace/marketplace
 
 distclean: clean
-	hack/dockerized "rm -rf vendor/ && rm -f .glide.*.hash && glide cc"
+	hack/dockerized "rm -rf vendor/ && rm -f go.sum && GO111MODULE=on go clean -modcache"
 	rm -rf vendor/
 
-deps-install:
-	SYNC_VENDOR=true hack/dockerized "glide install --strip-vendor && hack/dep-prune.sh && ./hack/bazel-generate.sh"
-
 deps-update:
-	SYNC_VENDOR=true hack/dockerized "glide cc && glide update --strip-vendor && hack/dep-prune.sh && ./hack/bazel-generate.sh"
+	SYNC_VENDOR=true hack/dockerized " ./hack/dep-update.sh && ./hack/dep-prune.sh && ./hack/bazel-generate.sh"
 
-check:
-	hack/dockerized "./hack/check.sh"
+builder-cache-push:
+	hack/builder-cache.sh push
 
-docker: build
-	hack/build-docker.sh build ${WHAT}
+builder-cache-pull:
+	hack/builder-cache.sh pull
 
-push-cache: docker verify-build
-	hack/build-docker.sh push-cache ${WHAT}
-
-pull-cache:
-	hack/build-docker.sh pull-cache ${WHAT}
-
-publish: docker verify-build
-	hack/build-docker.sh push ${WHAT}
-
-verify-build:
-	hack/verify-build.sh
+build-verify:
+	hack/build-verify.sh
 
 manifests:
 	hack/dockerized "CSV_VERSION=${CSV_VERSION} QUAY_REPOSITORY=${QUAY_REPOSITORY} \
 	  DOCKER_PREFIX=${DOCKER_PREFIX} DOCKER_TAG=${DOCKER_TAG} \
-	  IMAGE_PULL_POLICY=${IMAGE_PULL_POLICY} VERBOSITY=${VERBOSITY} PACKAGE_NAME=${PACKAGE_NAME} ./hack/build-manifests.sh"
+	  IMAGE_PULL_POLICY=${IMAGE_PULL_POLICY} VERBOSITY=${VERBOSITY} PACKAGE_NAME=${PACKAGE_NAME} PUSH_LOG_FILE=${PUSH_LOG_FILE} ./hack/build-manifests.sh"
 
 .release-functest:
 	make functest > .release-functest 2>&1
@@ -101,19 +95,19 @@ release-announce: .release-functest
 	./hack/release-announce.sh $(RELREF) $(PREREF)
 
 cluster-up:
-	./cluster/up.sh
+	./cluster-up/up.sh
 
 cluster-down:
-	./cluster/down.sh
+	./cluster-up/down.sh
 
 cluster-build:
-	./cluster/build.sh
+	PUSH_LOG_FILE=${PUSH_LOG_FILE} ./hack/cluster-build.sh
 
 cluster-clean:
-	./cluster/clean.sh
+	./hack/cluster-clean.sh
 
 cluster-deploy: cluster-clean
-	./cluster/deploy.sh
+	./hack/cluster-deploy.sh
 
 cluster-sync: cluster-build cluster-deploy
 
@@ -131,6 +125,7 @@ olm-push:
 	    QUAY_PASSWORD=${QUAY_PASSWORD} QUAY_REPOSITORY=${QUAY_REPOSITORY} PACKAGE_NAME=${PACKAGE_NAME} ./hack/olm.sh push"
 
 .PHONY: \
+	build-verify \
 	go-build \
 	go-test \
 	go-all \
@@ -139,15 +134,13 @@ olm-push:
 	bazel-build-images \
 	bazel-push-images \
 	bazel-tests \
-	build \
+	functest-image-build \
+	functest-image-push \
 	test \
 	clean \
 	distclean \
-	checksync \
 	sync \
-	docker \
 	manifests \
-	publish \
 	functest \
 	release-announce \
 	cluster-up \

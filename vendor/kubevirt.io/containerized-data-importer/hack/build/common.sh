@@ -13,6 +13,7 @@
 #limitations under the License.
 
 CDI_DIR="$(readlink -f $(dirname $0)/../../)"
+CDI_GO_PACKAGE=kubevirt.io/containerized-data-importer
 BIN_DIR=${CDI_DIR}/bin
 OUT_DIR=${CDI_DIR}/_out
 CMD_OUT_DIR=${OUT_DIR}/cmd
@@ -23,3 +24,4 @@ MANIFEST_GENERATED_DIR=${CDI_DIR}/manifests/generated
 SOURCE_DIRS="pkg tests tools"
 APIDOCS_OUT_DIR=${OUT_DIR}/apidocs
 CACHE_DIR=${OUT_DIR}/gocache
+KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-k8s-1.13.3}

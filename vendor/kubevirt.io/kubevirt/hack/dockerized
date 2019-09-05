@@ -75,10 +75,6 @@ _rsync() {
     rsync -al "$@"
 }
 
-# For backward compatibility. If vendorless branches are used we need to make sure
-# that they can sync again.
-rm -f ${KUBEVIRT_DIR}/.glide*.hash
-
 # Copy kubevirt into the persistent docker volume
 _rsync \
     --delete \
@@ -87,9 +83,9 @@ _rsync \
     --exclude 'bazel-kubevirt' \
     --exclude 'bazel-out' \
     --exclude 'bazel-testlogs' \
-    --exclude 'cluster/**/.kubectl' \
-    --exclude 'cluster/**/.oc' \
-    --exclude 'cluster/**/.kubeconfig' \
+    --exclude 'cluster-up/cluster/**/.kubectl' \
+    --exclude 'cluster-up/cluster/**/.oc' \
+    --exclude 'cluster-up/cluster/**/.kubeconfig' \
     --exclude "_out" \
     --exclude ".vagrant" \
     ${KUBEVIRT_DIR}/ \
@@ -118,10 +114,9 @@ _rsync \
     --exclude 'bazel-kubevirt' \
     --exclude 'bazel-out' \
     --exclude 'bazel-testlogs' \
-    --exclude '.glide*' \
-    --exclude 'cluster/**/.kubectl' \
-    --exclude 'cluster/**/.oc' \
-    --exclude 'cluster/**/.kubeconfig' \
+    --exclude 'cluster-up/cluster/**/.kubectl' \
+    --exclude 'cluster-up/cluster/**/.oc' \
+    --exclude 'cluster-up/cluster/**/.kubeconfig' \
     --exclude "_out" \
     --exclude "vendor" \
     --exclude ".vagrant" \
@@ -130,7 +125,7 @@ _rsync \
     ${KUBEVIRT_DIR}/
 
 _rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/build/manifests/generated/" "${KUBEVIRT_DIR}/manifests/generated"
-_rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/build/cluster/examples/" "${KUBEVIRT_DIR}/cluster/examples"
+_rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/build/examples/" "${KUBEVIRT_DIR}/examples"
 if [ "$SYNC_VENDOR" = "true" ]; then
     _rsync --delete "rsync://root@127.0.0.1:${RSYNCD_PORT}/vendor" "${VENDOR_DIR}/"
 fi

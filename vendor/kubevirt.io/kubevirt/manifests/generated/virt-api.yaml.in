@@ -55,10 +55,12 @@ spec:
         - virt-api
         - --port
         - "8443"
+        - --console-server-port
+        - "8186"
         - --subresources-only
         - -v
         - {{.Verbosity}}
-        image: {{.DockerPrefix}}/virt-api:{{.DockerTag}}
+        image: {{.DockerPrefix}}/virt-api{{if .VirtApiSha}}@{{.VirtApiSha}}{{else}}:{{.DockerTag}}{{end}}
         imagePullPolicy: {{.ImagePullPolicy}}
         name: virt-api
         ports:

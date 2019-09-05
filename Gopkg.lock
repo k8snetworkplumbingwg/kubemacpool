@@ -750,6 +750,9 @@
   packages = [
     "pkg/apis/apiextensions",
     "pkg/apis/apiextensions/v1beta1",
+    "pkg/client/clientset/clientset",
+    "pkg/client/clientset/clientset/scheme",
+    "pkg/client/clientset/clientset/typed/apiextensions/v1beta1",
   ]
   pruneopts = "T"
   revision = "0fe22c71c47604641d9aa352c785b7912c200562"
@@ -790,6 +793,7 @@
     "pkg/util/mergepatch",
     "pkg/util/naming",
     "pkg/util/net",
+    "pkg/util/rand",
     "pkg/util/runtime",
     "pkg/util/sets",
     "pkg/util/strategicpatch",
@@ -975,27 +979,37 @@
   revision = "0317810137be915b9cf888946c6e115c1bfac693"
 
 [[projects]]
-  digest = "1:da0a246cd70975e995ef238dc0b7af2809f25a3b7bcd3d5226973b3fb39bf02b"
+  digest = "1:05ca33d933500011e35afece76f40c0e01e8358d2dee6c0a6b00112de25ac631"
+  name = "kubevirt.io/client-go"
+  packages = [
+    "api/v1",
+    "precond",
+  ]
+  pruneopts = "T"
+  revision = "8f185668ed83a830ced59c71e7275d035776fe8d"
+  version = "v0.20.4"
+
+[[projects]]
+  digest = "1:a5b34c37298319b721b42efeba611231a8d55a82ad40afd65fef5a1b8af9eac9"
   name = "kubevirt.io/containerized-data-importer"
   packages = [
     "pkg/apis/core",
     "pkg/apis/core/v1alpha1",
   ]
   pruneopts = "T"
-  revision = "1faa7fd21a437486b3e1835153171fd6f4d5327e"
-  version = "v1.6.0"
+  revision = "e4fa647eea766a6537d44e1c1c74dea4901242b0"
+  version = "v1.10.1"
 
 [[projects]]
-  digest = "1:e84b36a1dd9eebb3025d40c599fea697e6ff6c33e33de480d5b47c4597c7aedb"
+  digest = "1:64d711896bdf18c679c285f51b1f3a1dbc0f26b470caa057e1c9697b3fa3d1e0"
   name = "kubevirt.io/kubevirt"
   packages = [
-    "pkg/api/v1",
-    "pkg/precond",
+    ".",
+    "tools/vms-generator/utils",
   ]
   pruneopts = "T"
-  revision = "a067696ed6c25b0eab9dfcd01bbdc045f500f8ca"
-  source = "https://github.com/kubevirt/kubevirt.git"
-  version = "v0.17.0"
+  revision = "3cab21de7247da0fd8420c202ced8c8048dc9836"
+  version = "v0.20.4"
 
 [[projects]]
   digest = "1:5aa50779f75cc439edd3455a6dee7cf179b52f8dde764a47cc929693485d1afb"
@@ -1007,6 +1021,8 @@
     "pkg/client/apiutil",
     "pkg/client/config",
     "pkg/controller",
+    "pkg/envtest",
+    "pkg/envtest/printer",
     "pkg/event",
     "pkg/handler",
     "pkg/internal/controller",
@@ -1089,24 +1105,36 @@
     "github.com/onsi/ginkgo",
     "github.com/onsi/ginkgo/extensions/table",
     "github.com/onsi/gomega",
+    "k8s.io/api/admission/v1beta1",
     "k8s.io/api/admissionregistration/v1beta1",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/runtime",
-    "k8s.io/apimachinery/pkg/types",
+    "k8s.io/apimachinery/pkg/util/rand",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
+    "k8s.io/client-go/kubernetes/scheme",
+    "k8s.io/client-go/kubernetes/typed/core/v1",
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
+    "k8s.io/client-go/rest",
+    "k8s.io/client-go/tools/leaderelection",
+    "k8s.io/client-go/tools/leaderelection/resourcelock",
+    "k8s.io/client-go/tools/record",
     "k8s.io/code-generator/cmd/client-gen",
     "k8s.io/code-generator/cmd/deepcopy-gen",
-    "kubevirt.io/kubevirt/pkg/api/v1",
+    "kubevirt.io/client-go/api/v1",
+    "kubevirt.io/kubevirt",
+    "kubevirt.io/kubevirt/tools/vms-generator/utils",
     "sigs.k8s.io/controller-runtime/pkg/client",
     "sigs.k8s.io/controller-runtime/pkg/client/config",
     "sigs.k8s.io/controller-runtime/pkg/controller",
+    "sigs.k8s.io/controller-runtime/pkg/envtest",
     "sigs.k8s.io/controller-runtime/pkg/handler",
+    "sigs.k8s.io/controller-runtime/pkg/leaderelection",
     "sigs.k8s.io/controller-runtime/pkg/manager",
     "sigs.k8s.io/controller-runtime/pkg/reconcile",
+    "sigs.k8s.io/controller-runtime/pkg/recorder",
     "sigs.k8s.io/controller-runtime/pkg/runtime/inject",
     "sigs.k8s.io/controller-runtime/pkg/runtime/log",
     "sigs.k8s.io/controller-runtime/pkg/runtime/signals",

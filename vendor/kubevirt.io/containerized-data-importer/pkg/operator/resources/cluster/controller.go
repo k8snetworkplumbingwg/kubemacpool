@@ -34,12 +34,12 @@ func createControllerResources(args *FactoryArgs) []runtime.Object {
 }
 
 func createControllerClusterRoleBinding(namespace string) *rbacv1.ClusterRoleBinding {
-	return createClusterRoleBinding(controllerServiceAccountName, controlerClusterRoleName, controllerServiceAccountName, namespace)
+	return CreateClusterRoleBinding(controllerServiceAccountName, controlerClusterRoleName, controllerServiceAccountName, namespace)
 }
 
-func createControllerClusterRole() *rbacv1.ClusterRole {
-	clusterRole := createClusterRole(controlerClusterRoleName)
-	clusterRole.Rules = []rbacv1.PolicyRule{
+//GetControllerPermissions geberates rules for cdi controller
+func GetControllerPermissions() []rbacv1.PolicyRule {
+	return []rbacv1.PolicyRule{
 		{
 			APIGroups: []string{
 				"",
@@ -59,6 +59,7 @@ func createControllerClusterRole() *rbacv1.ClusterRole {
 			},
 			Resources: []string{
 				"persistentvolumeclaims",
+				"volumesnapshots",
 			},
 			Verbs: []string{
 				"get",
@@ -67,6 +68,7 @@ func createControllerClusterRole() *rbacv1.ClusterRole {
 				"create",
 				"update",
 				"patch",
+				"delete",
 			},
 		},
 		{
@@ -76,6 +78,7 @@ func createControllerClusterRole() *rbacv1.ClusterRole {
 			Resources: []string{
 				"persistentvolumeclaims/finalizers",
 				"pods/finalizers",
+				"volumesnapshots/finalizers",
 			},
 			Verbs: []string{
 				"update",
@@ -160,6 +163,7 @@ func createControllerClusterRole() *rbacv1.ClusterRole {
 			},
 			Verbs: []string{
 				"get",
+				"list",
 			},
 		},
 		{
@@ -186,6 +190,33 @@ func createControllerClusterRole() *rbacv1.ClusterRole {
 				"*",
 			},
 		},
+		{
+			APIGroups: []string{
+				"snapshot.storage.k8s.io",
+			},
+			Resources: []string{
+				"*",
+			},
+			Verbs: []string{
+				"*",
+			},
+		},
+		{
+			APIGroups: []string{
+				"apiextensions.k8s.io",
+			},
+			Resources: []string{
+				"customresourcedefinitions",
+			},
+			Verbs: []string{
+				"*",
+			},
+		},
 	}
+}
+
+func createControllerClusterRole() *rbacv1.ClusterRole {
+	clusterRole := CreateClusterRole(controlerClusterRoleName)
+	clusterRole.Rules = GetControllerPermissions()
 	return clusterRole
 }

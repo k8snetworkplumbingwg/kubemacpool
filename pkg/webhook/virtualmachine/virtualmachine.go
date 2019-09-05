@@ -110,7 +110,21 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 		"virtualMachineName", virtualMachine.Name,
 		"virtualMachineNamespace", virtualMachine.Namespace)
 
-	return a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+	existingVirtualMachine := &kubevirt.VirtualMachine{}
+	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, existingVirtualMachine)
+	if err != nil {
+		// If the VM does not exist yet, allocate a new MAC address
+		if errors.IsNotFound(err) {
+			return a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+		}
+
+		// Unexpected error
+		return err
+	}
+
+	// If the object exist this mean the user run kubectl/oc create
+	// This request will failed by the api server so we can just leave it without any allocation
+	return nil
 }
 
 // mutateUpdateVirtualMachinesFn calls the update allocation function

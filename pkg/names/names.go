@@ -12,4 +12,6 @@ const MUTATE_WEBHOOK_CONFIG = "kubemacpool"
 
 const LEADER_LABEL = "kubemacpool-leader"
 
+const LEADER_ID = "kubemacpool-election"
+
 const ADMISSION_IGNORE_LABEL = "kubemacpool/ignoreAdmission"

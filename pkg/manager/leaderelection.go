@@ -2,13 +2,15 @@ package manager
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 	manager_leaderelection "sigs.k8s.io/controller-runtime/pkg/leaderelection"
+
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 )
 
 func (k *KubeMacPoolManager) newLeaderElection(config *rest.Config, scheme *runtime.Scheme) error {
@@ -20,36 +22,25 @@ func (k *KubeMacPoolManager) newLeaderElection(config *rest.Config, scheme *runt
 	// Create the resource lock to enable leader election)
 	resourceLock, err := manager_leaderelection.NewResourceLock(config, recorderProvider, manager_leaderelection.Options{
 		LeaderElection:          true,
-		LeaderElectionID:        "kubemacpool-election",
+		LeaderElectionID:        names.LEADER_ID,
 		LeaderElectionNamespace: k.podNamespace,
 	})
 	if err != nil {
 		return err
 	}
 
-	k.resourceLock = resourceLock
-
-	return nil
-}
-
-func (k *KubeMacPoolManager) waitToStartLeading() error {
-	messageChan := make(chan error, 1)
-
 	l, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-		Lock: k.resourceLock,
+		Lock: resourceLock,
 		// Values taken from: https://github.com/kubernetes/apiserver/blob/master/pkg/apis/config/v1alpha1/defaults.go
 		LeaseDuration: 15 * time.Second,
 		RenewDeadline: 10 * time.Second,
 		RetryPeriod:   2 * time.Second,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(_ context.Context) {
-				messageChan <- nil
+				k.leaderElectionChannel <- nil
 			},
 			OnStoppedLeading: func() {
-				// Most implementations of leader election log.Fatal() here.
-				// Since Start is wrapped in log.Fatal when called, we can just return
-				// an error here which will cause the program to exit.
-				messageChan <- fmt.Errorf("leader election lost")
+				k.restartChannel <- struct{}{}
 			},
 		},
 	})
@@ -57,8 +48,40 @@ func (k *KubeMacPoolManager) waitToStartLeading() error {
 		return err
 	}
 
-	// Start the leader elector process
-	go l.Run(context.Background())
+	k.leaderElection = l
 
-	return <-messageChan
+	// Start the leader elector process
+	go k.leaderElection.Run(context.Background())
+
+	return nil
+}
+
+func (k *KubeMacPoolManager) waitToStartLeading() error {
+	if k.leaderElection.IsLeader() {
+		log.Info("This manager is already the leader")
+		k.leaderElectionChannel <- nil
+	}
+
+	err := <-k.leaderElectionChannel
+	if err != nil {
+		return err
+	}
+
+	return k.markPodAsLeader()
+}
+
+func (k *KubeMacPoolManager) markPodAsLeader() error {
+	pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(k.podName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	pod.Labels[names.LEADER_LABEL] = "true"
+	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
+	if err != nil {
+		return err
+	}
+
+	log.Info("marked this manager as leader for webhook", "podName", k.podName)
+	return nil
 }

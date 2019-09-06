@@ -131,9 +131,7 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.Virtual
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
 
-	r.poolManager.MarkVMAsReady(virtualMachine)
-
-	return nil
+	return r.poolManager.MarkVMAsReady(virtualMachine)
 }
 
 func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {

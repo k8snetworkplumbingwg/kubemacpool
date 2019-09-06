@@ -116,13 +116,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 
 		// create a owner ref on the mutating webhook
 		// this way when we remove the statefulset of the manager the webhook will be also removed from the cluster
-		err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset)
+		err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset, k.podNamespace)
 		if err != nil {
 			return fmt.Errorf("unable to create owner reference for mutating webhook object error %v", err)
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
-		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return fmt.Errorf("unable to create pool manager error %v", err)
 		}
@@ -139,7 +139,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to register controllers to the manager error %v", err)
 		}
 
-		err = webhook.AddToManager(mgr, poolManager)
+		err = webhook.AddToManager(mgr, poolManager, k.podNamespace)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
 		}

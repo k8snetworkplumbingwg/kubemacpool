@@ -45,7 +45,7 @@ var _ = Describe("Pool", func() {
 		Expect(err).ToNot(HaveOccurred())
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred())
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false, 10)
+		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
 		Expect(err).ToNot(HaveOccurred())
 
 		return poolManager
@@ -112,7 +112,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
 
@@ -124,7 +124,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
 
@@ -136,7 +136,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
 		})

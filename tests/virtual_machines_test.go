@@ -363,7 +363,7 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return testClient.VirtClient.Update(context.TODO(), updateObject)
 
-				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to update client")
+				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to update VM")
 
 				for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
 					Expect(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress).To(Equal(updateObject.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress))
@@ -486,6 +486,63 @@ var _ = Describe("Virtual Machines", func() {
 				}, timeout, pollingInterval).Should(Not(HaveOccurred()), "failed to apply the new vm object")
 				_, err = net.ParseMAC(anotherVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
+			})
+		})
+
+		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
+			It("should successfully release the MAC and the new VM should be created with no errors", func() {
+				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:01")
+				Expect(err).ToNot(HaveOccurred())
+
+				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""), newInterface("br2", "")},
+					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+				Eventually(func() error {
+					return testClient.VirtClient.Create(context.TODO(), vm)
+
+				}, 50*time.Second, 5*time.Second).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+				Expect(err).ToNot(HaveOccurred())
+				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+				Expect(err).ToNot(HaveOccurred())
+
+				By("checking that a new VM cannot be created when the range is full")
+				newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "")},
+					[]kubevirtv1.Network{newNetwork("br1")})
+				Eventually(func() error {
+					err = testClient.VirtClient.Create(context.TODO(), newVM)
+					if err != nil && strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full") {
+						return err
+					}
+					return nil
+
+				}, 50*time.Second, 5*time.Second).Should(HaveOccurred(), "should have failed to create the vm because the mac is already taken")
+
+				By("checking that the VM's NIC can be removed")
+				Eventually(func() error {
+					err := testClient.VirtClient.Get(context.TODO(),
+						client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+					if err != nil {
+						return err
+					}
+
+					vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br2", "")}
+					vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br2")}
+					err = testClient.VirtClient.Update(context.TODO(), vm)
+					if err != nil {
+						return err
+					}
+
+					if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) != 1 {
+						return fmt.Errorf("failed to delete the VM's interface")
+					}
+
+					return nil
+				}, 50*time.Second, 5*time.Second).ShouldNot(HaveOccurred(), "failed to update VM")
+
+				By("checking that a new VM can be created after the VM's NIC had been removed ")
+				Eventually(func() error {
+					return testClient.VirtClient.Create(context.TODO(), newVM)
+				}, 50*time.Second, 5*time.Second).ShouldNot(HaveOccurred(), "failed to create the new VM")
 			})
 		})
 	})

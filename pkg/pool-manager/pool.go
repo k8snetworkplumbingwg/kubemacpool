@@ -89,7 +89,9 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		return nil, err
 	}
 
-	go poolManger.vmWaitingCleanupLook(waitTime)
+	if kubevirtExist {
+		go poolManger.vmWaitingCleanupLook(waitTime)
+	}
 
 	return poolManger, nil
 }

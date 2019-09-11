@@ -23,17 +23,15 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/client-go/tools/leaderelection"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
 )
@@ -45,13 +43,14 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	restartChannel           chan struct{}          // Close the channel if we need to regenerate certs
-	kubevirtInstalledChannel chan struct{}          // This channel is close after we found kubevirt to reload the manager
-	stopSignalChannel        chan os.Signal         // stop channel signal
-	podNamespace             string                 // manager pod namespace
-	podName                  string                 // manager pod name
-	waitingTime              int                    // Duration in second to lock a mac address before it was saved to etcd
-	resourceLock             resourcelock.Interface // Use for the leader election
+	restartChannel           chan struct{}  // Close the channel if we need to regenerate certs
+	kubevirtInstalledChannel chan struct{}  // This channel is close after we found kubevirt to reload the manager
+	stopSignalChannel        chan os.Signal // stop channel signal
+	leaderElectionChannel    chan error     // Channel used by the leader election function send error if we lose the election
+	podNamespace             string         // manager pod namespace
+	podName                  string         // manager pod name
+	waitingTime              int            // Duration in second to lock a mac address before it was saved to etcd
+	leaderElection           *leaderelection.LeaderElector
 }
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
@@ -60,6 +59,7 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 		restartChannel:           make(chan struct{}),
 		kubevirtInstalledChannel: make(chan struct{}),
 		stopSignalChannel:        make(chan os.Signal, 1),
+		leaderElectionChannel:    make(chan error, 1),
 		podNamespace:             podNamespace,
 		podName:                  podName,
 		metricsAddr:              metricsAddr,
@@ -71,22 +71,39 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 }
 
 func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
-	// setup Pool Manager
+	// Get a config to talk to the apiserver
+	var err error
+	log.Info("Setting up client for manager")
+	k.config, err = config.GetConfig()
+	if err != nil {
+		return fmt.Errorf("unable to set up client config error %v", err)
+	}
+
+	k.clientset, err = kubernetes.NewForConfig(k.config)
+	if err != nil {
+		return fmt.Errorf("unable to create a kubernetes client error %v", err)
+	}
+
+	log.Info("Setting up leader electionManager")
+	leaderElectionManager, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
+	if err != nil {
+		return fmt.Errorf("unable to set up manager error %v", err)
+	}
+
+	err = k.newLeaderElection(k.config, leaderElectionManager.GetScheme())
+	if err != nil {
+		return fmt.Errorf("unable to create a leader election resource lock error %v", err)
+	}
+
 	for k.continueToRunManager {
-		// Get a config to talk to the apiserver
-		var err error
-		log.Info("Setting up client for manager")
-		k.config, err = config.GetConfig()
+		log.Info("waiting for manager to become leader")
+		err = k.waitToStartLeading()
 		if err != nil {
-			return fmt.Errorf("unable to set up client config error %v", err)
+			log.Error(err, "failed to wait for leader election")
+			continue
 		}
 
-		k.clientset, err = kubernetes.NewForConfig(k.config)
-		if err != nil {
-			return fmt.Errorf("unable to create a kubernetes client error %v", err)
-		}
-
-		log.Info("Setting up manager")
+		log.Info("Setting up Manager")
 		mgr, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
 		if err != nil {
 			return fmt.Errorf("unable to set up manager error %v", err)
@@ -95,23 +112,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		err = kubevirt_api.AddToScheme(mgr.GetScheme())
 		if err != nil {
 			return fmt.Errorf("unable to register kubevirt scheme error %v", err)
-		}
-
-		err = k.newLeaderElection(k.config, mgr.GetScheme())
-		if err != nil {
-			return fmt.Errorf("unable to create a leader election resource lock error %v", err)
-		}
-
-		log.Info("waiting for manager to become leader")
-		err = k.waitToStartLeading()
-		if err != nil {
-			return err
-		}
-
-		log.Info("the manager is a leader adding leader label to pod")
-		err = k.markPodAsLeader()
-		if err != nil {
-			return err
 		}
 
 		// create a owner ref on the mutating webhook
@@ -188,24 +188,13 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	// The container will not restart in this scenario
 	case <-k.kubevirtInstalledChannel:
 		log.Info("found kubevirt restarting the manager")
+	// This interrupt occurred if we load the leader election for the manager and we need to restart it
+	// This will wait to get the election lock again
+	case <-k.restartChannel:
+		log.Info("leader election lost")
 	}
 
 	close(k.restartChannel)
-}
-
-func (k *KubeMacPoolManager) markPodAsLeader() error {
-	pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(k.podName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	pod.Labels[names.LEADER_LABEL] = "true"
-	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func init() {

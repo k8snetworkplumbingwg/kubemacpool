@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
@@ -38,6 +39,8 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 	}
 
 	for _, pod := range podList.Items {
+		podYaml, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(pod.Name, metav1.GetOptions{})
+
 		req := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).GetLogs(pod.Name, &corev1.PodLogOptions{})
 		output, err := req.DoRaw()
 		if err != nil {
@@ -46,8 +49,25 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 		}
 
 		fmt.Printf("Pod Name: %s \n", pod.Name)
+		fmt.Printf("%v \n", *podYaml)
 		fmt.Println(string(output))
 	}
+
+	service, err := testClient.KubeClient.CoreV1().Services(ManagerNamespce).Get(names.WEBHOOK_SERVICE, metav1.GetOptions{})
+	if err != nil {
+		fmt.Println(err)
+		Fail(message, callerSkip...)
+	}
+
+	fmt.Printf("Service: %v", service)
+
+	endpoint, err := testClient.KubeClient.CoreV1().Endpoints(ManagerNamespce).Get(names.WEBHOOK_SERVICE, metav1.GetOptions{})
+	if err != nil {
+		fmt.Println(err)
+		Fail(message, callerSkip...)
+	}
+
+	fmt.Printf("Endpoint: %v", endpoint)
 
 	Fail(message, callerSkip...)
 }

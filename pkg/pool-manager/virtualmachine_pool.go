@@ -242,23 +242,13 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
-	waitingMac, err := p.getOrCreateVmMacWaitMap()
-	if err != nil {
-		return err
-	}
-
-	for macAddress := range waitingMac {
-		macAddress = strings.Replace(macAddress, "-", ":", 5)
-		p.macPoolMap[macAddress] = AllocationStatusWaitingForPod
-	}
-
 	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1alpha3/virtualmachines").Do()
 	if result.Error() != nil {
 		return result.Error()
 	}
 
 	vms := &kubevirt.VirtualMachineList{}
-	err = result.Into(vms)
+	err := result.Into(vms)
 	if err != nil {
 		return err
 	}
@@ -305,7 +295,22 @@ func (p *PoolManager) initVirtualMachineMap() error {
 						"virtualMachineInterfaceMac", iface.MacAddress)
 					continue
 				}
+
+				p.macPoolMap[iface.MacAddress] = AllocationStatusAllocated
 			}
+		}
+	}
+
+	waitingMac, err := p.getOrCreateVmMacWaitMap()
+	if err != nil {
+		return err
+	}
+
+	for macAddress := range waitingMac {
+		macAddress = strings.Replace(macAddress, "-", ":", 5)
+
+		if _, exist := p.macPoolMap[macAddress]; !exist {
+			p.macPoolMap[macAddress] = AllocationStatusWaitingForPod
 		}
 	}
 

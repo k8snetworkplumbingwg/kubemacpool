@@ -114,6 +114,10 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.Virtual
 		return nil
 	}
 
+	if err := r.poolManager.MarkVMAsReady(virtualMachine); err != nil {
+		return err
+	}
+
 	log.V(1).Info("The VM does not have a finalizer",
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
@@ -131,7 +135,7 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.Virtual
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
 
-	return r.poolManager.MarkVMAsReady(virtualMachine)
+	return nil
 }
 
 func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {

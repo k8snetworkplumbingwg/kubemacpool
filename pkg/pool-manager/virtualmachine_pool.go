@@ -314,7 +314,7 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		}
 	}
 
-	return nil
+	return p.UpdateWaitingTimeOnInit(waitingMac)
 }
 
 func (p *PoolManager) IsKubevirtEnabled() bool {
@@ -390,6 +390,26 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 
 	for _, macAddress := range allocations {
 		log.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
+		macAddress = strings.Replace(macAddress, ":", "-", 5)
+		configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
+	}
+
+	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+	return err
+}
+
+func (p *PoolManager) UpdateWaitingTimeOnInit(waitingMac map[string]string) error {
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if configMap.Data == nil {
+		configMap.Data = map[string]string{}
+	}
+
+	for _, macAddress := range waitingMac {
+		log.V(1).Info("update waiting time for mac address to waiting config", "macAddress", macAddress)
 		macAddress = strings.Replace(macAddress, ":", "-", 5)
 		configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
 	}

@@ -42,7 +42,7 @@ func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSe
 
 	wh, err := builder.NewWebhookBuilder().
 		Mutating().
-		FailurePolicy(admissionregistrationv1beta1.Fail).
+		FailurePolicy(admissionregistrationv1beta1.Ignore).
 		Operations(admissionregistrationv1beta1.Create).
 		ForType(&corev1.Pod{}).
 		Handlers(podAnnotator).

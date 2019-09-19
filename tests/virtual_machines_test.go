@@ -18,7 +18,7 @@ import (
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 
-const timeout = 60 * time.Second
+const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
 
 var _ = Describe("Virtual Machines", func() {

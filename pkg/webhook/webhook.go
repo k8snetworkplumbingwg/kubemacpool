@@ -20,8 +20,10 @@ import (
 	"fmt"
 
 	admissionregistration "k8s.io/api/admissionregistration/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -91,11 +93,10 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, ma
 // We choose this solution because the sigs.k8s.io/controller-runtime package doesn't allow to customize
 // the ServerOptions object
 func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset, managerNamespace string) error {
-	managerDeployment, err := kubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	ownerRefList, err := createDeploymentOwnerRef(kubeClient, managerNamespace)
 	if err != nil {
 		return err
 	}
-	ownerRefList := []metav1.OwnerReference{{Name: managerDeployment.Name, Kind: "Deployment", APIVersion: "apps/v1", UID: managerDeployment.UID}}
 
 	mutatingWebHookObject, err := kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 	if err != nil {
@@ -118,4 +119,48 @@ func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset, managerN
 	mutatingWebHookObject.OwnerReferences = ownerRefList
 	_, err = kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Update(mutatingWebHookObject)
 	return err
+}
+
+func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace string) error {
+	ownerRefList, err := createDeploymentOwnerRef(kubeClient, managerNamespace)
+	if err != nil {
+		return err
+	}
+
+	svcObject, err := kubeClient.CoreV1().Services(managerNamespace).Get(names.WEBHOOK_SERVICE, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			svcObject = &corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:            names.WEBHOOK_SERVICE,
+					OwnerReferences: ownerRefList,
+				},
+				Spec: corev1.ServiceSpec{
+					Selector: map[string]string{
+						names.LEADER_LABEL: "true",
+					}, Ports: []corev1.ServicePort{{
+						Port: 443,
+						TargetPort: intstr.IntOrString{
+							Type:   intstr.Int,
+							IntVal: 8000,
+						}}}}}
+			_, err = kubeClient.CoreV1().Services(managerNamespace).Create(svcObject)
+			return err
+		}
+		return err
+	}
+
+	svcObject.OwnerReferences = ownerRefList
+	_, err = kubeClient.CoreV1().Services(managerNamespace).Update(svcObject)
+	return err
+}
+
+func createDeploymentOwnerRef(kubeClient *kubernetes.Clientset, managerNamespace string) ([]metav1.OwnerReference, error) {
+	managerDeployment, err := kubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	ownerRefList := []metav1.OwnerReference{{Name: managerDeployment.Name, Kind: "Deployment", APIVersion: "apps/v1", UID: managerDeployment.UID}}
+
+	return ownerRefList, nil
 }

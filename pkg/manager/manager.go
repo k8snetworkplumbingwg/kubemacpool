@@ -115,10 +115,15 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		// create a owner ref on the mutating webhook
-		// this way when we remove the statefulset of the manager the webhook will be also removed from the cluster
+		// this way when we remove the deployment of the manager the webhook will be also removed from the cluster
 		err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset, k.podNamespace)
 		if err != nil {
 			return fmt.Errorf("unable to create owner reference for mutating webhook object error %v", err)
+		}
+
+		err = webhook.CreateOwnerRefForService(k.clientset, k.podNamespace)
+		if err != nil {
+			return fmt.Errorf("unable to create owner reference for service object error %v", err)
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)

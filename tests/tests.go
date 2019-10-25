@@ -21,7 +21,7 @@ import (
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 const (

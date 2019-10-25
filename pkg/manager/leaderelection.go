@@ -10,7 +10,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	manager_leaderelection "sigs.k8s.io/controller-runtime/pkg/leaderelection"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 func (k *KubeMacPoolManager) newLeaderElection(config *rest.Config, scheme *runtime.Scheme) error {

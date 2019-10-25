@@ -3,7 +3,7 @@
 ## About
 
 This project allow to allocate mac addresses from a pool to secondary interfaces using 
-[Network Plumbing Working Group de-facto standard](https://github.com/K8sNetworkPlumbingWG/multi-net-spec).
+[Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec).
 
 ## Usage
 
@@ -11,20 +11,20 @@ For test environment you can use the [development environment](#Develop)
 
 For Production deployment:
 
-Install any supported [Network Plumbing Working Group de-facto standard](https://github.com/K8sNetworkPlumbingWG/multi-net-spec) implementation.
+Install any supported [Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec) implementation.
 
 For example [Multus](https://github.com/intel/multus-cni).
 To deploy multus on a kubernetes cluster with flannel cni.
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/K8sNetworkPlumbingWG/kubemacpool/master/hack/multus/kubernetes-multus.yaml
-kubectl apply -f https://raw.githubusercontent.com/K8sNetworkPlumbingWG/kubemacpool/master/hack/multus/multus.yaml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/multus/kubernetes-multus.yaml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/multus/multus.yaml
 ```
 
 [CNI plugins](https://github.com/containernetworking/plugins) must be installed in the cluster.
 For CNI plugins you can use the follow command to deploy them inside your cluster.
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/K8sNetworkPlumbingWG/kubemacpool/master/hack/cni-plugins/cni-plugins.yaml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/cni-plugins/cni-plugins.yaml
 ```
 
 
@@ -32,7 +32,7 @@ Download the project yaml and apply it.
 
 **note:** default mac range is from 02:00:00:00:00:00 to FD:FF:FF:FF:FF:FF the can be edited in the configmap
 ```bash
-wget https://raw.githubusercontent.com/K8sNetworkPlumbingWG/kubemacpool/master/config/release/kubemacpool.yaml
+wget https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/config/release/kubemacpool.yaml
 kubectl apply -f ./kubemacpool.yaml
 ``` 
 

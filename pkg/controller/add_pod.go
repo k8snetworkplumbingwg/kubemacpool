@@ -17,7 +17,7 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller/pod"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/pod"
 )
 
 func init() {

@@ -24,8 +24,8 @@ import (
 
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/manager"
-	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {

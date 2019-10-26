@@ -17,7 +17,7 @@ limitations under the License.
 package webhook
 
 import (
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook/pod"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook/pod"
 )
 
 func init() {

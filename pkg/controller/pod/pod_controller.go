@@ -19,8 +19,8 @@ package pod
 import (
 	"context"
 	"fmt"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
 	"github.com/intel/multus-cni/logging"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"

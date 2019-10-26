@@ -31,9 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/controller"
-	poolmanager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/webhook"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
 
 var log logr.Logger

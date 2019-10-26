@@ -36,7 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/builder"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
 
-	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 var log = logf.Log.WithName("Webhook VirtualMachine")

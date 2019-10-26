@@ -30,8 +30,8 @@ import (
 	runtimewebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager

@@ -28,8 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
-	helper "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/utils"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )

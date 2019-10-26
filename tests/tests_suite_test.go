@@ -2,7 +2,7 @@ package tests
 
 import (
 	"fmt"
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"testing"
 
 	. "github.com/onsi/ginkgo"

@@ -30,7 +30,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 	kubevirt "kubevirt.io/client-go/api/v1"
 
-	"github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 var _ = Describe("Pool", func() {

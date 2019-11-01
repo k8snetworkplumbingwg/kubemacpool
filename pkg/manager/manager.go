@@ -31,10 +31,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
+	certmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/cert-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
+
+const certDir = "/tmp/cert"
+const certFile = "/tmp/cert" + "/cert.pem"
 
 var log logr.Logger
 
@@ -44,6 +48,7 @@ type KubeMacPoolManager struct {
 	metricsAddr              string
 	continueToRunManager     bool
 	restartChannel           chan struct{}  // Close the channel if we need to regenerate certs
+	certExpirationChannel    chan struct{}  // Close the channel if the used certificate is near expiration
 	kubevirtInstalledChannel chan struct{}  // This channel is close after we found kubevirt to reload the manager
 	stopSignalChannel        chan os.Signal // stop channel signal
 	leaderElectionChannel    chan error     // Channel used by the leader election function send error if we lose the election
@@ -55,15 +60,13 @@ type KubeMacPoolManager struct {
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
-		continueToRunManager:     true,
-		restartChannel:           make(chan struct{}),
-		kubevirtInstalledChannel: make(chan struct{}),
-		stopSignalChannel:        make(chan os.Signal, 1),
-		leaderElectionChannel:    make(chan error, 1),
-		podNamespace:             podNamespace,
-		podName:                  podName,
-		metricsAddr:              metricsAddr,
-		waitingTime:              waitingTime}
+		continueToRunManager:  true,
+		stopSignalChannel:     make(chan os.Signal, 1),
+		leaderElectionChannel: make(chan error, 1),
+		podNamespace:          podNamespace,
+		podName:               podName,
+		metricsAddr:           metricsAddr,
+		waitingTime:           waitingTime}
 
 	signal.Notify(kubemacpoolManager.stopSignalChannel, os.Interrupt, os.Kill)
 
@@ -96,6 +99,10 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	}
 
 	for k.continueToRunManager {
+		k.restartChannel = make(chan struct{})
+		k.certExpirationChannel = make(chan struct{})
+		k.kubevirtInstalledChannel = make(chan struct{})
+
 		log.Info("waiting for manager to become leader")
 		err = k.waitToStartLeading()
 		if err != nil {
@@ -144,19 +151,26 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to register controllers to the manager error %v", err)
 		}
 
-		err = webhook.AddToManager(mgr, poolManager, k.podNamespace)
+		err = webhook.AddToManager(mgr, poolManager, k.podNamespace, certDir)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
 		}
+
+		go func() {
+			// TODO: wait until the cert exists
+			time.Sleep(2 * time.Minute)
+			cert, err := certmanager.Read(certFile)
+			if err != nil {
+				panic("failed to read certificate" + err.Error())
+			}
+			// TODO: set to 90 days
+			certmanager.NotifyAboutNearExpiration(cert, 1000*24*time.Hour, k.certExpirationChannel, k.restartChannel)
+		}()
 
 		err = mgr.Start(k.restartChannel)
 		if err != nil {
 			return fmt.Errorf("unable to run the manager error %v", err)
 		}
-
-		// restart channels
-		k.restartChannel = make(chan struct{})
-		k.kubevirtInstalledChannel = make(chan struct{})
 	}
 
 	return nil
@@ -193,6 +207,10 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	// The container will not restart in this scenario
 	case <-k.kubevirtInstalledChannel:
 		log.Info("found kubevirt restarting the manager")
+	case <-k.certExpirationChannel:
+		// TODO doc, when cert is near expiration, we restart to refresh
+		log.Info("the certificate is near expiration")
+		k.continueToRunManager = false
 	// This interrupt occurred if we load the leader election for the manager and we need to restart it
 	// This will wait to get the election lock again
 	case <-k.restartChannel:

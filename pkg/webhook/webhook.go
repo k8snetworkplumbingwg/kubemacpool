@@ -47,9 +47,9 @@ var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, managerNamespace string) error {
+func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, managerNamespace string, certDir string) error {
 	svr, err := runtimewebhook.NewServer(names.MUTATE_WEBHOOK, mgr, runtimewebhook.ServerOptions{
-		CertDir: "/tmp/cert",
+		CertDir: certDir,
 		Port:    8000,
 		BootstrapOptions: &runtimewebhook.BootstrapOptions{
 			MutatingWebhookConfigName: names.MUTATE_WEBHOOK_CONFIG,

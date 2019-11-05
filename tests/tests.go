@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	gracePeriodSeconds int64 = 10
+	gracePeriodSeconds int64 = 3
 	rangeStart               = "02:00:00:00:00:00"
 	rangeEnd                 = "02:FF:FF:FF:FF:FF"
 	testClient         *TestClient
@@ -109,6 +109,23 @@ func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Inte
 	return vm
 }
 
+func createPodObject() *corev1.Pod {
+	podName := "testpod" + rand.String(32)
+	podObject := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName},
+		Spec: corev1.PodSpec{TerminationGracePeriodSeconds: &gracePeriodSeconds,
+			Containers: []corev1.Container{{Name: "test",
+				Image:   "centos",
+				Command: []string{"/bin/bash", "-c", "sleep INF"}}}}}
+
+	return &podObject
+}
+
+func addNetworksToPod(pod *corev1.Pod, networks []map[string]string) {
+	if networks != nil && len(networks) > 0 {
+		pod.Annotations = map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%v", networks)}
+	}
+}
+
 func setRange(rangeStart, rangeEnd string) error {
 	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
 	if err != nil {
@@ -135,14 +152,19 @@ func setRange(rangeStart, rangeEnd string) error {
 		}
 	}
 
+	macDeploy, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
 	Eventually(func() error {
 		podsList, err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
 
-		if len(podsList.Items) != 2 {
-			return fmt.Errorf("should have two manager pods")
+		if len(podsList.Items) != int(macDeploy.Status.Replicas) {
+			return fmt.Errorf("should have %v manager pods", macDeploy.Status.Replicas)
 		}
 
 		for _, pod := range podsList.Items {
@@ -183,6 +205,89 @@ func DeleteLeaderManager() {
 
 		return false
 	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+}
+
+func changeManagerReplicas(numOfReplica int32) error {
+	Eventually(func() error {
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		managerDeployment.Spec.Replicas = &numOfReplica
+
+		_, err = testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Update(managerDeployment)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
+
+	Eventually(func() bool {
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		if err != nil {
+			return false
+		}
+
+		if managerDeployment.Status.Replicas != numOfReplica {
+			return false
+		}
+
+		if managerDeployment.Status.ReadyReplicas != numOfReplica {
+			return false
+		}
+
+		podsList, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		if err != nil {
+			return false
+		}
+
+		if len(podsList.Items) != int(numOfReplica) {
+			return false
+		}
+
+		for _, podObject := range podsList.Items {
+			if podObject.Status.Phase != corev1.PodRunning {
+				return false
+			}
+		}
+
+		return true
+
+	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
+
+	return nil
+}
+
+func cleanNamespaceLabels(namespace string) error {
+	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	nsObject.Labels = make(map[string]string)
+
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
+	return err
+}
+
+func addLabelsToNamespace(namespace string, labels map[string]string) error {
+	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	if nsObject.Labels == nil {
+		nsObject.Labels = labels
+	} else {
+		for key, value := range labels {
+			nsObject.Labels[key] = value
+		}
+	}
+
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
+	return err
 }
 
 func BeforeAll(fn func()) {

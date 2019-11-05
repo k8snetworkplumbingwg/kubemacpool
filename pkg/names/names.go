@@ -14,4 +14,8 @@ const LEADER_LABEL = "kubemacpool-leader"
 
 const LEADER_ID = "kubemacpool-election"
 
-const ADMISSION_IGNORE_LABEL = "kubemacpool/ignoreAdmission"
+const K8S_RUNLABEL = "runlevel"
+
+const OPENSHIFT_RUNLABEL = "openshift.io/run-level"
+
+var CRITICAL_RUNLABELS = []string{"0", "1"}

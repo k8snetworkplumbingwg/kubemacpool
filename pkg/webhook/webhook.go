@@ -67,8 +67,12 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, ma
 		return err
 	}
 
-	namespaceSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{Key: names.ADMISSION_IGNORE_LABEL,
-		Operator: metav1.LabelSelectorOpDoesNotExist}}}
+	namespaceSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+		{Key: names.K8S_RUNLABEL,
+			Operator: metav1.LabelSelectorOpNotIn, Values: names.CRITICAL_RUNLABELS},
+		{Key: names.OPENSHIFT_RUNLABEL,
+			Operator: metav1.LabelSelectorOpNotIn, Values: names.CRITICAL_RUNLABELS,
+		}}}
 
 	webhooks := []runtimewebhook.Webhook{}
 	for _, f := range AddToManagerFuncs {

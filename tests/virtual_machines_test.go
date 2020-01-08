@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	pool_manager "github.com/K8sNetworkPlumbingWG/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 

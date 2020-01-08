@@ -50,7 +50,7 @@ func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSe
 
 	wh, err := builder.NewWebhookBuilder().
 		Mutating().
-		FailurePolicy(admissionregistrationv1beta1.Fail).
+		FailurePolicy(admissionregistrationv1beta1.Ignore).
 		Operations(admissionregistrationv1beta1.Create, admissionregistrationv1beta1.Update).
 		ForType(&kubevirt.VirtualMachine{}).
 		Handlers(virtualMachineAnnotator).

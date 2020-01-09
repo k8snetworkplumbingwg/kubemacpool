@@ -83,6 +83,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, ma
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 

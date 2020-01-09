@@ -149,6 +149,17 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
 		}
 
+		go func() {
+			// TODO: We cannot set the probe any closer to the server start.
+			// Therefore, we add this terrible sleep. It should be replaced by
+			// proper implementation once https://github.com/kubernetes-sigs/cluster-api/issues/1855
+			// is finished.
+			time.Sleep(time.Second * 20)
+			log.Info("Manager has started, marking as ready")
+			os.OpenFile("/tmp/ready", os.O_RDONLY|os.O_CREATE, 0666)
+		}()
+
+		log.Info("Starting manager")
 		err = mgr.Start(k.restartChannel)
 		if err != nil {
 			return fmt.Errorf("unable to run the manager error %v", err)

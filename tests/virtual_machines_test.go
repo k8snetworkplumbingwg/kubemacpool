@@ -478,7 +478,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("deleting leader manager")
-				DeleteLeaderManager()
+				deleteLeaderManager()
 
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), anotherVm)

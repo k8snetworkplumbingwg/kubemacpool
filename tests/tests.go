@@ -140,47 +140,55 @@ func setRange(rangeStart, rangeEnd string) error {
 		return err
 	}
 
-	podsList, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+	oldPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, pod := range podsList.Items {
+	for _, pod := range oldPods.Items {
 		err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 		if err != nil {
 			return err
 		}
 	}
 
-	macDeploy, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	deployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
 	Eventually(func() error {
-		podsList, err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
 
-		if len(podsList.Items) != int(macDeploy.Status.Replicas) {
-			return fmt.Errorf("should have %v manager pods", macDeploy.Status.Replicas)
-		}
-
-		for _, pod := range podsList.Items {
-			if pod.Status.Phase != corev1.PodRunning {
-				return fmt.Errorf("manager pod not ready")
+		for _, currentPod := range currentPods.Items {
+			for _, oldPod := range oldPods.Items {
+				if currentPod.Name == oldPod.Name {
+					return fmt.Errorf("old pod %s has not yet been removed", oldPod.Name)
+				}
 			}
 		}
 
-		return nil
+		if len(podsList.Items) != int(deployment.Status.Replicas) {
+			return fmt.Errorf("should have %v manager pods", deployment.Status.Replicas)
+		}
 
-	}, 30*time.Second, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
+		for _, currentPod := range currentPods.Items {
+			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("have not found any manager in the ready state")
+
+	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to start new set of manager pods within the given timeout")
 
 	return nil
 }
 
-func DeleteLeaderManager() {
+func deleteLeaderManager() {
 	pods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	Expect(err).ToNot(HaveOccurred())
 
@@ -205,6 +213,21 @@ func DeleteLeaderManager() {
 
 		return false
 	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+
+	Eventually(func() error {
+		pods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+
+		for _, pod := range pods.Items {
+			if len(pod.Status.ContainerStatuses) >= 1 && pod.Status.ContainerStatuses[0].Ready {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("have not found any manager in the ready state")
+	}, 2*time.Minute, 3*time.Second).ShouldNot(HaveOccurred(), "timed out while waiting for a new leader")
 }
 
 func changeManagerReplicas(numOfReplica int32) error {

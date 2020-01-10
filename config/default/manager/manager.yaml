@@ -92,6 +92,13 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/ready
+          initialDelaySeconds: 5
+          periodSeconds: 5
       terminationGracePeriodSeconds: 5
 ---
 apiVersion: policy/v1beta1

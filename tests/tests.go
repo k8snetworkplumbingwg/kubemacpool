@@ -146,14 +146,20 @@ func setRange(rangeStart, rangeEnd string) error {
 		}
 
 		for _, pod := range podsList.Items {
+			if !pod.ObjectMeta.DeletionTimestamp.IsZero() {
+				return fmt.Errorf("old pod %s has not yet been removed\n", pod.Name)
+			}
 			if pod.Status.Phase != corev1.PodRunning {
-				return fmt.Errorf("manager pod not ready")
+				return fmt.Errorf("manager pod not running")
 			}
 		}
 
 		return nil
 
 	}, 30*time.Second, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
+
+	// This sleep is temporary and horrible until we have a readiness probe - https://github.com/k8snetworkplumbingwg/kubemacpool/pull/84/
+	time.Sleep(40 * time.Second)
 
 	return nil
 }
@@ -183,6 +189,9 @@ func DeleteLeaderManager() {
 
 		return false
 	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+
+	// This sleep is temporary and horrible until we have a readiness probe - https://github.com/k8snetworkplumbingwg/kubemacpool/pull/84/
+	time.Sleep(40 * time.Second)
 }
 
 func BeforeAll(fn func()) {

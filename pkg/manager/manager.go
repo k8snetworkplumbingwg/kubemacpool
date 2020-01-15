@@ -23,6 +23,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -30,10 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
-
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
-	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
 
 var log logr.Logger
@@ -144,7 +143,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to register controllers to the manager error %v", err)
 		}
 
-		err = webhook.AddToManager(mgr, poolManager, k.podNamespace)
+		err = webhook.AddToManager(mgr, poolManager)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
 		}

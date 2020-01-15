@@ -45,8 +45,9 @@ type TestClient struct {
 }
 
 func NewTestClient() (*TestClient, error) {
+	trueBoolean := true
 	t := &envtest.Environment{
-		UseExistingCluster: true,
+		UseExistingCluster: &trueBoolean,
 	}
 
 	var cfg *rest.Config

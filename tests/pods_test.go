@@ -23,7 +23,7 @@ var _ = Describe("Pods", func() {
 			// Clean pods from our test namespaces after every test to start clean
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
 				podList := &corev1.PodList{}
-				err := testClient.VirtClient.List(context.TODO(), &client.ListOptions{Namespace: namespace}, podList)
+				err := testClient.VirtClient.List(context.TODO(), podList, &client.ListOptions{Namespace: namespace})
 				Expect(err).ToNot(HaveOccurred())
 
 				for _, podObject := range podList.Items {
@@ -33,7 +33,7 @@ var _ = Describe("Pods", func() {
 
 				Eventually(func() int {
 					podList := &corev1.PodList{}
-					err := testClient.VirtClient.List(context.TODO(), &client.ListOptions{Namespace: namespace}, podList)
+					err := testClient.VirtClient.List(context.TODO(), podList, &client.ListOptions{Namespace: namespace})
 					Expect(err).ToNot(HaveOccurred())
 					return len(podList.Items)
 

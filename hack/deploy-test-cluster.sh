@@ -21,6 +21,9 @@ kubectl config view --raw > ./cluster/dind-cluster/config
 REGISTRY="localhost:5000" make docker-build
 REGISTRY="localhost:5000" make docker-push
 
+REGISTRY="localhost:5000" make docker-generate
+if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run make. Please run it and commit the changes"; git status --porcelain; false; fi
+
 # wait for cluster operator
 ./cluster/dind-cluster/kubectl wait networkaddonsconfig cluster --for condition=Available --timeout=800s
 

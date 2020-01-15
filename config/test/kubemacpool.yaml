@@ -8,6 +8,71 @@ metadata:
     runlevel: "0"
   name: kubemacpool-system
 ---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  labels: null
+  name: kubemacpool-mutator
+  namespace: kubemacpool-system
+webhooks:
+- clientConfig:
+    service:
+      name: kubemacpool-service
+      namespace: kubemacpool-system
+      path: /mutate-pods
+  failurePolicy: Fail
+  name: mutatepods.kubemacpool.io
+  namespaceSelector:
+    matchExpressions:
+    - key: runlevel
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: openshift.io/run-level
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+- clientConfig:
+    service:
+      name: kubemacpool-service
+      namespace: kubemacpool-system
+      path: /mutate-virtualmachines
+  failurePolicy: Fail
+  name: mutatevirtualmachines.kubemacpool.io
+  namespaceSelector:
+    matchExpressions:
+    - key: runlevel
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: openshift.io/run-level
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+  rules:
+  - apiGroups:
+    - kubevirt.io
+    apiVersions:
+    - v1alpha3
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - virtualmachines
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -15,18 +80,19 @@ metadata:
   name: kubemacpool-manager-role
 rules:
 - apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  - certificatesigningrequests/approval
+  verbs:
+  - '*'
+- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
   - validatingwebhookconfigurations
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
+  - '*'
 - apiGroups:
   - ""
   resources:
@@ -44,12 +110,7 @@ rules:
   resources:
   - configmaps
   verbs:
-  - get
-  - list
-  - watch
-  - update
-  - create
-  - delete
+  - '*'
 - apiGroups:
   - ""
   resources:
@@ -137,6 +198,19 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-range-config
   namespace: kubemacpool-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubemacpool-service
+  namespace: kubemacpool-system
+spec:
+  ports:
+  - port: 443
+    targetPort: 8000
+  publishNotReadyAddresses: true
+  selector:
+    kubemacpool-leader: "true"
 ---
 apiVersion: apps/v1
 kind: Deployment

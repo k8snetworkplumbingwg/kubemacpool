@@ -81,7 +81,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		if errors.IsNotFound(err) {
 			err := r.poolManager.ReleasePodMac(fmt.Sprintf("%s/%s", request.Namespace, request.Name))
 			if err != nil {
-				logging.Printf(logging.ErrorLevel, "failed to release mac for pod %s: %v", request.NamespacedName, err)
+				logging.Errorf("failed to release mac for pod %s: %v", request.NamespacedName, err)
 			}
 			return reconcile.Result{}, nil
 		}

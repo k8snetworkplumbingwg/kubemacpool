@@ -103,3 +103,74 @@ spec:
   selector:
     matchLabels:
       control-plane: mac-controller-manager
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service
+  namespace: kubemacpool-system
+spec:
+  publishNotReadyAddresses: true
+  ports:
+    - port: 443
+      targetPort: 8000
+  selector:
+    kubemacpool-leader: "true"
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  # metadata.name will be kubemacpool-mutator (prefix added by kustomize)
+  name: mutator
+  labels:
+webhooks:
+  - name: mutatepods.kubemacpool.io
+    clientConfig:
+      # caBundle will be updated by the kube-admission-webhook library
+      service:
+        name: kubemacpool-service
+        namespace: kubemacpool-system
+        path: "/mutate-pods"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchExpressions:
+      - key: runlevel
+        operator: NotIn
+        values:
+          - "0"
+          - "1"
+      - key: openshift.io/run-level
+        operator: NotIn
+        values:
+          - "0"
+          - "1"
+    rules:
+      - operations: ["CREATE"]
+        apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+  - name: mutatevirtualmachines.kubemacpool.io
+    clientConfig:
+      # caBundle will be updated by the kube-admission-webhook library
+      service:
+        name: kubemacpool-service
+        namespace: kubemacpool-system
+        path: "/mutate-virtualmachines"
+    failurePolicy: Fail
+    namespaceSelector:
+      matchExpressions:
+      - key: runlevel
+        operator: NotIn
+        values:
+          - "0"
+          - "1"
+      - key: openshift.io/run-level
+        operator: NotIn
+        values:
+          - "0"
+          - "1"
+    rules:
+      - operations: ["CREATE", "UPDATE"]
+        apiGroups: ["kubevirt.io"]
+        apiVersions: ["v1alpha3"]
+        resources: ["virtualmachines"]

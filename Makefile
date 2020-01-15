@@ -2,6 +2,7 @@
 REGISTRY ?= quay.io
 IMAGE_TAG ?= latest
 IMG ?= kubevirt/kubemacpool
+DOCKER_BUILDER_LOCATION=hack/docker-image
 
 BIN_DIR = $(CURDIR)/build/_output/bin/
 
@@ -42,8 +43,7 @@ generate-test: manifests
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(GO)
-	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd --output-dir config/default/crd
-	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go rbac --output-dir config/default/rbac
+	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd rbac:roleName=kubemacpool paths=./pkg/... output:crd:dir=config/ output:stdout
 
 # Run go fmt against code
 fmt: $(GOFMT)
@@ -60,15 +60,19 @@ generate: fmt vet manifests
 goveralls:
 	./hack/goveralls.sh
 
-docker-goveralls: docker-test
-	./hack/run.sh goveralls
+docker-goveralls: docker-builder docker-test
+	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh goveralls
 
-docker-generate:
-	./hack/run.sh 
+docker-generate: docker-builder
+	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
 
 # Build the docker image
-docker-build:
+docker-build: docker-builder
 	docker build . -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
+
+# Build the docker builder image
+docker-builder:
+	docker build ${DOCKER_BUILDER_LOCATION} -t ${REGISTRY}/${IMG}:kubemacpool_builder
 
 # Push the docker image
 docker-push:
@@ -89,4 +93,4 @@ deploy-test-cluster:
 tools-vendoring:
 	./hack/vendor-tools.sh $$(pwd)/tools.go
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster tools-vendoring
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster tools-vendoring docker-build-base-image

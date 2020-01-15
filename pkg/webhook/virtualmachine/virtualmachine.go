@@ -18,90 +18,76 @@ package virtualmachine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"reflect"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
-	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/builder"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
-
-	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-var log = logf.Log.WithName("Webhook VirtualMachine")
-
-func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSelector *v1.LabelSelector) (*admission.Webhook, error) {
-	if !poolManager.IsKubevirtEnabled() {
-		return nil, nil
-	}
-
-	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
-
-	wh, err := builder.NewWebhookBuilder().
-		Mutating().
-		FailurePolicy(admissionregistrationv1beta1.Fail).
-		Operations(admissionregistrationv1beta1.Create, admissionregistrationv1beta1.Update).
-		ForType(&kubevirt.VirtualMachine{}).
-		Handlers(virtualMachineAnnotator).
-		NamespaceSelector(namespaceSelector).
-		WithManager(mgr).
-		Build()
-	if err != nil {
-		return nil, err
-	}
-
-	return wh, nil
-}
+var log = logf.Log.WithName("Webhook mutatevirtualmachines")
 
 type virtualMachineAnnotator struct {
 	client      client.Client
-	decoder     types.Decoder
+	decoder     *admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
-// podAnnotator Implements admission.Handler.
-var _ admission.Handler = &virtualMachineAnnotator{}
+// Add adds server modifiers to the server, like registering the hook to the webhook server.
+func Add(s *webhookserver.Server, poolManager *pool_manager.PoolManager) error {
+	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
+	s.UpdateOpts(webhookserver.WithHook("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator}))
+	return nil
+}
 
 // podAnnotator adds an annotation to every incoming pods.
-func (a *virtualMachineAnnotator) Handle(ctx context.Context, req types.Request) types.Response {
+func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	virtualMachine := &kubevirt.VirtualMachine{}
 
 	err := a.decoder.Decode(req, virtualMachine)
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, err)
-	}
-	copyObject := virtualMachine.DeepCopy()
-	if copyObject.Namespace == "" {
-		copyObject.Namespace = req.AdmissionRequest.Namespace
+		return admission.Errored(http.StatusBadRequest, err)
 	}
 
+	if virtualMachine.Annotations == nil {
+		virtualMachine.Annotations = map[string]string{}
+	}
+
+	if virtualMachine.Namespace == "" {
+		virtualMachine.Namespace = req.AdmissionRequest.Namespace
+	}
+
+	log.V(1).Info("got a create virtual machine event", "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
 	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		err = a.mutateCreateVirtualMachinesFn(ctx, copyObject)
+		err = a.mutateCreateVirtualMachinesFn(ctx, virtualMachine)
 		if err != nil {
-			return admission.ErrorResponse(http.StatusInternalServerError,
+			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
 		}
 	} else if req.AdmissionRequest.Operation == admissionv1beta1.Update {
-		err = a.mutateUpdateVirtualMachinesFn(ctx, copyObject)
+		err = a.mutateUpdateVirtualMachinesFn(ctx, virtualMachine)
 		if err != nil {
-			return admission.ErrorResponse(http.StatusInternalServerError,
+			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
 		}
 	}
 
+	marshaledVirtualMachine, _ := json.Marshal(virtualMachine)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+
 	// admission.PatchResponse generates a Response containing patches.
-	return admission.PatchResponse(virtualMachine, copyObject)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledVirtualMachine)
 }
 
 // mutateCreateVirtualMachinesFn calls the create allocation function
@@ -146,20 +132,14 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 	return nil
 }
 
-// podAnnotator implements inject.Client.
-var _ inject.Client = &virtualMachineAnnotator{}
-
 // InjectClient injects the client into the podAnnotator
 func (a *virtualMachineAnnotator) InjectClient(c client.Client) error {
 	a.client = c
 	return nil
 }
 
-// podAnnotator implements inject.Decoder.
-var _ inject.Decoder = &virtualMachineAnnotator{}
-
-// InjectDecoder injects the decoder into the podAnnotator
-func (a *virtualMachineAnnotator) InjectDecoder(d types.Decoder) error {
+// InjectDecoder injects the decoder.
+func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
 	a.decoder = d
 	return nil
 }

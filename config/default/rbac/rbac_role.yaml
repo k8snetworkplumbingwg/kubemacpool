@@ -5,18 +5,19 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  - certificatesigningrequests/approval
+  verbs:
+  - "*"
+- apiGroups:
   - admissionregistration.k8s.io
   resources:
   - mutatingwebhookconfigurations
   - validatingwebhookconfigurations
   verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
+  - '*'
 - apiGroups:
   - ""
   resources:
@@ -34,12 +35,7 @@ rules:
   resources:
   - configmaps
   verbs:
-  - get
-  - list
-  - watch
-  - update
-  - create
-  - delete
+  - "*"
 - apiGroups:
   - ""
   resources:

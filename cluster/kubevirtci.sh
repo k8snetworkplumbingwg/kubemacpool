@@ -1,5 +1,3 @@
-#!/bin/bash
-#
 # Copyright 2018-2019 Red Hat, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-source ./cluster/kubevirtci.sh
-kubevirtci::install
+export KUBEVIRT_PROVIDER='k8s-1.17.0'
 
-$(kubevirtci::path)/cluster-up/kubectl.sh "$@"
+KUBEVIRTCI_VERSION='0c3911794ad2b79a61a4bc7462c236251a73866f'
+KUBEVIRTCI_PATH="${PWD}/_kubevirtci"
+
+function kubevirtci::install() {
+    if [ ! -d ${KUBEVIRTCI_PATH} ]; then
+        git clone https://github.com/kubevirt/kubevirtci.git ${KUBEVIRTCI_PATH}
+        (
+            cd ${KUBEVIRTCI_PATH}
+            git checkout ${KUBEVIRTCI_VERSION}
+        )
+    fi
+}
+
+function kubevirtci::path() {
+    echo -n ${KUBEVIRTCI_PATH}
+}
+
+function kubevirtci::kubeconfig() {
+    echo -n ${KUBEVIRTCI_PATH}/_ci-configs/${KUBEVIRT_PROVIDER}/.kubeconfig
+}

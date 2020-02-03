@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright 2018 Red Hat, Inc.
+# Copyright 2018-2019 Red Hat, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,16 +13,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
 
 set -ex
 
-source hack/common.sh
-source cluster/$MACPOOL_PROVIDER/provider.sh
-source hack/config.sh
-source ./cluster/gocli.sh
+source ./cluster/kubevirtci.sh
+kubevirtci::install
 
-registry_port=$($gocli --prefix $provider_prefix ports registry | tr -d '\r')
+registry_port=$(./cluster/cli.sh ports registry | tr -d '\r')
 registry=localhost:$registry_port
 
 REGISTRY=$registry make docker-build

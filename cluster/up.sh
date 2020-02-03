@@ -21,37 +21,25 @@ kubevirtci::install
 
 $(kubevirtci::path)/cluster-up/up.sh
 
-# Deploy CNA
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/namespace.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/network-addons-config.crd.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/operator.yaml
-./cluster/kubectl.sh create -f ./hack/cna/cna-cr.yaml
-
-# wait for cluster operator
+echo 'Deploying Linux bridge CNI and Multus ...'
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/namespace.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/network-addons-config.crd.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/operator.yaml
+cat <<EOF | ./cluster/kubectl.sh create -f -
+apiVersion: networkaddonsoperator.network.kubevirt.io/v1alpha1
+kind: NetworkAddonsConfig
+metadata:
+  name: cluster
+spec:
+  linuxBridge: {}
+  multus: {}
+EOF
 ./cluster/kubectl.sh wait networkaddonsconfig cluster --for condition=Available --timeout=800s
 
-
-# deploy kubevirt
+echo 'Deploying Kubevirt ...'
 ./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
-
-# Ensure the KubeVirt CRD is created
-count=0
-until ./cluster/kubectl.sh get crd kubevirts.kubevirt.io; do
-    ((count++)) && ((count == 30)) && echo "KubeVirt CRD not found" && exit 1
-    echo "waiting for KubeVirt CRD"
-    sleep 1
-done
-
+./cluster/kubectl.sh create configmap kubevirt-config -n kubevirt --from-literal debug.useEmulation=true
 ./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
+./cluster/kubectl.sh wait -n kubevirt kubevirt kubevirt --for condition=Available
 
-# Ensure the KubeVirt CR is created
-count=0
-until ./cluster/kubectl.sh -n kubevirt get kv kubevirt; do
-    ((count++)) && ((count == 30)) && echo "KubeVirt CR not found" && exit 1
-    echo "waiting for KubeVirt CR"
-    sleep 1
-done
-
-./cluster/kubectl.sh wait -n kubevirt kv kubevirt --for condition=Available --timeout 180s || (echo "KubeVirt not ready in time" && exit 1)
-
-echo "Done"
+echo 'Done'

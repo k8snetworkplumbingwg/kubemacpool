@@ -6,15 +6,27 @@ set -ex
 docker run -d -p 5000:5000 --rm --network kubeadm-dind-net --name registry registry:2
 kubectl config view --raw > ./cluster/dind-cluster/config
 
-# Deploy CNA
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/namespace.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/network-addons-config.crd.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.15.0/operator.yaml
-./cluster/dind-cluster/kubectl create -f ./hack/cna/cna-cr.yaml
 
-# Deploy Kubevirt
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
-./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
+echo 'Deploying Linux bridge CNI and Multus ...'
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/namespace.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/network-addons-config.crd.yaml
+./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.25.0/operator.yaml
+cat <<EOF | ./cluster/dind-cluster/kubectl create -f -
+apiVersion: networkaddonsoperator.network.kubevirt.io/v1alpha1
+kind: NetworkAddonsConfig
+metadata:
+  name: cluster
+spec:
+  linuxBridge: {}
+  multus: {}
+EOF
+./cluster/dind-cluster/kubectl wait networkaddonsconfig cluster --for condition=Available --timeout=800s
+
+echo 'Deploying Kubevirt ...'
+./cluster/dind-cluster/kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
+./cluster/dind-cluster/kubectl create configmap kubevirt-config -n kubevirt --from-literal debug.useEmulation=true
+./cluster/dind-cluster/kubectl apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
+./cluster/dind-cluster/kubectl wait -n kubevirt kubevirt kubevirt --for condition=Available --timeout 5m
 
 
 # Build kubemacpool
@@ -26,9 +38,6 @@ REGISTRY="localhost:5000" make docker-push
 
 # wait for kubevirt
 ./cluster/dind-cluster/kubectl wait -n kubevirt kv kubevirt --for condition=Available --timeout 800s
-
-# enable emulation for kubevirt
-./cluster/dind-cluster/kubectl create configmap kubevirt-config -n kubevirt --from-literal debug.useEmulation=true
 
 # deploy test kubemacpool
 ./cluster/dind-cluster/kubectl apply -f config/test/kubemacpool.yaml

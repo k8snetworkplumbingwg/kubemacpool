@@ -35,10 +35,10 @@ deploy-test: generate-test
 	kubectl apply -f config/test/kubemacpool.yaml
 
 generate-deploy: manifests
-	kustomize build config/release > config/release/kubemacpool.yaml
+	$(GO) run vendor/github.com/kubernetes-sigs/kustomize build config/release > config/release/kubemacpool.yaml
 
 generate-test: manifests
-	kustomize build config/test > config/test/kubemacpool.yaml
+	$(GO) run vendor/github.com/kubernetes-sigs/kustomize build config/test > config/test/kubemacpool.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(GO)
@@ -55,16 +55,13 @@ vet:
 
 # Generate code
 generate: fmt vet manifests
-	go generate ./pkg/... ./cmd/...
+	$(GO) generate ./pkg/... ./cmd/...
 
 goveralls:
 	./hack/goveralls.sh
 
 docker-goveralls: docker-test
 	./hack/run.sh goveralls
-
-docker-generate:
-	./hack/run.sh 
 
 # Build the docker image
 docker-build:

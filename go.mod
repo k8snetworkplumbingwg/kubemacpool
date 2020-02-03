@@ -7,6 +7,7 @@ require (
 	github.com/go-logr/logr v0.1.0
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/intel/multus-cni v0.0.0-20190127194101-cd6f9880ac19
+	github.com/kubernetes-sigs/kustomize v2.0.3+incompatible
 	github.com/markbates/inflect v1.0.4 // indirect
 	github.com/mattbaird/jsonpatch v0.0.0-20171005235357-81af80346b1a // indirect
 	github.com/onsi/ginkgo v1.10.1
@@ -24,7 +25,8 @@ require (
 	kubevirt.io/kubevirt v0.0.0-00010101000000-000000000000
 
 	sigs.k8s.io/controller-runtime v0.1.9
-	sigs.k8s.io/controller-tools v0.1.7
+	sigs.k8s.io/controller-tools v0.1.9
+	sigs.k8s.io/kustomize v0.0.0-00010101000000-000000000000 // indirect
 	sigs.k8s.io/testing_frameworks v0.1.2 // indirect
 )
 
@@ -56,4 +58,7 @@ replace (
 
 	kubevirt.io/client-go => kubevirt.io/client-go v0.25.0
 	kubevirt.io/kubevirt => kubevirt.io/kubevirt v0.25.0
+
+	// Pinned to kubernetes-1.16.2
+	sigs.k8s.io/kustomize => sigs.k8s.io/kustomize v2.0.3+incompatible
 )

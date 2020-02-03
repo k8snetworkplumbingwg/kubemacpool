@@ -164,7 +164,8 @@ func (c *Config) AuthCodeURL(state string, opts ...AuthCodeOption) string {
 // and when other authorization grant types are not available."
 // See https://tools.ietf.org/html/rfc6749#section-4.3 for more info.
 //
-// The provided context optionally controls which HTTP client is used. See the HTTPClient variable.
+// The HTTP client to use is derived from the context.
+// If nil, http.DefaultClient is used.
 func (c *Config) PasswordCredentialsToken(ctx context.Context, username, password string) (*Token, error) {
 	v := url.Values{
 		"grant_type": {"password"},
@@ -182,7 +183,8 @@ func (c *Config) PasswordCredentialsToken(ctx context.Context, username, passwor
 // It is used after a resource provider redirects the user back
 // to the Redirect URI (the URL obtained from AuthCodeURL).
 //
-// The provided context optionally controls which HTTP client is used. See the HTTPClient variable.
+// The HTTP client to use is derived from the context.
+// If a client is not provided via the context, http.DefaultClient is used.
 //
 // The code will be in the *http.Request.FormValue("code"). Before
 // calling Exchange, be sure to validate FormValue("state").

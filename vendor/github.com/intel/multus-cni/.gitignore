@@ -1,9 +1,0 @@
-# Binary output dir
-bin/
-
-# GOPATH created by the build script
-gopath/
-
-# Test outputs
-*.out
-*.test

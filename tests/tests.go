@@ -175,7 +175,7 @@ func setRange(rangeStart, rangeEnd string) error {
 
 		return nil
 
-	}, 30*time.Second, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
+	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
 
 	return nil
 }

@@ -2,6 +2,8 @@
 # Image URL to use all building/pushing image targets
 REGISTRY ?= quay.io
 IMAGE_TAG ?= latest
+export GOFLAGS=-mod=vendor
+export GO111MODULE=on
 
 IMG ?= kubevirt/kubemacpool
 
@@ -34,7 +36,7 @@ manifests:
 
 # Run go fmt against code
 fmt:
-	go fmt ./pkg/... ./cmd/... ./tests/...
+	gofmt -d pkg/ cmd/ tests/
 
 # Run go vet against code
 vet:
@@ -77,4 +79,7 @@ cluster-sync:
 deploy-test-cluster:
 	./hack/deploy-test-cluster.sh
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster
+tools-vendoring:
+	./hack/vendor-tools.sh $$(pwd)/tools.go
+
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster tools-vendoring

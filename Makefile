@@ -55,10 +55,6 @@ docker-goveralls: docker-test
 docker-generate:
 	./hack/run.sh 
 
-# Test Inside a docker
-docker-test:
-	./hack/run.sh test
-
 # Build the docker image
 docker-build:
 	docker build . -t ${REGISTRY}/${IMG}:${IMAGE_TAG}

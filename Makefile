@@ -1,20 +1,31 @@
-
 # Image URL to use all building/pushing image targets
 REGISTRY ?= quay.io
 IMAGE_TAG ?= latest
+IMG ?= kubevirt/kubemacpool
+
+BIN_DIR = $(CURDIR)/build/_output/bin/
+
 export GOFLAGS=-mod=vendor
 export GO111MODULE=on
-
-IMG ?= kubevirt/kubemacpool
+export GOROOT=$(BIN_DIR)/go/
+export GOBIN=$(GOROOT)/bin/
+export PATH := $(GOBIN):$(PATH)
+GOFMT := $(GOBIN)/gofmt
+GO := $(GOBIN)/go
 
 all: generate generate-deploy generate-test
 
-# Run tests
-test:
-	go test ./pkg/... ./cmd/... -coverprofile cover.out
+$(GO):
+	hack/install-go.sh $(BIN_DIR) > /dev/null
 
-functest:
-	./hack/functest.sh
+$(GOFMT): $(GO)
+
+# Run tests
+test: $(GO)
+	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
+
+functest: $(GO)
+	GO=$(GO) ./hack/functest.sh
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy
@@ -30,17 +41,17 @@ generate-test: manifests
 	kustomize build config/test > config/test/kubemacpool.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests:
-	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd --output-dir config/default/crd
-	go run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go rbac --output-dir config/default/rbac
+manifests: $(GO)
+	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd --output-dir config/default/crd
+	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go rbac --output-dir config/default/rbac
 
 # Run go fmt against code
-fmt:
-	gofmt -d pkg/ cmd/ tests/
+fmt: $(GOFMT)
+	$(GOFMT) -d pkg/ cmd/ tests/
 
 # Run go vet against code
 vet:
-	go vet ./pkg/... ./cmd/... ./tests/...
+	$(GO) vet ./pkg/... ./cmd/... ./tests/...
 
 # Generate code
 generate: fmt vet manifests

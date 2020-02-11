@@ -19,8 +19,6 @@ package webhook
 import (
 	"fmt"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"github.com/qinqon/kube-admission-webhook/pkg/webhook/server/certificate"
 	admissionregistration "k8s.io/api/admissionregistration/v1beta1"
@@ -30,10 +28,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 const (
-	mutatingWebhookConfigurationName = "kubemacpool-mutator"
+	WebhookServerPort = 8000
 )
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager
@@ -50,7 +51,7 @@ var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) e
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	s := webhookserver.New(mgr, mutatingWebhookConfigurationName, certificate.MutatingWebhook, webhookserver.WithPort(8000))
+	s := webhookserver.New(mgr, names.MUTATE_WEBHOOK_CONFIG, certificate.MutatingWebhook, webhookserver.WithPort(WebhookServerPort))
 
 	for _, f := range AddToWebhookFuncs {
 		if err := f(s, poolManager); err != nil {
@@ -118,7 +119,7 @@ func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace
 						Port: 443,
 						TargetPort: intstr.IntOrString{
 							Type:   intstr.Int,
-							IntVal: 8000,
+							IntVal: WebhookServerPort,
 						}}}}}
 			_, err = kubeClient.CoreV1().Services(managerNamespace).Create(svcObject)
 			return err

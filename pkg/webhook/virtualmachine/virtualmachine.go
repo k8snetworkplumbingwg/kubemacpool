@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -32,6 +31,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 var log = logf.Log.WithName("Webhook mutatevirtualmachines")
@@ -61,7 +62,6 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	if virtualMachine.Annotations == nil {
 		virtualMachine.Annotations = map[string]string{}
 	}
-
 	if virtualMachine.Namespace == "" {
 		virtualMachine.Namespace = req.AdmissionRequest.Namespace
 	}

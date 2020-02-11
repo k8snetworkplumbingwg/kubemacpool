@@ -68,11 +68,11 @@ docker-generate: docker-builder
 
 # Build the docker image
 docker-build: docker-builder
-	docker build . -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
+	docker build . -t ${REGISTRY}/${IMG}:${IMAGE_TAG} --build-arg GO_VERSION=1.12.12
 
 # Build the docker builder image
 docker-builder:
-	docker build ${DOCKER_BUILDER_LOCATION} -t ${REGISTRY}/${IMG}:kubemacpool_builder
+	docker build ${DOCKER_BUILDER_LOCATION} -t ${REGISTRY}/${IMG}:kubemacpool_builder --build-arg GO_VERSION=1.12.12
 
 # Push the docker image
 docker-push:

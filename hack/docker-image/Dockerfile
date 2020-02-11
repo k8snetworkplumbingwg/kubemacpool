@@ -1,4 +1,5 @@
-FROM golang:1.12.12
+ARG GO_VERSION
+FROM golang:${GO_VERSION}
  
 RUN apt-get clean && apt-get update && apt-get install -y unzip && apt-get upgrade -y
 

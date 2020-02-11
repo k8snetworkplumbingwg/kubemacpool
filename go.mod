@@ -3,18 +3,11 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 go 1.12
 
 require (
-	github.com/Azure/go-autorest v11.2.8+incompatible // indirect
-	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/containernetworking/cni v0.6.0 // indirect
-	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/go-logr/logr v0.1.0
-	github.com/gopherjs/gopherjs v0.0.0-20181103185306-d547d1d9531e // indirect
 	github.com/intel/multus-cni v0.0.0-20190127194101-cd6f9880ac19
-	github.com/mattn/go-runewidth v0.0.4 // indirect
-	github.com/olekukonko/tablewriter v0.0.1 // indirect
 	github.com/onsi/ginkgo v1.10.1
 	github.com/onsi/gomega v1.7.0
-	github.com/openshift/custom-resource-status v0.0.0-20190822192428-e62f2f3b79f3 // indirect
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/qinqon/kube-admission-webhook v0.3.0
 	k8s.io/api v0.18.0-alpha.2
@@ -22,11 +15,9 @@ require (
 	k8s.io/apimachinery v0.18.0-alpha.2
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/code-generator v0.18.0-alpha.2
-	k8s.io/gengo v0.0.0-20190327210449-e17681d19d3a // indirect
 	k8s.io/utils v0.0.0-20200109141947-94aeca20bf09 // indirect
-	kubevirt.io/client-go v0.20.4
-	kubevirt.io/containerized-data-importer v1.10.6 // indirect
-	kubevirt.io/kubevirt v0.20.4
+	kubevirt.io/client-go v0.25.0
+	kubevirt.io/kubevirt v0.25.0
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/controller-tools v0.2.4
 )

@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/intel/multus-cni/logging"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +30,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 var log = logf.Log.WithName("Pod Controller")
@@ -81,7 +82,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		if errors.IsNotFound(err) {
 			err := r.poolManager.ReleasePodMac(fmt.Sprintf("%s/%s", request.Namespace, request.Name))
 			if err != nil {
-				logging.Errorf("failed to release mac for pod %s: %v", request.NamespacedName, err)
+				logging.Printf(logging.ErrorLevel, "failed to release mac for pod %s: %v", request.NamespacedName, err)
 			}
 			return reconcile.Result{}, nil
 		}

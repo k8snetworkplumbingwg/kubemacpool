@@ -16,13 +16,12 @@ kubectl config view --raw > ./cluster/dind-cluster/config
 ./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
 ./cluster/dind-cluster/kubectl create -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
 
+REGISTRY="localhost:5000" make docker-generate
+if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run make. Please run it and commit the changes"; git status --porcelain; false; fi
 
 # Build kubemacpool
 REGISTRY="localhost:5000" make docker-build
 REGISTRY="localhost:5000" make docker-push
-
-REGISTRY="localhost:5000" make docker-generate
-if [[ -n "$(git status --porcelain)" ]] ; then echo "It seems like you need to run make. Please run it and commit the changes"; git status --porcelain; false; fi
 
 # wait for cluster operator
 ./cluster/dind-cluster/kubectl wait networkaddonsconfig cluster --for condition=Available --timeout=800s

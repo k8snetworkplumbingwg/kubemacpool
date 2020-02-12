@@ -11,3 +11,4 @@ for tool in $tools; do
     go install $tool
 done
 go mod vendor
+

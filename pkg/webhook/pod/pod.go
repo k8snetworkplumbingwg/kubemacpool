@@ -18,83 +18,61 @@ package pod
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/runtime/inject"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/builder"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission/types"
-
-	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
+	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-var log = logf.Log.WithName("Webhook Pod")
-
-func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager, namespaceSelector *v1.LabelSelector) (*admission.Webhook, error) {
-	podAnnotator := &podAnnotator{poolManager: poolManager}
-
-	wh, err := builder.NewWebhookBuilder().
-		Mutating().
-		FailurePolicy(admissionregistrationv1beta1.Fail).
-		Operations(admissionregistrationv1beta1.Create).
-		ForType(&corev1.Pod{}).
-		Handlers(podAnnotator).
-		WithManager(mgr).
-		NamespaceSelector(namespaceSelector).
-		Build()
-	if err != nil {
-		return nil, err
-	}
-
-	return wh, nil
-}
+var log = logf.Log.WithName("Webhook mutatepods")
 
 type podAnnotator struct {
 	client      client.Client
-	decoder     types.Decoder
+	decoder     *admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
-// podAnnotator Implements admission.Handler.
-var _ admission.Handler = &podAnnotator{}
+// Add adds server modifiers to the server, like registering the hook to the webhook server.
+func Add(s *webhookserver.Server, poolManager *pool_manager.PoolManager) error {
+	podAnnotator := &podAnnotator{poolManager: poolManager}
+	s.UpdateOpts(webhookserver.WithHook("/mutate-pods", &webhook.Admission{Handler: podAnnotator}))
+	return nil
+}
 
 // podAnnotator adds an annotation to every incoming pods.
-func (a *podAnnotator) Handle(ctx context.Context, req types.Request) types.Response {
+func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admission.Response {
 	pod := &corev1.Pod{}
 
 	err := a.decoder.Decode(req, pod)
 	if err != nil {
-		return admission.ErrorResponse(http.StatusBadRequest, err)
+		return admission.Errored(http.StatusBadRequest, err)
 	}
 
 	if pod.Annotations == nil {
-		admission.PatchResponse(pod, pod)
+		pod.Annotations = map[string]string{}
 	}
 
-	copyPod := pod.DeepCopy()
-	if copyPod.Namespace == "" {
-		copyPod.Namespace = req.AdmissionRequest.Namespace
-	}
-
-	log.V(1).Info("got a create pod event", "podName", copyPod.Name, "podNamespace", copyPod.Namespace)
-	err = a.poolManager.AllocatePodMac(copyPod)
+	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace)
+	err = a.poolManager.AllocatePodMac(pod)
 	if err != nil {
-		return admission.ErrorResponse(http.StatusInternalServerError, err)
+		return admission.Errored(http.StatusInternalServerError, err)
+	}
+
+	marshaledPod, _ := json.Marshal(pod)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
 	// admission.PatchResponse generates a Response containing patches.
-	return admission.PatchResponse(pod, copyPod)
+	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledPod)
 }
-
-// podAnnotator implements inject.Client.
-var _ inject.Client = &podAnnotator{}
 
 // InjectClient injects the client into the podAnnotator
 func (a *podAnnotator) InjectClient(c client.Client) error {
@@ -102,11 +80,8 @@ func (a *podAnnotator) InjectClient(c client.Client) error {
 	return nil
 }
 
-// podAnnotator implements inject.Decoder.
-var _ inject.Decoder = &podAnnotator{}
-
-// InjectDecoder injects the decoder into the podAnnotator
-func (a *podAnnotator) InjectDecoder(d types.Decoder) error {
+// InjectDecoder injects the decoder.
+func (a *podAnnotator) InjectDecoder(d *admission.Decoder) error {
 	a.decoder = d
 	return nil
 }

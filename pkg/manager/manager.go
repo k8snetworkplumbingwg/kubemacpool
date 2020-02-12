@@ -144,7 +144,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("unable to register controllers to the manager error %v", err)
 		}
 
-		err = webhook.AddToManager(mgr, poolManager, k.podNamespace)
+		err = webhook.AddToManager(mgr, poolManager)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
 		}

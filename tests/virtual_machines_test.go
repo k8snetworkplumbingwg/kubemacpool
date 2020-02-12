@@ -34,7 +34,7 @@ var _ = Describe("Virtual Machines", func() {
 	Context("Check the client", func() {
 		AfterEach(func() {
 			vmList := &kubevirtv1.VirtualMachineList{}
-			err := testClient.VirtClient.List(context.TODO(), &client.ListOptions{}, vmList)
+			err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{})
 			Expect(err).ToNot(HaveOccurred())
 
 			for _, vmObject := range vmList.Items {
@@ -44,7 +44,7 @@ var _ = Describe("Virtual Machines", func() {
 
 			Eventually(func() int {
 				vmList := &kubevirtv1.VirtualMachineList{}
-				err := testClient.VirtClient.List(context.TODO(), &client.ListOptions{}, vmList)
+				err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				return len(vmList.Items)
 

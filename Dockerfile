@@ -1,5 +1,6 @@
 # Build the manager binary
-FROM golang:1.11 as builder
+ARG GO_VERSION
+FROM golang:${GO_VERSION} as builder
 
 # Copy in the go src
 WORKDIR /go/src/github.com/k8snetworkplumbingwg/kubemacpool

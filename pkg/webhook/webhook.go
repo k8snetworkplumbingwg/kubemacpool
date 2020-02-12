@@ -19,25 +19,25 @@ package webhook
 import (
 	"fmt"
 
+	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
+	"github.com/qinqon/kube-admission-webhook/pkg/webhook/server/certificate"
 	admissionregistration "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
-
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	runtimewebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-// AddToManagerFuncs is a list of functions to add all Controllers to the Manager
-var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1.LabelSelector) (*admission.Webhook, error)
+const (
+	WebhookServerPort = 8000
+)
 
-// AddToManager adds all Controllers to the Manager
+// AddToManagerFuncs is a list of functions to add all Controllers to the Manager
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations;validatingwebhookconfigurations,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;update;create;delete
@@ -47,46 +47,19 @@ var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager, *metav1
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, managerNamespace string) error {
-	svr, err := runtimewebhook.NewServer(names.MUTATE_WEBHOOK, mgr, runtimewebhook.ServerOptions{
-		CertDir: "/tmp/cert",
-		Port:    8000,
-		BootstrapOptions: &runtimewebhook.BootstrapOptions{
-			MutatingWebhookConfigName: names.MUTATE_WEBHOOK_CONFIG,
-			Service: &runtimewebhook.Service{
-				Namespace: managerNamespace,
-				Name:      names.WEBHOOK_SERVICE,
-				// Selectors should select the pods that runs this webhook server.
-				Selectors: map[string]string{
-					names.LEADER_LABEL: "true",
-				},
-			},
-		},
-	})
-	if err != nil {
-		return err
-	}
+var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) error
 
-	namespaceSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
-		{Key: names.K8S_RUNLABEL,
-			Operator: metav1.LabelSelectorOpNotIn, Values: names.CRITICAL_RUNLABELS},
-		{Key: names.OPENSHIFT_RUNLABEL,
-			Operator: metav1.LabelSelectorOpNotIn, Values: names.CRITICAL_RUNLABELS,
-		}}}
+// AddToManager adds all Controllers to the Manager
+func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
+	s := webhookserver.New(mgr, names.MUTATE_WEBHOOK_CONFIG, certificate.MutatingWebhook, webhookserver.WithPort(WebhookServerPort))
 
-	webhooks := []runtimewebhook.Webhook{}
-	for _, f := range AddToManagerFuncs {
-		if webhooktoRegister, err := f(mgr, poolManager, namespaceSelector); err != nil {
+	for _, f := range AddToWebhookFuncs {
+		if err := f(s, poolManager); err != nil {
 			return err
-		} else if webhooktoRegister != nil {
-			webhooks = append(webhooks, webhooktoRegister)
 		}
 	}
 
-	err = svr.Register(webhooks...)
-	if err != nil {
-		return err
-	}
+	mgr.Add(s)
 	return nil
 }
 
@@ -146,7 +119,7 @@ func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace
 						Port: 443,
 						TargetPort: intstr.IntOrString{
 							Type:   intstr.Int,
-							IntVal: 8000,
+							IntVal: WebhookServerPort,
 						}}}}}
 			_, err = kubeClient.CoreV1().Services(managerNamespace).Create(svcObject)
 			return err

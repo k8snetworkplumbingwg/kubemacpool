@@ -17,8 +17,9 @@ limitations under the License.
 package controller
 
 import (
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager

@@ -55,6 +55,7 @@ const (
 	VmiGeniePtp          = "vmi-genie-ptp"
 	VmiGenieMultipleNet  = "vmi-genie-multiple-net"
 	VmiHostDisk          = "vmi-host-disk"
+	VmiGPU               = "vmi-gpu"
 	VmTemplateFedora     = "vm-template-fedora"
 	VmTemplateRHEL7      = "vm-template-rhel7"
 	VmTemplateWindows    = "vm-template-windows2012r2"
@@ -82,8 +83,10 @@ const (
 	imageCirros = "cirros-container-disk-demo"
 	imageFedora = "fedora-cloud-container-disk-demo"
 )
-
 const windowsFirmware = "5d307ca9-b3ef-428c-8861-06e72d69f223"
+const defaultInterfaceName = "default"
+const enableNetworkInterfaceMultiqueueForTemplate = true
+const EthernetAdaptorModelToEnableMultiqueue = "virtio"
 
 var DockerPrefix = "registry:5000/kubevirt"
 var DockerTag = "devel"
@@ -124,6 +127,25 @@ func initFedora(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceS
 	addRNG(spec) // without RNG, newer fedora images may hang waiting for entropy sources
 	return spec
 }
+func enableNetworkInterfaceMultiqueue(spec *v1.VirtualMachineInstanceSpec, enable bool) {
+	spec.Domain.Devices.NetworkInterfaceMultiQueue = &enable
+}
+
+func setDefaultNetworkAndInterface(spec *v1.VirtualMachineInstanceSpec, bindingMethod v1.InterfaceBindingMethod, networkSource v1.NetworkSource) *v1.VirtualMachineInstanceSpec {
+	spec.Domain.Devices.Interfaces = []v1.Interface{
+		v1.Interface{
+			Name:                   defaultInterfaceName,
+			InterfaceBindingMethod: bindingMethod,
+			Model:                  EthernetAdaptorModelToEnableMultiqueue},
+	}
+	spec.Networks = []v1.Network{
+		v1.Network{
+			Name:          defaultInterfaceName,
+			NetworkSource: networkSource},
+	}
+
+	return spec
+}
 
 func addRNG(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceSpec {
 	spec.Domain.Devices.Rng = &v1.Rng{}
@@ -131,28 +153,24 @@ func addRNG(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceSpec 
 }
 
 func addContainerDisk(spec *v1.VirtualMachineInstanceSpec, image string, bus string) *v1.VirtualMachineInstanceSpec {
-	spec.Domain.Devices = v1.Devices{
-		Disks: []v1.Disk{
-			{
-				Name: "containerdisk",
-				DiskDevice: v1.DiskDevice{
-					Disk: &v1.DiskTarget{
-						Bus: bus,
-					},
-				},
+	disk := &v1.Disk{
+		Name: "containerdisk",
+		DiskDevice: v1.DiskDevice{
+			Disk: &v1.DiskTarget{
+				Bus: bus,
 			},
 		},
 	}
-	spec.Volumes = []v1.Volume{
-		{
-			Name: "containerdisk",
-			VolumeSource: v1.VolumeSource{
-				ContainerDisk: &v1.ContainerDiskSource{
-					Image: image,
-				},
+	spec.Domain.Devices.Disks = append(spec.Domain.Devices.Disks, *disk)
+	volume := &v1.Volume{
+		Name: "containerdisk",
+		VolumeSource: v1.VolumeSource{
+			ContainerDisk: &v1.ContainerDiskSource{
+				Image: image,
 			},
 		},
 	}
+	spec.Volumes = append(spec.Volumes, *volume)
 	return spec
 }
 
@@ -291,6 +309,10 @@ func addHostDisk(spec *v1.VirtualMachineInstanceSpec, path string, hostDiskType 
 
 func GetVMIMigratable() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiMigratable)
+	// having no network leads to adding a default interface that may be of type bridge on
+	// the pod network and that would make the VMI non-migratable. Therefore, adding a network.
+	vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
+	vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}
 
 	addContainerDisk(&vmi.Spec, fmt.Sprintf("%s/%s:%s", DockerPrefix, imageAlpine, DockerTag), busVirtio)
 	return vmi
@@ -351,7 +373,6 @@ func GetVMIMasquerade() *v1.VirtualMachineInstance {
 	vm := getBaseVMI(VmiMasquerade)
 	vm.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
 	vm.Spec.Networks = []v1.Network{v1.Network{Name: "testmasquerade", NetworkSource: v1.NetworkSource{Pod: &v1.PodNetwork{}}}}
-
 	initFedora(&vm.Spec)
 	addNoCloudDiskWitUserData(&vm.Spec, "#!/bin/bash\necho \"fedora\" |passwd fedora --stdin\nyum install -y nginx\nsystemctl enable nginx\nsystemctl start nginx")
 
@@ -369,7 +390,7 @@ func GetVMISRIOV() *v1.VirtualMachineInstance {
 	initFedora(&vm.Spec)
 	addNoCloudDiskWitUserData(&vm.Spec, "#!/bin/bash\necho \"fedora\" |passwd fedora --stdin\ndhclient eth1\n")
 
-	vm.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}},
+	vm.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", InterfaceBindingMethod: v1.InterfaceBindingMethod{Masquerade: &v1.InterfaceMasquerade{}}},
 		{Name: "sriov-net", InterfaceBindingMethod: v1.InterfaceBindingMethod{SRIOV: &v1.InterfaceSRIOV{}}}}
 
 	return vm
@@ -394,7 +415,7 @@ func GetVMIMultusMultipleNet() *v1.VirtualMachineInstance {
 	initFedora(&vm.Spec)
 	addNoCloudDiskWitUserData(&vm.Spec, "#!/bin/bash\necho \"fedora\" |passwd fedora --stdin\ndhclient eth1\n")
 
-	vm.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}},
+	vm.Spec.Domain.Devices.Interfaces = []v1.Interface{{Name: "default", InterfaceBindingMethod: v1.InterfaceBindingMethod{Masquerade: &v1.InterfaceMasquerade{}}},
 		{Name: "ptp", InterfaceBindingMethod: v1.InterfaceBindingMethod{Bridge: &v1.InterfaceBridge{}}}}
 
 	return vm
@@ -509,7 +530,7 @@ func GetVMIWindows() *v1.VirtualMachineInstance {
 				},
 			},
 			Devices: v1.Devices{
-				Interfaces: []v1.Interface{*v1.DefaultBridgeNetworkInterface()},
+				Interfaces: []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()},
 			},
 		},
 		Networks: []v1.Network{*v1.DefaultPodNetwork()},
@@ -559,8 +580,18 @@ func GetVMCirros() *v1.VirtualMachine {
 
 func GetTemplateFedora() *Template {
 	vm := getBaseVM("", map[string]string{"kubevirt-vm": "vm-${NAME}", "kubevirt.io/os": "fedora27"})
-	initFedora(&vm.Spec.Template.Spec)
-	addNoCloudDiskWitUserData(&vm.Spec.Template.Spec, "#cloud-config\npassword: fedora\nchpasswd: { expire: False }")
+	spec := &vm.Spec.Template.Spec
+	initFedora(spec)
+	addNoCloudDiskWitUserData(spec, "#cloud-config\npassword: fedora\nchpasswd: { expire: False }")
+
+	setDefaultNetworkAndInterface(spec, v1.InterfaceBindingMethod{
+		Masquerade: &v1.InterfaceMasquerade{},
+	},
+		v1.NetworkSource{
+			Pod: &v1.PodNetwork{},
+		})
+
+	enableNetworkInterfaceMultiqueue(spec, enableNetworkInterfaceMultiqueueForTemplate)
 
 	template := getBaseTemplate(vm, "4096Mi", "4")
 	template.ObjectMeta = metav1.ObjectMeta{
@@ -580,18 +611,35 @@ func GetTemplateFedora() *Template {
 
 func GetTemplateRHEL7() *Template {
 	vm := getBaseVM("", map[string]string{"kubevirt-vm": "vm-${NAME}", "kubevirt.io/os": "rhel-7.4"})
-	addPVCDisk(&vm.Spec.Template.Spec, "linux-vm-pvc-${NAME}", busVirtio, "disk0")
+	spec := &vm.Spec.Template.Spec
+	setDefaultNetworkAndInterface(spec, v1.InterfaceBindingMethod{
+		Masquerade: &v1.InterfaceMasquerade{},
+	},
+		v1.NetworkSource{
+			Pod: &v1.PodNetwork{},
+		})
 
+	enableNetworkInterfaceMultiqueue(spec, enableNetworkInterfaceMultiqueueForTemplate)
+
+	addPVCDisk(spec, "linux-vm-pvc-${NAME}", busVirtio, "disk0")
 	pvc := getPVCForTemplate("linux-vm-pvc-${NAME}")
 	template := newTemplateForRHEL7VM(vm)
 	template.Objects = append(template.Objects, pvc)
-
 	return template
 }
 
 func GetTestTemplateRHEL7() *Template {
 	vm := getBaseVM("", map[string]string{"kubevirt-vm": "vm-${NAME}", "kubevirt.io/os": "rhel-7.4"})
-	addEphemeralPVCDisk(&vm.Spec.Template.Spec, "disk-rhel", busSata, "pvcdisk")
+	spec := &vm.Spec.Template.Spec
+	addEphemeralPVCDisk(spec, "disk-rhel", busSata, "pvcdisk")
+	setDefaultNetworkAndInterface(spec, v1.InterfaceBindingMethod{
+		Masquerade: &v1.InterfaceMasquerade{},
+	},
+		v1.NetworkSource{
+			Pod: &v1.PodNetwork{},
+		})
+
+	enableNetworkInterfaceMultiqueue(spec, enableNetworkInterfaceMultiqueueForTemplate)
 
 	return newTemplateForRHEL7VM(vm)
 }
@@ -853,5 +901,20 @@ func GetVMIWithHookSidecar() *v1.VirtualMachineInstance {
 		"hooks.kubevirt.io/hookSidecars":              fmt.Sprintf("[{\"image\": \"%s/example-hook-sidecar:%s\"}]", DockerPrefix, DockerTag),
 		"smbios.vm.kubevirt.io/baseBoardManufacturer": "Radical Edward",
 	}
+	return vmi
+}
+
+func GetVMIGPU() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiGPU)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	GPUs := []v1.GPU{
+		v1.GPU{
+			Name:       "gpu1",
+			DeviceName: "nvidia.com/GP102GL_Tesla_P40",
+		},
+	}
+	vmi.Spec.Domain.Devices.GPUs = GPUs
+	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, "#cloud-config\npassword: fedora\nchpasswd: { expire: False }")
 	return vmi
 }

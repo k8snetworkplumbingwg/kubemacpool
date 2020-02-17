@@ -2,7 +2,7 @@
 
 teardown() {
     make cluster-down
-    cp $(find . -name "*junit*.xml") $ARTIFACTS
+    cp $(find . -name "*junit*.xml") $ARTIFACTS || true
 }
 
 main() {

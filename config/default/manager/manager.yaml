@@ -81,6 +81,10 @@ spec:
               configMapKeyRef:
                 name: mac-range-config
                 key: RANGE_END
+          - name: HEALTH_PROBE_HOST
+            value: "0.0.0.0"
+          - name: HEALTH_PROBE_PORT
+            value: "9440"
         resources:
           limits:
             cpu: 300m
@@ -92,6 +96,15 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
+        - containerPort: 9440
+          name: healthz
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          initialDelaySeconds: 10
+          periodSeconds: 10
       terminationGracePeriodSeconds: 5
 ---
 apiVersion: policy/v1beta1

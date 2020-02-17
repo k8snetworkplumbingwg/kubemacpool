@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
@@ -103,8 +104,23 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			continue
 		}
 
+		healthProbeHost, ok := os.LookupEnv("HEALTH_PROBE_HOST")
+		if !ok {
+			log.Error(err, "Failed to load HEALTH_PROBE_HOST from environment variable")
+			os.Exit(1)
+		}
+
+		healthProbePort, ok := os.LookupEnv("HEALTH_PROBE_PORT")
+		if !ok {
+			log.Error(err, "Failed to load HEALTH_PROBE_PORT from environment variable")
+			os.Exit(1)
+		}
+
 		log.Info("Setting up Manager")
-		mgr, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
+		mgr, err := manager.New(k.config, manager.Options{
+			MetricsBindAddress:     k.metricsAddr,
+			HealthProbeBindAddress: fmt.Sprintf("%s:%s", healthProbeHost, healthProbePort),
+		})
 		if err != nil {
 			return fmt.Errorf("unable to set up manager error %v", err)
 		}
@@ -147,6 +163,11 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		err = webhook.AddToManager(mgr, poolManager)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
+		}
+
+		if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
+			log.Info("Unable to create health check", "error", err)
+			os.Exit(1)
 		}
 
 		err = mgr.Start(k.restartChannel)

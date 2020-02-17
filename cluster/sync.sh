@@ -35,9 +35,25 @@ done
 
 ./cluster/kubectl.sh apply -f ./config/test/kubemacpool.yaml
 
-# Make sure all containers are ready
-while [ -n "$(./cluster/kubectl.sh get pods --all-namespaces -o'custom-columns=status:status.containerStatuses[*].ready,metadata:metadata.name' --no-headers | grep false)" ]; do
-    echo "Waiting for all containers to become ready ..."
-    ./cluster/kubectl.sh get pods --all-namespaces -o'custom-columns=status:status.containerStatuses[*].ready,metadata:metadata.name' --no-headers
-    sleep 10
-done
+pods_ready_wait() {
+  echo "Waiting for non-kubemacpool containers to be ready ..."
+  ./cluster/kubectl.sh wait pod --all -n kube-system --for=condition=Ready --timeout=5m
+
+  wait_failed=''
+  max_retries=12
+  retry_counter=0
+  echo "Waiting for kubemacpool leader container to be ready ..."
+  while [[ "$(./cluster/kubectl.sh wait pod -n kubemacpool-system --for=condition=Ready -l kubemacpool-leader=true --timeout=1m)" = $wait_failed ]] && [[ $retry_counter -lt $max_retries ]]; do
+    sleep 5s
+    retry_counter=$((retry_counter + 1))
+  done
+
+  if [ $retry_counter -eq $max_retries ]; then
+    echo "Failed/timed-out waiting for kubemacpool recourses"
+    exit 1
+  else
+    echo "Kubemacpool leader pod is ready"
+  fi
+}
+
+pods_ready_wait

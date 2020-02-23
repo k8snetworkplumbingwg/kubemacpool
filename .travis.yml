@@ -8,10 +8,7 @@ services:
 
 install: true
 script:
-  - sudo cp ./cluster/dind-cluster/kubectl /usr/bin/kubectl
-  - make test
-  - make deploy-test-cluster
-  - KUBECONFIG="`pwd`/cluster/dind-cluster/config" go test -timeout 30m -v -race ./tests/...
+  - make docker-build
 
 deploy:
 - provider: script

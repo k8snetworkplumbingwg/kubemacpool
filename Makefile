@@ -14,6 +14,8 @@ export PATH := $(GOBIN):$(PATH)
 GOFMT := $(GOBIN)/gofmt
 GO := $(GOBIN)/go
 
+export KUBECTL ?= cluster/kubectl.sh
+
 all: generate generate-deploy generate-test
 
 $(GO):
@@ -30,10 +32,10 @@ functest: $(GO)
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy
-	kubectl apply -f config/test/kubemacpool.yaml
+	$(KUBECTL) apply -f config/test/kubemacpool.yaml
 
 deploy-test: generate-test
-	kubectl apply -f config/test/kubemacpool.yaml
+	$(KUBECTL) apply -f config/test/kubemacpool.yaml
 
 generate-deploy: manifests
 	kustomize build config/release > config/release/kubemacpool.yaml
@@ -87,10 +89,7 @@ cluster-down:
 cluster-sync:
 	./cluster/sync.sh
 
-deploy-test-cluster:
-	./hack/deploy-test-cluster.sh
-
 tools-vendoring: $(GO)
 	./hack/vendor-tools.sh $$(pwd)/tools.go
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster tools-vendoring docker-build-base-image
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync tools-vendoring docker-build-base-image

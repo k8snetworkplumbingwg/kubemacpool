@@ -1,7 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mac-controller-manager
+  name: kubemacpool-mac-controller-manager
+  namespace: kubemacpool-system
 spec:
   template:
     spec:

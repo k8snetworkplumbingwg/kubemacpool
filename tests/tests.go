@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -127,6 +128,15 @@ func addNetworksToPod(pod *corev1.Pod, networks []map[string]string) {
 	}
 }
 
+func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
+	for _, pod := range pods.Items {
+		if pod.Name == podToFind.Name {
+			return &pod
+		}
+	}
+	return nil
+}
+
 func setRange(rangeStart, rangeEnd string) error {
 	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
 	if err != nil {
@@ -141,42 +151,39 @@ func setRange(rangeStart, rangeEnd string) error {
 		return err
 	}
 
-	podsList, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+	oldPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, pod := range podsList.Items {
+	for _, pod := range oldPods.Items {
 		err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 		if err != nil {
 			return err
 		}
 	}
 
-	macDeploy, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
 	Eventually(func() error {
-		podsList, err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
 
-		if len(podsList.Items) != int(macDeploy.Status.Replicas) {
-			return fmt.Errorf("should have %v manager pods", macDeploy.Status.Replicas)
-		}
-
-		for _, pod := range podsList.Items {
-			if pod.Status.Phase != corev1.PodRunning {
-				return fmt.Errorf("manager pod not ready")
+		for _, oldPod := range oldPods.Items {
+			if findPodByName(currentPods, oldPod) != nil {
+				return fmt.Errorf("old pod %s has not yet been removed", oldPod.Name)
 			}
 		}
 
-		return nil
+		for _, currentPod := range currentPods.Items {
+			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
+				return nil
+			}
+		}
 
-	}, 4*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to get kubemacpool manager pod")
+		return fmt.Errorf("have not found any manager in the ready state")
+
+	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to start new set of manager pods within the given timeout")
 
 	return nil
 }
@@ -206,6 +213,21 @@ func DeleteLeaderManager() {
 
 		return false
 	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+
+	Eventually(func() error {
+		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		if err != nil {
+			return err
+		}
+
+		for _, currentPod := range currentPods.Items {
+			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
+				return nil
+			}
+		}
+
+		return fmt.Errorf("have not found any manager in the ready state")
+	}, 2*time.Minute, 3*time.Second).ShouldNot(HaveOccurred(), "timed out while waiting for a new leader")
 }
 
 func changeManagerReplicas(numOfReplica int32) error {
@@ -234,8 +256,8 @@ func changeManagerReplicas(numOfReplica int32) error {
 		if managerDeployment.Status.Replicas != numOfReplica {
 			return false
 		}
-
-		if managerDeployment.Status.ReadyReplicas != numOfReplica {
+		//due to readiness probe only 1 (the leader) pod will be ready (if any)
+		if float64(managerDeployment.Status.ReadyReplicas) != math.Min(float64(1), float64(numOfReplica)) {
 			return false
 		}
 
@@ -256,7 +278,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 
 		return true
 
-	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
 
 	return nil
 }

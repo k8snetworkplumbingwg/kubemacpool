@@ -90,7 +90,7 @@ cluster-sync:
 deploy-test-cluster:
 	./hack/deploy-test-cluster.sh
 
-tools-vendoring:
+tools-vendoring: $(GO)
 	./hack/vendor-tools.sh $$(pwd)/tools.go
 
 .PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync deploy-test-cluster tools-vendoring docker-build-base-image

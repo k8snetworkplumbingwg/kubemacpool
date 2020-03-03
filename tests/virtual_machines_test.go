@@ -489,7 +489,7 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 		//2995
-		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
+		PContext("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
 			It("should successfully release the MAC and the new VM should be created with no errors", func() {
 				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:01")
 				Expect(err).ToNot(HaveOccurred())

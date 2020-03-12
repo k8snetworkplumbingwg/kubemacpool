@@ -82,8 +82,9 @@ var _ = Describe("Pods", func() {
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
 
-		It("should fail to create a pod on a regular namespace when mac pool is down", func() {
-			testCriticalNamespace(OtherTestNamespace, "not-critical", BeFalse())
+		// We never fail thanks to the "Ignore" failure policy
+		It("should create a pod on a regular namespace when mac pool is down", func() {
+			testCriticalNamespace(OtherTestNamespace, "not-critical", BeTrue())
 		})
 
 		It("should create a pod on a critical k8s namespaces when mac pool is down", func() {

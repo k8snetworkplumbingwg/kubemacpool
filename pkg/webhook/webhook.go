@@ -68,6 +68,8 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager, ma
 	}
 
 	namespaceSelector := &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{
+		{Key: names.ADMISSION_IGNORE_LABEL,
+			Operator: metav1.LabelSelectorOpDoesNotExist},
 		{Key: names.K8S_RUNLABEL,
 			Operator: metav1.LabelSelectorOpNotIn, Values: names.CRITICAL_RUNLABELS},
 		{Key: names.OPENSHIFT_RUNLABEL,

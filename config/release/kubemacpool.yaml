@@ -4,6 +4,7 @@ metadata:
   labels:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
+    kubemacpool/ignoreAdmission: "true"
     openshift.io/run-level: "0"
     runlevel: "0"
   name: kubemacpool-system

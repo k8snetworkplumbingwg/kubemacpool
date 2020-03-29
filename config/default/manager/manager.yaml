@@ -130,7 +130,7 @@ spec:
     - port: 443
       targetPort: 8000
   selector:
-    kubemacpool-leader: "true"
+    app: kubemacpool
 ---
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration

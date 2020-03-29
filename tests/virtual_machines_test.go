@@ -427,8 +427,8 @@ var _ = Describe("Virtual Machines", func() {
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
-				By("deleting leader manager")
-				DeleteLeaderManager()
+				By("deleting 1 kubemacpool manager pod")
+				DeleteOneManager()
 
 				err = testClient.VirtClient.Create(context.TODO(), anotherVm)
 				Expect(err).ToNot(HaveOccurred())

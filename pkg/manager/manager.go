@@ -25,7 +25,6 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/leaderelection"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -47,11 +46,9 @@ type KubeMacPoolManager struct {
 	restartChannel           chan struct{}  // Close the channel if we need to regenerate certs
 	kubevirtInstalledChannel chan struct{}  // This channel is close after we found kubevirt to reload the manager
 	stopSignalChannel        chan os.Signal // stop channel signal
-	leaderElectionChannel    chan error     // Channel used by the leader election function send error if we lose the election
 	podNamespace             string         // manager pod namespace
 	podName                  string         // manager pod name
 	waitingTime              int            // Duration in second to lock a mac address before it was saved to etcd
-	leaderElection           *leaderelection.LeaderElector
 }
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
@@ -60,7 +57,6 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 		restartChannel:           make(chan struct{}),
 		kubevirtInstalledChannel: make(chan struct{}),
 		stopSignalChannel:        make(chan os.Signal, 1),
-		leaderElectionChannel:    make(chan error, 1),
 		podNamespace:             podNamespace,
 		podName:                  podName,
 		metricsAddr:              metricsAddr,
@@ -85,25 +81,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		return fmt.Errorf("unable to create a kubernetes client error %v", err)
 	}
 
-	log.Info("Setting up leader electionManager")
-	leaderElectionManager, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
-	if err != nil {
-		return fmt.Errorf("unable to set up manager error %v", err)
-	}
-
-	err = k.newLeaderElection(k.config, leaderElectionManager.GetScheme())
-	if err != nil {
-		return fmt.Errorf("unable to create a leader election resource lock error %v", err)
-	}
-
 	for k.continueToRunManager {
-		log.Info("waiting for manager to become leader")
-		err = k.waitToStartLeading()
-		if err != nil {
-			log.Error(err, "failed to wait for leader election")
-			continue
-		}
-
 		healthProbeHost, ok := os.LookupEnv("HEALTH_PROBE_HOST")
 		if !ok {
 			log.Error(err, "Failed to load HEALTH_PROBE_HOST from environment variable")

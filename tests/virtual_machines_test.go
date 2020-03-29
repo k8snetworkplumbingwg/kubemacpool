@@ -67,7 +67,7 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
-			//2166
+			//2166 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 			Context("When the MAC address is within range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
 					err := setRange(rangeStart, rangeEnd)
@@ -288,8 +288,8 @@ var _ = Describe("Virtual Machines", func() {
 				}, timeout, pollingInterval).Should(HaveOccurred())
 			})
 		})
-		//2243
-		Context("When we re-apply a VM yaml", func() {
+		//2243 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/102
+		PContext("When we re-apply a VM yaml", func() {
 			It("should assign to the VM the same MAC addresses as before the re-apply, and not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())

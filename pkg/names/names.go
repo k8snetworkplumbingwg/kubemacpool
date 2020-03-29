@@ -10,9 +10,8 @@ const MUTATE_WEBHOOK = "kubemacpool-webhook"
 
 const MUTATE_WEBHOOK_CONFIG = "kubemacpool-mutator"
 
+//TODO delete this const name after removing leader label from namespace
 const LEADER_LABEL = "kubemacpool-leader"
-
-const LEADER_ID = "kubemacpool-election"
 
 const K8S_RUNLABEL = "runlevel"
 

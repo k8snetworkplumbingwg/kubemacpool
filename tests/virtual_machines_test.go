@@ -288,8 +288,8 @@ var _ = Describe("Virtual Machines", func() {
 				}, timeout, pollingInterval).Should(HaveOccurred())
 			})
 		})
-		//2243 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/102
-		PContext("When we re-apply a VM yaml", func() {
+		//2243
+		Context("When we re-apply a VM yaml", func() {
 			It("should assign to the VM the same MAC addresses as before the re-apply, and not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
@@ -313,11 +313,13 @@ var _ = Describe("Virtual Machines", func() {
 					_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
 				}
-				err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: updateObject.Namespace, Name: updateObject.Name}, updateObject)
-				Expect(err).ToNot(HaveOccurred())
 
-				err = retry.RetryOnConflict( retry.DefaultRetry, func() error {
-					err =  testClient.VirtClient.Update(context.TODO(), updateObject)
+				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+					err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: updateObject.Namespace, Name: updateObject.Name}, updateObject)
+					Expect(err).ToNot(HaveOccurred())
+
+					err = testClient.VirtClient.Update(context.TODO(), updateObject)
 					return err
 				})
 				Expect(err).ToNot(HaveOccurred())

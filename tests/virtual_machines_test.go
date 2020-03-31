@@ -434,8 +434,8 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		//2995 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/99
-		PContext("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
+		//2995
+		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
 			It("should successfully release the MAC and the new VM should be created with no errors", func() {
 				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:01")
 				Expect(err).ToNot(HaveOccurred())
@@ -458,29 +458,31 @@ var _ = Describe("Virtual Machines", func() {
 
 				By("checking that the VM's NIC can be removed")
 
-				Eventually(func() error {
+				err = retry.RetryOnConflict( retry.DefaultRetry, func() error {
 					err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-					if err != nil {
-						Expect(strings.Contains(err.Error(), "the object has been modified")).To(Equal(true))
-						return err
-					}
+					Expect(err).ToNot(HaveOccurred())
 
 					vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br2", "")}
 					vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br2")}
-					err = testClient.VirtClient.Update(context.TODO(), vm)
-					if err != nil {
-						Expect(strings.Contains(err.Error(), "the object has been modified")).To(Equal(true))
-						return err
-					}
 
-					return nil
-				}, 50*time.Second, 5*time.Second).ShouldNot(HaveOccurred(), "failed to update VM")
+					err = testClient.VirtClient.Update(context.TODO(), vm)
+					return err
+				})
+				Expect(err).ToNot(HaveOccurred())
 
 				Expect(len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true))
 
 				By("checking that a new VM can be created after the VM's NIC had been removed ")
-				err = testClient.VirtClient.Create(context.TODO(), newVM)
-				Expect(err).ToNot(HaveOccurred())
+
+				Eventually(func() error {
+					err = testClient.VirtClient.Create(context.TODO(), newVM)
+					if err != nil {
+						Expect(strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full")).To(Equal(true))
+					}
+					return err
+
+				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+
 				Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true))
 			})
 		})

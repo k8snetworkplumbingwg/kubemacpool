@@ -21,7 +21,7 @@ data:
   RANGE_END: 02:FF:FF:FF:FF:FF
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mac-controller-manager
   namespace: system
@@ -29,6 +29,7 @@ metadata:
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
 spec:
+  serviceName: kubemacpool-service
   replicas: 2
   selector:
     matchLabels:

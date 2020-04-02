@@ -2,16 +2,16 @@ package tests
 
 import (
 	"fmt"
+	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"time"
-
-	"k8s.io/apimachinery/pkg/util/rand"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/util/rand"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -128,9 +128,9 @@ func addNetworksToPod(pod *corev1.Pod, networks []map[string]string) {
 	}
 }
 
-func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
+func findPodByUid(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 	for _, pod := range pods.Items {
-		if pod.Name == podToFind.Name {
+		if pod.ObjectMeta.UID == podToFind.ObjectMeta.UID {
 			return &pod
 		}
 	}
@@ -170,7 +170,7 @@ func setRange(rangeStart, rangeEnd string) error {
 		}
 
 		for _, oldPod := range oldPods.Items {
-			if findPodByName(currentPods, oldPod) != nil {
+			if findPodByUid(currentPods, oldPod) != nil {
 				return fmt.Errorf("old pod %s has not yet been removed", oldPod.Name)
 			}
 		}
@@ -193,9 +193,11 @@ func DeleteLeaderManager() {
 	Expect(err).ToNot(HaveOccurred())
 
 	leaderPodName := ""
+	leaderPodUid := types.UID("")
 	for _, pod := range pods.Items {
 		if _, ok := pod.Labels[names.LEADER_LABEL]; ok {
 			leaderPodName = pod.Name
+			leaderPodUid = pod.ObjectMeta.UID
 			break
 		}
 	}
@@ -206,8 +208,9 @@ func DeleteLeaderManager() {
 	Expect(err).ToNot(HaveOccurred())
 
 	Eventually(func() bool {
-		_, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(leaderPodName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
+		pod, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(leaderPodName, metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		if pod.ObjectMeta.UID != leaderPodUid {
 			return true
 		}
 
@@ -278,7 +281,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 
 		return true
 
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool statefulset number of replicas")
 
 	return nil
 }

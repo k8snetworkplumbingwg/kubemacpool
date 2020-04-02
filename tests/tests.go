@@ -232,14 +232,14 @@ func DeleteLeaderManager() {
 
 func changeManagerReplicas(numOfReplica int32) error {
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
-		managerDeployment.Spec.Replicas = &numOfReplica
+		managerStatefulset.Spec.Replicas = &numOfReplica
 
-		_, err = testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Update(managerDeployment)
+		_, err = testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Update(managerStatefulset)
 		if err != nil {
 			return err
 		}
@@ -248,16 +248,16 @@ func changeManagerReplicas(numOfReplica int32) error {
 	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
 
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
 
-		if managerDeployment.Status.Replicas != numOfReplica {
+		if managerStatefulset.Status.Replicas != numOfReplica {
 			return false
 		}
 		//due to readiness probe only 1 (the leader) pod will be ready (if any)
-		if float64(managerDeployment.Status.ReadyReplicas) != math.Min(float64(1), float64(numOfReplica)) {
+		if float64(managerStatefulset.Status.ReadyReplicas) != math.Min(float64(1), float64(numOfReplica)) {
 			return false
 		}
 

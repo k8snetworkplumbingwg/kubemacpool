@@ -384,8 +384,7 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 
-		// test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/103
-		PContext("testing finalizers", func() {
+		Context("testing finalizers", func() {
 			Context("When the VM is not being deleted", func() {
 				It("should have a finalizer and deletion timestamp should be zero ", func() {
 					err := setRange(rangeStart, rangeEnd)
@@ -396,21 +395,22 @@ var _ = Describe("Virtual Machines", func() {
 					err = testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred())
 
-					err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-					Expect(err).ToNot(HaveOccurred())
-
-					isFinalizerNameMatch := false
-					if vm.ObjectMeta.DeletionTimestamp.IsZero() {
-						if len(vm.ObjectMeta.Finalizers) == 1 {
-							if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
-								isFinalizerNameMatch = true
+					Eventually(func() bool {
+						err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(err).ToNot(HaveOccurred())
+						if vm.ObjectMeta.DeletionTimestamp.IsZero() {
+							if len(vm.ObjectMeta.Finalizers) == 1 {
+								if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
+									return true
+								}
 							}
 						}
-					}
-					Expect(isFinalizerNameMatch).To(Equal(true))
+						return false
+					}, timeout, pollingInterval).Should(BeTrue())
 				})
 			})
 		})
+
 		Context("When the leader is changed", func() {
 			It("should be able to create a new virtual machine", func() {
 				err := setRange(rangeStart, rangeEnd)
@@ -460,7 +460,7 @@ var _ = Describe("Virtual Machines", func() {
 
 				By("checking that the VM's NIC can be removed")
 
-				err = retry.RetryOnConflict( retry.DefaultRetry, func() error {
+				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 					err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
 					Expect(err).ToNot(HaveOccurred())
 

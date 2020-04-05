@@ -2,7 +2,6 @@ package tests
 
 import (
 	"fmt"
-	"k8s.io/apimachinery/pkg/types"
 	"math"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/rand"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -235,7 +235,7 @@ func DeleteLeaderManager() {
 
 func changeManagerReplicas(numOfReplica int32) error {
 	Eventually(func() error {
-		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_STATEFULSET, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -251,7 +251,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
 
 	Eventually(func() bool {
-		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerStatefulset, err := testClient.KubeClient.AppsV1().StatefulSets(ManagerNamespce).Get(names.MANAGER_STATEFULSET, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}

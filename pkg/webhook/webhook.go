@@ -133,7 +133,7 @@ func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace
 }
 
 func createStatefulSetOwnerRef(kubeClient *kubernetes.Clientset, managerNamespace string) ([]metav1.OwnerReference, error) {
-	managerStatefulset, err := kubeClient.AppsV1().StatefulSets(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	managerStatefulset, err := kubeClient.AppsV1().StatefulSets(managerNamespace).Get(names.MANAGER_STATEFULSET, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

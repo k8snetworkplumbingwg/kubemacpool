@@ -45,7 +45,7 @@ const (
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
 var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) error
 
@@ -70,7 +70,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 // We choose this solution because the sigs.k8s.io/controller-runtime package doesn't allow to customize
 // the ServerOptions object
 func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset, managerNamespace string) error {
-	ownerRefList, err := createDeploymentOwnerRef(kubeClient, managerNamespace)
+	ownerRefList, err := createStatefulSetOwnerRef(kubeClient, managerNamespace)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func CreateOwnerRefForMutatingWebhook(kubeClient *kubernetes.Clientset, managerN
 }
 
 func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace string) error {
-	ownerRefList, err := createDeploymentOwnerRef(kubeClient, managerNamespace)
+	ownerRefList, err := createStatefulSetOwnerRef(kubeClient, managerNamespace)
 	if err != nil {
 		return err
 	}
@@ -132,12 +132,12 @@ func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace
 	return err
 }
 
-func createDeploymentOwnerRef(kubeClient *kubernetes.Clientset, managerNamespace string) ([]metav1.OwnerReference, error) {
-	managerDeployment, err := kubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+func createStatefulSetOwnerRef(kubeClient *kubernetes.Clientset, managerNamespace string) ([]metav1.OwnerReference, error) {
+	managerStatefulset, err := kubeClient.AppsV1().StatefulSets(managerNamespace).Get(names.MANAGER_STATEFULSET, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
-	ownerRefList := []metav1.OwnerReference{{Name: managerDeployment.Name, Kind: "Deployment", APIVersion: "apps/v1", UID: managerDeployment.UID}}
+	ownerRefList := []metav1.OwnerReference{{Name: managerStatefulset.Name, Kind: "StatefulSet", APIVersion: "apps/v1", UID: managerStatefulset.UID}}
 
 	return ownerRefList, nil
 }

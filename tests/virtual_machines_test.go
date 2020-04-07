@@ -401,9 +401,7 @@ var _ = Describe("Virtual Machines", func() {
 						Expect(err).ToNot(HaveOccurred())
 						if vm.ObjectMeta.DeletionTimestamp.IsZero() {
 							if len(vm.ObjectMeta.Finalizers) == 1 {
-								if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
-									return true
-								}
+								return strings.Contains(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName+"kubemacpool-mac-controller-manager-")
 							}
 						}
 						return false

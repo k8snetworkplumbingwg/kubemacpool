@@ -45,7 +45,7 @@ var _ = Describe("Pool", func() {
 		Expect(err).ToNot(HaveOccurred())
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred())
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
+		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_STATEFULSET, names.MANAGER_NAMESPACE, false, 10)
 		Expect(err).ToNot(HaveOccurred())
 
 		return poolManager
@@ -82,6 +82,28 @@ var _ = Describe("Pool", func() {
 			table.Entry("Start: 02:FF:00:00:00:00  End: 02:00:00:00:00:00", "02:FF:00:00:00:00", "00:00:00:00:00:00", true),
 		)
 
+		table.DescribeTable("should check that a mac address in within the range", func(startMacAddr, endMacAddr string, testMacAddr string, shouldSucceed bool) {
+			startMacAddrHW, err := net.ParseMAC(startMacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			endMacAddrHW, err := net.ParseMAC(endMacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			testMacAddrHW, err := net.ParseMAC(testMacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			isInRange := inRange(startMacAddrHW, endMacAddrHW, testMacAddrHW)
+			Expect(isInRange).To(Equal(shouldSucceed))
+		},
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 02:00:00:01:00:00", "02:00:00:00:00:00", "03:00:00:00:00:00", "02:00:00:01:00:00", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 02:00:00:00:00:01", "02:00:00:00:00:00", "03:00:00:00:00:00", "02:00:00:00:00:01", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 02:FF:FF:FF:FF:FF", "02:00:00:00:00:00", "03:00:00:00:00:00", "02:FF:FF:FF:FF:FF", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:01 Mac-Tested: 02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:01", "02:00:00:00:00:00", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:01 Mac-Tested: 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:01", "02:00:00:00:00:01", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:00 Mac-Tested: 02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:00", true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:00 Mac-Tested: 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:01", false),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 01:FF:FF:FF:FF:FF", "02:00:00:00:00:00", "03:00:00:00:00:00", "01:FF:FF:FF:FF:FF", false),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 03:00:00:00:00:01", "02:00:00:00:00:00", "03:00:00:00:00:00", "03:00:00:00:00:01", false),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 Mac-Tested: 04:00:00:00:00:00", "02:00:00:00:00:00", "03:00:00:00:00:00", "04:00:00:00:00:00", false),
+		)
+
 		table.DescribeTable("should check that the multicast bit is off", func(MacAddr string, shouldFail bool) {
 			MacAddrHW, err := net.ParseMAC(MacAddr)
 			Expect(err).ToNot(HaveOccurred())
@@ -112,7 +134,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_STATEFULSET, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
 
@@ -124,7 +146,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_STATEFULSET, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
 
@@ -136,7 +158,7 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
 			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
+			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_STATEFULSET, names.MANAGER_NAMESPACE, false, 10)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
 		})

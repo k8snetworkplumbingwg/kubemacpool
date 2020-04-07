@@ -121,7 +121,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
-		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podName, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return fmt.Errorf("unable to create pool manager error %v", err)
 		}

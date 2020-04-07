@@ -17,6 +17,7 @@ limitations under the License.
 package pool_manager
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"sync"
@@ -28,7 +29,7 @@ import (
 const (
 	RangeStartEnv              = "RANGE_START"
 	RangeEndEnv                = "RANGE_END"
-	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
+	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubemacpool"
 	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
 	vmWaitConfigMapName        = "kubemacpool-vm-configmap"
@@ -42,6 +43,7 @@ type PoolManager struct {
 	rangeEnd         net.HardwareAddr     // last mac in range
 	currentMac       net.HardwareAddr     // last given mac
 	managerNamespace string
+	managerPodName   string
 	macPoolMap       map[string]AllocationStatus  // allocated mac map and status
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
 	poolMutex        sync.Mutex                   // mutex for allocation an release
@@ -56,7 +58,7 @@ const (
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
 
-func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
+func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerPodName string, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
@@ -79,6 +81,7 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		rangeEnd:         rangeEnd,
 		rangeStart:       rangeStart,
 		currentMac:       currentMac,
+		managerPodName:   managerPodName,
 		managerNamespace: managerNamespace,
 		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       map[string]AllocationStatus{},
@@ -147,6 +150,17 @@ func (p *PoolManager) InitMaps() error {
 	return nil
 }
 
+func (p *PoolManager) IsMacInRange(macAddress string) bool {
+	macAddressHW, _ := net.ParseMAC(macAddress)
+	return inRange(p.rangeStart, p.rangeEnd, macAddressHW)
+}
+
+func (p *PoolManager) GetManagerFinalizerName() string {
+	//we extract the index from the last character of the pod's name (as it is a statefulSet).
+	replicaIndex := p.managerPodName[len(p.managerPodName)-1:]
+	return fmt.Sprintf("%s-%s", RuntimeObjectFinalizerName, replicaIndex)
+}
+
 func checkRange(startMac, endMac net.HardwareAddr) error {
 	for idx := 0; idx <= 5; idx++ {
 		if startMac[idx] < endMac[idx] {
@@ -155,6 +169,13 @@ func checkRange(startMac, endMac net.HardwareAddr) error {
 	}
 
 	return fmt.Errorf("Invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
+}
+
+func inRange(startMac, endMac, macAddress net.HardwareAddr) bool {
+	if bytes.Compare(macAddress, startMac) >= 0 && bytes.Compare(macAddress, endMac) <= 0 {
+		return true
+	}
+	return false
 }
 
 func checkCast(mac net.HardwareAddr) error {

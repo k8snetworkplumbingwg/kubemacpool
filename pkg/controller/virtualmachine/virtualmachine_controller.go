@@ -92,50 +92,54 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, err
 	}
 
+	finalizerName := r.poolManager.GetManagerFinalizerName()
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
 		log.V(1).Info("The VM is not being deleted",
 			"virtualMachineName", request.Name,
 			"virtualMachineNamespace", request.Namespace)
 		// The object is not being deleted, so if it does not have a finalizer,
 		// then lets add the finalizer and update the object.
-		err = r.addFinalizerAndUpdate(instance, &request)
+		err, isMacAllocatedToRange := r.poolManager.MarkVMAsReady(instance)
+		err = r.addFinalizerAndUpdate(instance, &request, finalizerName, isMacAllocatedToRange)
 		return reconcile.Result{}, err
 	}
 	// The object is being deleted
 	log.V(1).Info("The VM is being marked for deletion",
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
-	err = r.removeFinalizerAndReleaseMac(instance, &request)
+	err = r.removeFinalizerAndReleaseMac(instance, &request, finalizerName)
 	return reconcile.Result{}, err
 }
 
-func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {
-	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
-		return nil
-	}
+func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request, finalizerName string, isMacAllocatedToRange bool) error {
+	//we want to add a finalizer only if this pod has allocated a mac to this vm
+	if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, finalizerName) && isMacAllocatedToRange {
+		log.V(1).Info("A Mac address from this range was allocated. Need to add Finalizer",
+			"virtualMachineName", request.Name,
+			"virtualMachineNamespace", request.Namespace,
+			"finalizerName", finalizerName)
 
-	log.V(1).Info("The VM does not have a finalizer",
-		"virtualMachineName", request.Name,
-		"virtualMachineNamespace", request.Namespace)
-	virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+		virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, finalizerName)
 
-	err := r.Update(context.Background(), virtualMachine)
-	if err != nil {
-		log.Error(err, "failed to update the VM with the new finalizer",
+		err := r.Update(context.Background(), virtualMachine)
+		if err != nil {
+			log.Error(err, "failed to update the VM with the new finalizer",
+				"virtualMachineName", request.Name,
+				"virtualMachineNamespace", request.Namespace,
+				"finalizerName", finalizerName)
+			return err
+		}
+
+		log.V(1).Info("Finalizer was added to the VM",
 			"virtualMachineName", request.Name,
 			"virtualMachineNamespace", request.Namespace)
-		return err
 	}
+	return nil
 
-	log.V(1).Info("Finalizer was added to the VM",
-		"virtualMachineName", request.Name,
-		"virtualMachineNamespace", request.Namespace)
-
-	return r.poolManager.MarkVMAsReady(virtualMachine)
 }
 
-func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {
-	if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
+func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request, finalizerName string) error {
+	if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, finalizerName) {
 		return nil
 	}
 	// our finalizer is present, so lets handle our external dependency
@@ -152,7 +156,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.
 	log.V(1).Info("removing finalizers",
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
-	virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+	virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, finalizerName)
 
 	err = r.Update(context.Background(), virtualMachine)
 	if err != nil {

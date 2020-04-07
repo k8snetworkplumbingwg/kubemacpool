@@ -25,6 +25,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	kubevirt "kubevirt.io/client-go/api/v1"
 )
 
@@ -221,14 +222,10 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(virtualMachine
 		return err
 	}
 
-	if _, exist := p.macPoolMap[requestedMac]; exist {
-		err := fmt.Errorf("failed to allocate requested mac address")
-		log.Error(err, "mac address already allocated")
-
-		return err
+	if p.IsMacInRange(requestedMac) {
+		p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
 	}
 
-	p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
 	log.Info("requested mac was allocated for virtual machine",
 		"requestedMap", requestedMac,
 		"virtualMachineName", virtualMachine.Name,
@@ -389,9 +386,11 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 	}
 
 	for _, macAddress := range allocations {
-		log.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
-		macAddress = strings.Replace(macAddress, ":", "-", 5)
-		configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
+		if p.IsMacInRange(macAddress) {
+			log.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
+			macAddress = strings.Replace(macAddress, ":", "-", 5)
+			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
+		}
 	}
 
 	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
@@ -399,32 +398,49 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 }
 
 // Remove all the mac addresses from the waiting configmap this mean the vm was saved in the etcd and pass validations
-func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
+func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) (error, bool) {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
+	isMacAllocatedToRange := false
 
-	if configMap.Data == nil {
-		log.Info("the configMap is empty")
-		return nil
-	}
-
-	for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-		if vmInterface.MacAddress != "" {
-			p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
-			macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
-			delete(configMap.Data, macAddress)
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+		if err != nil {
+			return err
 		}
+
+		isMacAllocatedInConfigMap := false
+		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+			if vmInterface.MacAddress != "" && p.IsMacInRange(vmInterface.MacAddress) {
+				isMacAllocatedToRange = true
+				p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
+				macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
+				if _, ok := configMap.Data[macAddress]; ok {
+					delete(configMap.Data, macAddress)
+					isMacAllocatedInConfigMap = true
+				}
+			}
+		}
+
+		//to avoid unnecessary conflicts, we only update vmWaitConfigMapName configmap if it was updated
+		if isMacAllocatedInConfigMap {
+			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+			if err != nil {
+				log.Error(err, "failed to update configmap when marking vm as ready",
+					"vmWaitConfigMapName", vmWaitConfigMapName, "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name)
+			}
+		}
+
+		return nil
+	})
+
+	if isMacAllocatedToRange {
+		log.V(1).Info("marked virtual machine as ready", "virtualMachineNamespace", vm.Namespace,
+			"virtualMachineName", vm.Name)
 	}
 
-	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
-	log.V(1).Info("marked virtual machine as ready", "virtualMachineNamespace", vm.Namespace,
-		"virtualMachineName", vm.Name)
-	return err
+	return err, isMacAllocatedToRange
 }
 
 // This function check if there are virtual machines that hits the create

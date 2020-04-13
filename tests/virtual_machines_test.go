@@ -12,9 +12,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
@@ -30,6 +32,26 @@ var _ = Describe("Virtual Machines", func() {
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
 			Do()
 		Expect(result.Error()).NotTo(HaveOccurred())
+	})
+
+	BeforeEach(func() {
+		// Verify that there are no VMs in the cluster
+		currentVMList := &kubevirtv1.VirtualMachineList{}
+		err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(len(currentVMList.Items)).To(BeZero())
+
+		// Clear vmWaitConfigMap configMap data before each test
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+
+		// Clear the map in-place instead of waiting to garbage-collector
+		for entry := range vmWaitConfigMap.Data {
+			delete(vmWaitConfigMap.Data, entry)
+		}
+		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(vmWaitConfigMap.Data).To(BeEmpty())
 	})
 
 	Context("Check the client", func() {
@@ -66,6 +88,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
+
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 			//2166
 			Context("When the MAC address is within range", func() {

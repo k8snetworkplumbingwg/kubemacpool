@@ -23,6 +23,8 @@ import (
 
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 const (
@@ -31,7 +33,7 @@ const (
 	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
 	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
-	vmWaitConfigMapName        = "kubemacpool-vm-configmap"
+	vmWaitConfigMapName        = names.WAITING_VMS_CONFIGMAP
 )
 
 var log = logf.Log.WithName("PoolManager")

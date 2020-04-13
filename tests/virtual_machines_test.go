@@ -35,25 +35,25 @@ var _ = Describe("Virtual Machines", func() {
 		Expect(result.Error()).NotTo(HaveOccurred())
 	})
 
-	BeforeEach(func() {
-		// Verify that there are no VMs in the cluster
-		currentVMList := &kubevirtv1.VirtualMachineList{}
-		err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
-		Expect(err).ToNot(HaveOccurred())
-		Expect(len(currentVMList.Items)).To(BeZero())
-
-		// Clear vmWaitConfigMap configMap data before each test
-		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
-		Expect(err).ToNot(HaveOccurred())
-
-		// Clear the map in-place instead of waiting to garbage-collector
-		utils.ClearMap(vmWaitConfigMap.Data)
-		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
-		Expect(err).ToNot(HaveOccurred())
-		Expect(vmWaitConfigMap.Data).To(BeEmpty())
-	})
-
 	Context("Check the client", func() {
+		BeforeEach(func() {
+			// Verify that there are no VMs in the cluster
+			currentVMList := &kubevirtv1.VirtualMachineList{}
+			err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(len(currentVMList.Items)).To(BeZero())
+
+			// Clear vmWaitConfigMap configMap data before each test
+			vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			// Clear the map in-place instead of waiting to garbage-collector
+			utils.ClearMap(vmWaitConfigMap.Data)
+			vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(vmWaitConfigMap.Data).To(BeEmpty())
+		})
+
 		AfterEach(func() {
 			vmList := &kubevirtv1.VirtualMachineList{}
 			err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{})

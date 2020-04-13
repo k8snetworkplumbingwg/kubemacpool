@@ -34,3 +34,11 @@ func RemoveString(slice []string, s string) (result []string) {
 	}
 	return
 }
+
+func ClearMap(inputMap map[string]string){
+	if inputMap != nil {
+		for key := range inputMap {
+			delete(inputMap, key)
+		}
+	}
+}

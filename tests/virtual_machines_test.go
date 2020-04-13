@@ -18,6 +18,7 @@ import (
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 
@@ -46,9 +47,7 @@ var _ = Describe("Virtual Machines", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Clear the map in-place instead of waiting to garbage-collector
-		for entry := range vmWaitConfigMap.Data {
-			delete(vmWaitConfigMap.Data, entry)
-		}
+		utils.ClearMap(vmWaitConfigMap.Data)
 		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(vmWaitConfigMap.Data).To(BeEmpty())

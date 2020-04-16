@@ -18,7 +18,6 @@ import (
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
 
@@ -32,28 +31,27 @@ var _ = Describe("Virtual Machines", func() {
 			RequestURI(fmt.Sprintf(nadPostUrl, TestNamespace, "linux-bridge")).
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
 			Do()
-		Expect(result.Error()).NotTo(HaveOccurred())
+		Expect(result.Error()).NotTo(HaveOccurred(), "KubeCient should successfully respond to post request")
+	})
+
+	BeforeEach(func() {
+		By("Verify that there are no VMs left from previous tests")
+		currentVMList := &kubevirtv1.VirtualMachineList{}
+		err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
+		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
+		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
+
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
+
+		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
+		clearMap(vmWaitConfigMap.Data)
+		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
+		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
 	})
 
 	Context("Check the client", func() {
-		BeforeEach(func() {
-			// Verify that there are no VMs in the cluster
-			currentVMList := &kubevirtv1.VirtualMachineList{}
-			err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
-			Expect(err).ToNot(HaveOccurred())
-			Expect(len(currentVMList.Items)).To(BeZero())
-
-			// Clear vmWaitConfigMap configMap data before each test
-			vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
-			Expect(err).ToNot(HaveOccurred())
-
-			// Clear the map in-place instead of waiting to garbage-collector
-			utils.ClearMap(vmWaitConfigMap.Data)
-			vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(vmWaitConfigMap.Data).To(BeEmpty())
-		})
-
 		AfterEach(func() {
 			vmList := &kubevirtv1.VirtualMachineList{}
 			err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{})
@@ -545,4 +543,12 @@ func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 		}
 		return false
 	}, timeout, pollingInterval).Should(BeTrue(), "failed to delete VM")
+}
+
+func clearMap(inputMap map[string]string) {
+	if inputMap != nil {
+		for key := range inputMap {
+			delete(inputMap, key)
+		}
+	}
 }

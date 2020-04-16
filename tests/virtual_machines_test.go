@@ -349,8 +349,8 @@ var _ = Describe("Virtual Machines", func() {
 				}
 			})
 		})
-		//2633 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/101
-		PContext("When we re-apply a failed VM yaml", func() {
+		//2633
+		Context("When we re-apply a failed VM yaml", func() {
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())

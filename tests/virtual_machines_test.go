@@ -12,9 +12,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
@@ -29,7 +31,24 @@ var _ = Describe("Virtual Machines", func() {
 			RequestURI(fmt.Sprintf(nadPostUrl, TestNamespace, "linux-bridge")).
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
 			Do()
-		Expect(result.Error()).NotTo(HaveOccurred())
+		Expect(result.Error()).NotTo(HaveOccurred(), "KubeCient should successfully respond to post request")
+	})
+
+	BeforeEach(func() {
+		By("Verify that there are no VMs left from previous tests")
+		currentVMList := &kubevirtv1.VirtualMachineList{}
+		err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
+		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
+		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
+
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
+
+		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
+		clearMap(vmWaitConfigMap.Data)
+		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
+		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
+		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
 	})
 
 	Context("Check the client", func() {
@@ -66,6 +85,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
+
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 			//2166
 			Context("When the MAC address is within range", func() {
@@ -329,8 +349,8 @@ var _ = Describe("Virtual Machines", func() {
 				}
 			})
 		})
-		//2633 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/101
-		PContext("When we re-apply a failed VM yaml", func() {
+		//2633
+		Context("When we re-apply a failed VM yaml", func() {
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
@@ -523,4 +543,12 @@ func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 		}
 		return false
 	}, timeout, pollingInterval).Should(BeTrue(), "failed to delete VM")
+}
+
+func clearMap(inputMap map[string]string) {
+	if inputMap != nil {
+		for key := range inputMap {
+			delete(inputMap, key)
+		}
+	}
 }

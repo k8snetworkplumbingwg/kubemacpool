@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirt "kubevirt.io/client-go/api/v1"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine) error {
@@ -360,12 +362,12 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 
 // This function return or creates a config map that contains mac address and the allocation time.
 func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		if errors.IsNotFound(err) {
 			_, err = p.kubeClient.CoreV1().
 				ConfigMaps(p.managerNamespace).
-				Create(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: vmWaitConfigMapName,
+				Create(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: names.WAITING_VMS_CONFIGMAP,
 					Namespace: p.managerNamespace}})
 
 			return map[string]string{}, nil
@@ -379,7 +381,7 @@ func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
 
 // Add all the allocated mac addresses to the waiting config map with the current time.
 func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -403,7 +405,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -437,15 +439,15 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 	for _ = range c {
 		p.poolMutex.Lock()
 
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(vmWaitConfigMapName, metav1.GetOptions{})
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
-			log.Error(err, "failed to get config map", "configMapName", vmWaitConfigMapName)
+			log.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
 			p.poolMutex.Unlock()
 			continue
 		}
 
 		if configMap.Data == nil {
-			log.Info("the configMap is empty", "configMapName", vmWaitConfigMapName)
+			log.Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP)
 			p.poolMutex.Unlock()
 			continue
 		}
@@ -468,7 +470,7 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 
 		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
 		if err != nil {
-			log.Error(err, "failed to update config map", "configMapName", vmWaitConfigMapName)
+			log.Error(err, "failed to update config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
 		}
 
 		p.poolMutex.Unlock()

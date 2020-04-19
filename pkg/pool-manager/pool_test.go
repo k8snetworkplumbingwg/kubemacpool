@@ -37,7 +37,7 @@ var _ = Describe("Pool", func() {
 	beforeAllocationAnnotation := map[string]string{networksAnnotation: `[{ "name": "ovs-conf"}]`}
 	afterAllocationAnnotation := map[string]string{networksAnnotation: `[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:00"}]`}
 	samplePod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: "default", Annotations: afterAllocationAnnotation}}
-	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: names.MANAGER_NAMESPACE, Name: vmWaitConfigMapName}}
+	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: names.MANAGER_NAMESPACE, Name: names.WAITING_VMS_CONFIGMAP}}
 
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)

@@ -54,8 +54,9 @@ type PoolManager struct {
 type AllocationStatus string
 
 const (
-	AllocationStatusAllocated     AllocationStatus = "Allocated"
-	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
+	AllocationStatusAllocated          AllocationStatus = "Allocated"
+	AllocationStatusWaitingForPod      AllocationStatus = "WaitingForPod"
+	AllocationStatusWaitingForDeletion AllocationStatus = "WaitingForDeletion"
 )
 
 func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerPodName string, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
@@ -150,9 +151,9 @@ func (p *PoolManager) InitMaps() error {
 	return nil
 }
 
-func (p *PoolManager) IsMacInRange(macAddress string) bool {
-	macAddressHW, _ := net.ParseMAC(macAddress)
-	return inRange(p.rangeStart, p.rangeEnd, macAddressHW)
+func (p *PoolManager) IsMacInRange(macAddress string) (bool, error) {
+	macAddressHW, err := net.ParseMAC(macAddress)
+	return inRange(p.rangeStart, p.rangeEnd, macAddressHW), err
 }
 
 func (p *PoolManager) GetManagerFinalizerName() string {

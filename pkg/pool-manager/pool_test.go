@@ -310,8 +310,9 @@ var _ = Describe("Pool", func() {
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("01:00:00:00:00:02"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
-				Expect(exist).To(BeFalse())
+				macStatus, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
+				Expect(exist).To(BeTrue())
+				Expect(macStatus).To(Equal(AllocationStatusWaitingForDeletion))
 			})
 			It("should allow to add a new interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
@@ -365,8 +366,9 @@ var _ = Describe("Pool", func() {
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:02"]
-				Expect(exist).To(BeFalse())
+				macStatus, exist := poolManager.macPoolMap["02:00:00:00:00:02"]
+				Expect(exist).To(BeTrue())
+				Expect(macStatus).To(Equal(AllocationStatusWaitingForDeletion))
 			})
 			It("should allow to remove and add an interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
@@ -389,8 +391,9 @@ var _ = Describe("Pool", func() {
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].Name).To(Equal("another-multus"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
-				Expect(exist).To(BeFalse())
+				macStatus, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
+				Expect(exist).To(BeTrue())
+				Expect(macStatus).To(Equal(AllocationStatusWaitingForDeletion))
 			})
 		})
 	})

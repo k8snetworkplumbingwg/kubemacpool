@@ -18,7 +18,6 @@ package pool_manager
 
 import (
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
@@ -36,7 +35,8 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	log.V(1).Info("AllocateVirtualMachineMac: data",
 		"macmap", p.macPoolMap,
 		"podmap", p.podToMacPoolMap,
-		"currentMac", p.currentMac.String())
+		"currentMac", p.currentMac.String(),
+		"virtualMachine.Name", virtualMachine.Name)
 
 	if len(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
 		log.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", virtualMachine)
@@ -218,11 +218,12 @@ func (p *PoolManager) allocateFromPoolForVirtualMachine(virtualMachine *kubevirt
 
 func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(virtualMachine *kubevirt.VirtualMachine, iface kubevirt.Interface) error {
 	requestedMac := iface.MacAddress
-	if _, err := net.ParseMAC(requestedMac); err != nil {
-		return err
-	}
 
-	if p.IsMacInRange(requestedMac) {
+	if isInRange, err := p.IsMacInRange(requestedMac); isInRange {
+		if err != nil {
+			return err
+		}
+
 		p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
 	}
 
@@ -386,7 +387,7 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 	}
 
 	for _, macAddress := range allocations {
-		if p.IsMacInRange(macAddress) {
+		if isInRange, _ := p.IsMacInRange(macAddress); isInRange {
 			log.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
 			macAddress = strings.Replace(macAddress, ":", "-", 5)
 			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
@@ -412,13 +413,15 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) (error, bool) {
 
 		isMacAllocatedInConfigMap := false
 		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-			if vmInterface.MacAddress != "" && p.IsMacInRange(vmInterface.MacAddress) {
-				isMacAllocatedToRange = true
-				p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
-				macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
-				if _, ok := configMap.Data[macAddress]; ok {
-					delete(configMap.Data, macAddress)
-					isMacAllocatedInConfigMap = true
+			if vmInterface.MacAddress != "" {
+				if isInRange, _ := p.IsMacInRange(vmInterface.MacAddress); isInRange {
+					isMacAllocatedToRange = true
+					p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
+					macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
+					if _, ok := configMap.Data[macAddress]; ok {
+						delete(configMap.Data, macAddress)
+						isMacAllocatedInConfigMap = true
+					}
 				}
 			}
 		}

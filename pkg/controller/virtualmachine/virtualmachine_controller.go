@@ -112,7 +112,11 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 
 func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request, finalizerName string) error {
 	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, finalizerName) {
-		return nil
+		log.V(1).Info("The VM has finalizer:",
+			"finalizerName", finalizerName,
+			"virtualMachineName", request.Name,
+			"virtualMachineNamespace", request.Namespace)
+		return r.poolManager.UpdateMacsStatusInMap(request.Name)
 	}
 
 	log.V(1).Info("The VM does not have a finalizer",

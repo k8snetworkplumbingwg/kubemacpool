@@ -66,7 +66,6 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 		virtualMachine.Namespace = req.AdmissionRequest.Namespace
 	}
 
-	log.V(1).Info("got a create virtual machine event", "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
 	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
 		err = a.mutateCreateVirtualMachinesFn(ctx, virtualMachine)
 		if err != nil {
@@ -79,6 +78,8 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
 		}
+	} else {
+		log.V(1).Info("received an unsupported request", "req.AdmissionRequest.Operation ", req.AdmissionRequest.Operation, "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
 	}
 
 	marshaledVirtualMachine, _ := json.Marshal(virtualMachine)

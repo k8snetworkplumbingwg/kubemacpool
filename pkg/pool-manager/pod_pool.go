@@ -19,7 +19,6 @@ package pool_manager
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"strings"
 
 	multus "github.com/intel/multus-cni/types"
@@ -132,11 +131,12 @@ func (p *PoolManager) ReleasePodMac(podName string) error {
 
 func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionElement, pod *corev1.Pod) error {
 	requestedMac := network.MacRequest
-	if _, err := net.ParseMAC(requestedMac); err != nil {
-		return err
-	}
 
-	if p.IsMacInRange(requestedMac) {
+	if isInRange, err := p.IsMacInRange(requestedMac); isInRange {
+		if err != nil {
+			return err
+		}
+
 		if pod.Name == "" {
 			// we are going to create the podToMacPoolMap in the controller call
 			// because we don't have the pod name in the webhook

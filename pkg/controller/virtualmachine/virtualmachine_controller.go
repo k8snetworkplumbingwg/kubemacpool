@@ -21,6 +21,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -142,6 +143,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.
 	if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, finalizerName) {
 		return nil
 	}
+
 	// our finalizer is present, so lets handle our external dependency
 	log.V(1).Info("The VM contains the finalizer. Releasing mac")
 	err := r.poolManager.ReleaseVirtualMachineMac(virtualMachine)
@@ -153,12 +155,28 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.
 	}
 
 	// remove our finalizer from the list and update it.
-	log.V(1).Info("removing finalizers",
-		"virtualMachineName", request.Name,
-		"virtualMachineNamespace", request.Namespace)
-	virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, finalizerName)
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh the vm instance
+		virtualMachine = &kubevirt.VirtualMachine{}
+		err = r.Get(context.TODO(), request.NamespacedName, virtualMachine)
+		if err != nil {
+			log.Error(err, "failed to get virtualmachine instance for finalizer removal",
+				"virtualMachineName", request.Name,
+				"virtualMachineNamespace", request.Namespace)
+			return err
+		}
 
-	err = r.Update(context.Background(), virtualMachine)
+		log.V(1).Info("removing finalizer",
+			"virtualMachineName", request.Name,
+			"virtualMachineNamespace", request.Namespace,
+			"finalizerName", finalizerName)
+		virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, finalizerName)
+
+		err = r.Update(context.Background(), virtualMachine)
+
+		return err
+	})
+
 	if err != nil {
 		log.Error(err, "failed to remove the finalizer",
 			"virtualMachineName", request.Name,

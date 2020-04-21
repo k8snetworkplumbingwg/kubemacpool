@@ -120,12 +120,15 @@ func (p *PoolManager) ReleasePodMac(podName string) error {
 	}
 
 	for _, macAddr := range macList {
-		delete(p.macPoolMap, macAddr)
-		log.Info("released mac from pod", "mac", macAddr, "pod", podName)
+		if isInRange, _ := p.IsMacInRange(macAddr); isInRange {
+			delete(p.macPoolMap, macAddr)
+			log.Info("released mac from pod", "mac", macAddr, "pod", podName)
+		}
 	}
 
 	delete(p.podToMacPoolMap, podName)
 	log.V(1).Info("removed pod from podToMacPoolMap", "pod", podName)
+
 	return nil
 }
 

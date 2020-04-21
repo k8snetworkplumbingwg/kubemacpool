@@ -278,15 +278,14 @@
   version = "v1.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:36002e5dcc47874a059586ae6a3c458256824dea3b0aaa1696cbc3ccc130318d"
+  digest = "1:404df41334f8bf60598a558f6e7851e8ad9628be7ca1b86c84cd1e7433dbb7e5"
   name = "github.com/intel/multus-cni"
   packages = [
     "logging",
     "types",
   ]
   pruneopts = "T"
-  revision = "cd6f9880ac19601f3b901a9d9e0ff55c4e0490f7"
+  revision = "1df1e4f530bd6bedc0a1b93ae104cab6f8b77e1f"
 
 [[projects]]
   digest = "1:ee5840274624ad20cac08227aeca582fbdaf3727ef9dd37ae935706240679e09"
@@ -464,15 +463,16 @@
   revision = "4724e9255275ce38f7179b2478abeae4e28c904f"
 
 [[projects]]
-  branch = "superq/thermal"
-  digest = "1:c8314d5ab9ac8e0701a367c615b580baf9618555dd5c0c425f111fd93a235f85"
+  digest = "1:ebb74d65a9f332cd41d4feb800128a7b829f2f264eb2645963b2eb9a42ff54ba"
   name = "github.com/prometheus/procfs"
   packages = [
     ".",
-    "xfs",
+    "internal/fs",
+    "internal/util",
   ]
   pruneopts = "T"
-  revision = "b785910ff11da82535a659953c095e5f6728d14e"
+  revision = "46159f73e74d1cb8dc223deef9b2d049286f46b1"
+  version = "v0.0.11"
 
 [[projects]]
   digest = "1:fac620096bacf6e41b3beb93ff03af9fe545d77421b3e7320f114b2da2e10824"
@@ -1105,12 +1105,14 @@
     "github.com/onsi/ginkgo",
     "github.com/onsi/ginkgo/extensions/table",
     "github.com/onsi/gomega",
+    "github.com/onsi/gomega/types",
     "k8s.io/api/admission/v1beta1",
     "k8s.io/api/admissionregistration/v1beta1",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/api/errors",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/apimachinery/pkg/runtime",
+    "k8s.io/apimachinery/pkg/util/intstr",
     "k8s.io/apimachinery/pkg/util/rand",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/kubernetes/fake",
@@ -1119,7 +1121,6 @@
     "k8s.io/client-go/plugin/pkg/client/auth/gcp",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/leaderelection",
-    "k8s.io/client-go/tools/leaderelection/resourcelock",
     "k8s.io/client-go/tools/record",
     "k8s.io/code-generator/cmd/client-gen",
     "k8s.io/code-generator/cmd/deepcopy-gen",

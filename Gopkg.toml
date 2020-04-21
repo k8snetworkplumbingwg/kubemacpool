@@ -35,7 +35,7 @@ version="v1.4.7"
 
 [[constraint]]
   name = "github.com/intel/multus-cni"
-  branch = "master"
+  revision = "1df1e4f530bd6bedc0a1b93ae104cab6f8b77e1f" # master 2020-04-21
 
 [[override]]
   name = "kubevirt.io/kubevirt"

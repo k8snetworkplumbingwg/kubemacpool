@@ -22,7 +22,72 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/prometheus/procfs/internal/fs"
 )
+
+// FS represents the pseudo-filesystem proc, which provides an interface to
+// kernel data structures.
+type FS struct {
+	sys *fs.FS
+}
+
+// NewDefaultFS returns a new Bcache using the default sys fs mount point. It will error
+// if the mount point can't be read.
+func NewDefaultFS() (FS, error) {
+	return NewFS(fs.DefaultSysMountPoint)
+}
+
+// NewFS returns a new Bcache using the given sys fs mount point. It will error
+// if the mount point can't be read.
+func NewFS(mountPoint string) (FS, error) {
+	if strings.TrimSpace(mountPoint) == "" {
+		mountPoint = fs.DefaultSysMountPoint
+	}
+	fs, err := fs.NewFS(mountPoint)
+	if err != nil {
+		return FS{}, err
+	}
+	return FS{&fs}, nil
+}
+
+// Stats is a wrapper around stats()
+// It returns full available statistics
+func (fs FS) Stats() ([]*Stats, error) {
+	return fs.stats(true)
+}
+
+// StatsWithoutPriority is a wrapper around stats().
+// It ignores priority_stats file, because it is expensive to read.
+func (fs FS) StatsWithoutPriority() ([]*Stats, error) {
+	return fs.stats(false)
+}
+
+// stats() retrieves bcache runtime statistics for each bcache.
+// priorityStats flag controls if we need to read priority_stats.
+func (fs FS) stats(priorityStats bool) ([]*Stats, error) {
+	matches, err := filepath.Glob(fs.sys.Path("fs/bcache/*-*"))
+	if err != nil {
+		return nil, err
+	}
+
+	stats := make([]*Stats, 0, len(matches))
+	for _, uuidPath := range matches {
+		// "*-*" in glob above indicates the name of the bcache.
+		name := filepath.Base(uuidPath)
+
+		// stats
+		s, err := GetStats(uuidPath, priorityStats)
+		if err != nil {
+			return nil, err
+		}
+
+		s.Name = name
+		stats = append(stats, s)
+	}
+
+	return stats, nil
+}
 
 // ParsePseudoFloat parses the peculiar format produced by bcache's bch_hprint.
 func parsePseudoFloat(str string) (float64, error) {
@@ -61,7 +126,7 @@ func dehumanize(hbytes []byte) (uint64, error) {
 	mul := float64(1)
 	var (
 		mant float64
-		err error
+		err  error
 	)
 	// If lastByte is beyond the range of ASCII digits, it must be a
 	// multiplier.
@@ -93,7 +158,7 @@ func dehumanize(hbytes []byte) (uint64, error) {
 			'Z': ZiB,
 			'Y': YiB,
 		}
-		mul = float64(multipliers[rune(lastByte)])
+		mul = multipliers[rune(lastByte)]
 		mant, err = parsePseudoFloat(string(hbytes))
 		if err != nil {
 			return 0, err
@@ -139,10 +204,10 @@ func (p *parser) readValue(fileName string) uint64 {
 }
 
 // ParsePriorityStats parses lines from the priority_stats file.
-func parsePriorityStats(line string, ps *PriorityStats) (error) {
+func parsePriorityStats(line string, ps *PriorityStats) error {
 	var (
 		value uint64
-		err error
+		err   error
 	)
 	switch {
 	case strings.HasPrefix(line, "Unused:"):
@@ -199,7 +264,7 @@ func (p *parser) getPriorityStats() PriorityStats {
 }
 
 // GetStats collects from sysfs files data tied to one bcache ID.
-func GetStats(uuidPath string) (*Stats, error) {
+func GetStats(uuidPath string, priorityStats bool) (*Stats, error) {
 	var bs Stats
 
 	par := parser{uuidPath: uuidPath}
@@ -318,8 +383,10 @@ func GetStats(uuidPath string) (*Stats, error) {
 		cs.MetadataWritten = par.readValue("metadata_written")
 		cs.Written = par.readValue("written")
 
-		ps := par.getPriorityStats()
-		cs.Priority = ps
+		if priorityStats {
+			ps := par.getPriorityStats()
+			cs.Priority = ps
+		}
 	}
 
 	if par.err != nil {

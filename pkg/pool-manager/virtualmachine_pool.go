@@ -115,11 +115,13 @@ func (p *PoolManager) ReleaseVirtualMachineMac(vm *kubevirt.VirtualMachine) erro
 		"interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
 	for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
 		if iface.MacAddress != "" {
-			delete(p.macPoolMap, iface.MacAddress)
-			log.Info("released mac from virtual machine",
-				"mac", iface.MacAddress,
-				"virtualMachineName", vm.Name,
-				"virtualMachineNamespace", vm.Namespace)
+			if isInRange, _ := p.IsMacInRange(iface.MacAddress); isInRange {
+				delete(p.macPoolMap, iface.MacAddress)
+				log.Info("released mac from virtual machine",
+					"mac", iface.MacAddress,
+					"virtualMachineName", vm.Name,
+					"virtualMachineNamespace", vm.Namespace)
+			}
 		}
 	}
 
@@ -437,11 +439,9 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) (error, bool) {
 	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
 	if err != nil {
 		isMacAllocated = false
-		log.Error(err, "failed to update configmap when marking vm as ready",
-			"vmWaitConfigMapName", vmWaitConfigMapName, "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name)
+		log.Error(err, "failed to update configmap when marking vm as ready", "vmWaitConfigMapName", vmWaitConfigMapName, "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name)
 	}
-	log.V(1).Info("marked virtual machine as ready", "virtualMachineNamespace", vm.Namespace,
-		"virtualMachineName", vm.Name, "macmap", p.macPoolMap)
+	log.V(1).Info("marked virtual machine as ready", "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name, "macmap", p.macPoolMap)
 
 	return err, isMacAllocated
 }

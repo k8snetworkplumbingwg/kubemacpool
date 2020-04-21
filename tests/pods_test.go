@@ -17,7 +17,7 @@ import (
 
 const defaultNumberOfReplicas = 2
 
-var _ = Describe("Pods", func() {
+var _ = PDescribe("Pods [PENDING since due to an issue with outdated Multus]", func() {
 	Context("Check the pod mutating webhook", func() {
 		AfterEach(func() {
 			// Clean pods from our test namespaces after every test to start clean

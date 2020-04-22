@@ -31,7 +31,6 @@ const (
 	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
 	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
-	vmWaitConfigMapName        = "kubemacpool-vm-configmap"
 )
 
 var log = logf.Log.WithName("PoolManager")

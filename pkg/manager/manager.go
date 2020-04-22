@@ -85,100 +85,80 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		return fmt.Errorf("unable to create a kubernetes client error %v", err)
 	}
 
-	log.Info("Setting up leader electionManager")
-	leaderElectionManager, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
+	healthProbeHost, ok := os.LookupEnv("HEALTH_PROBE_HOST")
+	if !ok {
+		log.Error(err, "Failed to load HEALTH_PROBE_HOST from environment variable")
+		os.Exit(1)
+	}
+
+	healthProbePort, ok := os.LookupEnv("HEALTH_PROBE_PORT")
+	if !ok {
+		log.Error(err, "Failed to load HEALTH_PROBE_PORT from environment variable")
+		os.Exit(1)
+	}
+
+	log.Info("Setting up Manager")
+	mgr, err := manager.New(k.config, manager.Options{
+		MetricsBindAddress:     k.metricsAddr,
+		HealthProbeBindAddress: fmt.Sprintf("%s:%s", healthProbeHost, healthProbePort),
+	})
 	if err != nil {
 		return fmt.Errorf("unable to set up manager error %v", err)
 	}
 
-	err = k.newLeaderElection(k.config, leaderElectionManager.GetScheme())
+	err = kubevirt_api.AddToScheme(mgr.GetScheme())
 	if err != nil {
-		return fmt.Errorf("unable to create a leader election resource lock error %v", err)
+		return fmt.Errorf("unable to register kubevirt scheme error %v", err)
 	}
 
-	for k.continueToRunManager {
-		log.Info("waiting for manager to become leader")
-		err = k.waitToStartLeading()
-		if err != nil {
-			log.Error(err, "failed to wait for leader election")
-			continue
-		}
-
-		healthProbeHost, ok := os.LookupEnv("HEALTH_PROBE_HOST")
-		if !ok {
-			log.Error(err, "Failed to load HEALTH_PROBE_HOST from environment variable")
-			os.Exit(1)
-		}
-
-		healthProbePort, ok := os.LookupEnv("HEALTH_PROBE_PORT")
-		if !ok {
-			log.Error(err, "Failed to load HEALTH_PROBE_PORT from environment variable")
-			os.Exit(1)
-		}
-
-		log.Info("Setting up Manager")
-		mgr, err := manager.New(k.config, manager.Options{
-			MetricsBindAddress:     k.metricsAddr,
-			HealthProbeBindAddress: fmt.Sprintf("%s:%s", healthProbeHost, healthProbePort),
-		})
-		if err != nil {
-			return fmt.Errorf("unable to set up manager error %v", err)
-		}
-
-		err = kubevirt_api.AddToScheme(mgr.GetScheme())
-		if err != nil {
-			return fmt.Errorf("unable to register kubevirt scheme error %v", err)
-		}
-
-		// create a owner ref on the mutating webhook
-		// this way when we remove the deployment of the manager the webhook will be also removed from the cluster
-		err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset, k.podNamespace)
-		if err != nil {
-			return fmt.Errorf("unable to create owner reference for mutating webhook object error %v", err)
-		}
-
-		err = webhook.CreateOwnerRefForService(k.clientset, k.podNamespace)
-		if err != nil {
-			return fmt.Errorf("unable to create owner reference for service object error %v", err)
-		}
-
-		isKubevirtInstalled := checkForKubevirt(k.clientset)
-		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
-		if err != nil {
-			return fmt.Errorf("unable to create pool manager error %v", err)
-		}
-
-		if !isKubevirtInstalled {
-			log.Info("kubevirt was not found in the cluster start a watching process")
-			go k.waitForKubevirt()
-		}
-		go k.waitForSignal()
-
-		log.Info("Setting up controller")
-		err = controller.AddToManager(mgr, poolManager)
-		if err != nil {
-			return fmt.Errorf("unable to register controllers to the manager error %v", err)
-		}
-
-		err = webhook.AddToManager(mgr, poolManager)
-		if err != nil {
-			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
-		}
-
-		if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
-			log.Info("Unable to create health check", "error", err)
-			os.Exit(1)
-		}
-
-		err = mgr.Start(k.restartChannel)
-		if err != nil {
-			return fmt.Errorf("unable to run the manager error %v", err)
-		}
-
-		// restart channels
-		k.restartChannel = make(chan struct{})
-		k.kubevirtInstalledChannel = make(chan struct{})
+	// create a owner ref on the mutating webhook
+	// this way when we remove the deployment of the manager the webhook will be also removed from the cluster
+	err = webhook.CreateOwnerRefForMutatingWebhook(k.clientset, k.podNamespace)
+	if err != nil {
+		return fmt.Errorf("unable to create owner reference for mutating webhook object error %v", err)
 	}
+
+	err = webhook.CreateOwnerRefForService(k.clientset, k.podNamespace)
+	if err != nil {
+		return fmt.Errorf("unable to create owner reference for service object error %v", err)
+	}
+
+	isKubevirtInstalled := checkForKubevirt(k.clientset)
+	poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+	if err != nil {
+		return fmt.Errorf("unable to create pool manager error %v", err)
+	}
+
+	if !isKubevirtInstalled {
+		log.Info("kubevirt was not found in the cluster start a watching process")
+		go k.waitForKubevirt()
+	}
+	go k.waitForSignal()
+
+	log.Info("Setting up controller")
+	err = controller.AddToManager(mgr, poolManager)
+	if err != nil {
+		return fmt.Errorf("unable to register controllers to the manager error %v", err)
+	}
+
+	err = webhook.AddToManager(mgr, poolManager)
+	if err != nil {
+		return fmt.Errorf("unable to register webhooks to the manager error %v", err)
+	}
+
+	if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
+		log.Info("Unable to create health check", "error", err)
+		os.Exit(1)
+	}
+
+	err = mgr.Start(k.restartChannel)
+	if err != nil {
+		return fmt.Errorf("unable to run the manager error %v", err)
+	}
+
+	// restart channels
+	k.restartChannel = make(chan struct{})
+	k.kubevirtInstalledChannel = make(chan struct{})
 
 	return nil
 }

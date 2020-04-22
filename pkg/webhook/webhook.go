@@ -114,7 +114,7 @@ func CreateOwnerRefForService(kubeClient *kubernetes.Clientset, managerNamespace
 				},
 				Spec: corev1.ServiceSpec{
 					Selector: map[string]string{
-						names.LEADER_LABEL: "true",
+						"app": "kubemacpool",
 					}, Ports: []corev1.ServicePort{{
 						Port: 443,
 						TargetPort: intstr.IntOrString{

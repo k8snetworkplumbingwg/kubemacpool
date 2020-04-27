@@ -16,6 +16,7 @@ limitations under the License.
 package manager
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -23,6 +24,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -33,6 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
@@ -146,6 +149,12 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr, sharding
 		if err != nil {
 			return fmt.Errorf("failed to create mac range shard, %s", err)
 		}
+		// update the mac range shard managed by the current pod
+		err = k.updateMacRangeConfigMapData(names.MAC_RANGE_CONFIG_CONFIGMAP, names.MANAGER_NAMESPACE, macRangeShard.ShardName, macRangeShard)
+		if err != nil {
+			return fmt.Errorf("failed to update %s configmap with the shard range details, %s",names.MAC_RANGE_CONFIG_CONFIGMAP, err)
+		}
+		log.Info(fmt.Sprintf("%s configmap updated", names.MAC_RANGE_CONFIG_CONFIGMAP))
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
@@ -195,6 +204,35 @@ func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
 	}
 
 	return false
+}
+
+func (k KubeMacPoolManager) updateMacRangeConfigMapData(name, namespace, key string, data MacRangeShard) error {
+	configMapData := struct {
+		PodName string
+		Start   string
+		End     string
+	}{
+		data.PodName,
+		data.ShardStart.String(),
+		data.ShardEnd.String(),
+	}
+
+	dataJson, err := json.Marshal(configMapData)
+	if err != nil {
+		return err
+	}
+	macRangesConfigMap, err := k.clientset.CoreV1().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	macRangesConfigMap.Data[key] = string(dataJson)
+	macRangesConfigMap, err = k.clientset.CoreV1().ConfigMaps(namespace).Update(macRangesConfigMap)
+	if err != nil {
+		return err
+	}
+	log.Info(fmt.Sprintf("mac address shard range managed updated in %s configMap:%s", name, dataJson[:]))
+
+	return nil
 }
 
 // Check for Kubevirt CRD to be available

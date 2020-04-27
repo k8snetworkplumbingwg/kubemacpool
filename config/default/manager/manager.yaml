@@ -97,16 +97,26 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
-        - containerPort: 9440
-          name: healthz
-          protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
-            port: healthz
+            port: webhook-server
+            scheme: HTTPS
+            httpHeaders:
+            - name: Content-Type
+              value: application/json
           initialDelaySeconds: 10
           periodSeconds: 10
+        volumeMounts:
+          - name: tls-key-pair
+            readOnly: true
+            mountPath: /etc/webhook/certs
       terminationGracePeriodSeconds: 5
+      volumes:
+        - name: tls-key-pair
+          secret:
+            secretName: service
+
 ---
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
@@ -188,3 +198,13 @@ webhooks:
         apiGroups: ["kubevirt.io"]
         apiVersions: ["v1alpha3"]
         resources: ["virtualmachines"]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: service
+  namespace: system
+type: kubernetes.io/tls
+data:
+  tls.crt: YmFkIGNlcnRpZmljYXRlCg==
+  tls.key: YmFkIGtleQo=

@@ -199,6 +199,16 @@ metadata:
   namespace: kubemacpool-system
 ---
 apiVersion: v1
+data:
+  tls.crt: YmFkIGNlcnRpZmljYXRlCg==
+  tls.key: YmFkIGtleQo=
+kind: Secret
+metadata:
+  name: kubemacpool-service
+  namespace: kubemacpool-system
+type: kubernetes.io/tls
+---
+apiVersion: v1
 kind: Service
 metadata:
   name: kubemacpool-service
@@ -280,13 +290,14 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
-        - containerPort: 9440
-          name: healthz
-          protocol: TCP
         readinessProbe:
           httpGet:
+            httpHeaders:
+            - name: Content-Type
+              value: application/json
             path: /readyz
-            port: healthz
+            port: webhook-server
+            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
         resources:
@@ -296,8 +307,16 @@ spec:
           requests:
             cpu: 100m
             memory: 300Mi
+        volumeMounts:
+        - mountPath: /etc/webhook/certs
+          name: tls-key-pair
+          readOnly: true
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
+      volumes:
+      - name: tls-key-pair
+        secret:
+          secretName: kubemacpool-service
 ---
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget

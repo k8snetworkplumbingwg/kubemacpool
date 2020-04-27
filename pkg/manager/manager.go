@@ -155,6 +155,12 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr, sharding
 			return fmt.Errorf("failed to update %s configmap with the shard range details, %s",names.MAC_RANGE_CONFIG_CONFIGMAP, err)
 		}
 		log.Info(fmt.Sprintf("%s configmap updated", names.MAC_RANGE_CONFIG_CONFIGMAP))
+		// update sharding factor environment variable
+		err = os.Setenv(poolmanager.ShardingFactor, macRangeShard.shardingFactorStr)
+		if err != nil {
+			log.Error(err, "failed to update sharding factor env variable")
+			return err
+		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)

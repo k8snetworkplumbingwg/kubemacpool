@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
@@ -161,6 +162,12 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr, sharding
 			log.Error(err, "failed to update sharding factor env variable")
 			return err
 		}
+		// scale the replicas to the sharding factor value
+		err = k.scaleManagerPods(macRangeShard.shardingFactor)
+		if err != nil {
+			return fmt.Errorf("failed to update manager replicas number, %v", err)
+		}
+		log.Info(fmt.Sprintf("%s replicas number updated: %d", names.MANAGER_STATEFULSET, macRangeShard.shardingFactor))
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
@@ -237,6 +244,17 @@ func (k KubeMacPoolManager) updateMacRangeConfigMapData(name, namespace, key str
 		return err
 	}
 	log.Info(fmt.Sprintf("mac address shard range managed updated in %s configMap:%s", name, dataJson[:]))
+
+	return nil
+}
+
+func (k *KubeMacPoolManager) scaleManagerPods(targetReplicas int64) error {
+	data := []byte(fmt.Sprintf("[ { \"op\": \"replace\", \"path\": \"/spec/replicas\", \"value\": %d } ]", targetReplicas))
+	_, err := k.clientset.AppsV1().StatefulSets(names.MANAGER_NAMESPACE).Patch(names.MANAGER_STATEFULSET, types.JSONPatchType, data)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("failed to patch %s statefulset to %d replicas", names.MANAGER_STATEFULSET, targetReplicas))
+		return err
+	}
 
 	return nil
 }

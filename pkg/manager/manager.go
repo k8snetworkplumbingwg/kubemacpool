@@ -142,6 +142,11 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr, sharding
 			return fmt.Errorf("unable to create owner reference for service object error %v", err)
 		}
 
+		macRangeShard, err := NewMacRangeShard(k.podName, rangeStart.String(), rangeEnd.String(), shardingFactor)
+		if err != nil {
+			return fmt.Errorf("failed to create mac range shard, %s", err)
+		}
+
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {

@@ -71,7 +71,7 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 	return kubemacpoolManager
 }
 
-func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
+func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr, shardingFactor int) error {
 	// Get a config to talk to the apiserver
 	var err error
 	log.Info("Setting up client for manager")

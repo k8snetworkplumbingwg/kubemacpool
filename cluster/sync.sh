@@ -42,17 +42,17 @@ pods_ready_wait() {
   wait_failed=''
   max_retries=12
   retry_counter=0
-  echo "Waiting for kubemacpool leader container to be ready ..."
-  while [[ "$(./cluster/kubectl.sh wait pod -n kubemacpool-system --for=condition=Ready -l kubemacpool-leader=true --timeout=1m)" = $wait_failed ]] && [[ $retry_counter -lt $max_retries ]]; do
+  echo "Waiting for kubemacpool resources to be ready ..."
+  while [[ "$(./cluster/kubectl.sh wait pod -n kubemacpool-system -l app=kubemacpool --for=condition=Ready --timeout=1m)" = $wait_failed ]] && [[ $retry_counter -lt $max_retries ]]; do
     sleep 5s
     retry_counter=$((retry_counter + 1))
   done
 
   if [ $retry_counter -eq $max_retries ]; then
-    echo "Failed/timed-out waiting for kubemacpool recourses"
+    echo "Failed/timed-out waiting for kubemacpool resources"
     exit 1
   else
-    echo "Kubemacpool leader pod is ready"
+    echo "Kubemacpool pods are ready"
   fi
 }
 

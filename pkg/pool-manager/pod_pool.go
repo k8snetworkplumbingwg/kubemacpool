@@ -19,7 +19,6 @@ package pool_manager
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"strings"
 
 	multus "github.com/intel/multus-cni/types"
@@ -121,43 +120,41 @@ func (p *PoolManager) ReleasePodMac(podName string) error {
 	}
 
 	for _, macAddr := range macList {
-		delete(p.macPoolMap, macAddr)
-		log.Info("released mac from pod", "mac", macAddr, "pod", podName)
+		if isInRange, _ := p.IsMacInRange(macAddr); isInRange {
+			delete(p.macPoolMap, macAddr)
+			log.Info("released mac from pod", "mac", macAddr, "pod", podName)
+		}
 	}
 
 	delete(p.podToMacPoolMap, podName)
 	log.V(1).Info("removed pod from podToMacPoolMap", "pod", podName)
+
 	return nil
 }
 
 func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionElement, pod *corev1.Pod) error {
 	requestedMac := network.MacRequest
-	if _, err := net.ParseMAC(requestedMac); err != nil {
-		return err
+
+	if isInRange, err := p.IsMacInRange(requestedMac); isInRange {
+		if err != nil {
+			return err
+		}
+
+		if pod.Name == "" {
+			// we are going to create the podToMacPoolMap in the controller call
+			// because we don't have the pod name in the webhook
+			p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
+			return nil
+		}
+
+		p.macPoolMap[requestedMac] = AllocationStatusAllocated
+
+		if p.podToMacPoolMap[podNamespaced(pod)] == nil {
+			p.podToMacPoolMap[podNamespaced(pod)] = map[string]string{}
+		}
+		p.podToMacPoolMap[podNamespaced(pod)][network.Name] = requestedMac
 	}
 
-	if macAllocationStatus, exist := p.macPoolMap[requestedMac]; exist &&
-		macAllocationStatus == AllocationStatusAllocated &&
-		!p.allocatedToCurrentPod(podNamespaced(pod), network) {
-
-		err := fmt.Errorf("failed to allocate requested mac address")
-		log.Error(err, "mac address already allocated")
-
-		return err
-	}
-
-	if pod.Name == "" {
-		// we are going to create the podToMacPoolMap in the controller call
-		// because we don't have the pod name in the webhook
-		p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
-		return nil
-	}
-
-	p.macPoolMap[requestedMac] = AllocationStatusAllocated
-	if p.podToMacPoolMap[podNamespaced(pod)] == nil {
-		p.podToMacPoolMap[podNamespaced(pod)] = map[string]string{}
-	}
-	p.podToMacPoolMap[podNamespaced(pod)][network.Name] = requestedMac
 	log.Info("requested mac was allocated for pod",
 		"requestedMap", requestedMac,
 		"podName", pod.Name,
@@ -246,28 +243,9 @@ func (p *PoolManager) initPodMap() error {
 	return nil
 }
 
-func (p *PoolManager) allocatedToCurrentPod(podname string, network *multus.NetworkSelectionElement) bool {
-	networks, exist := p.podToMacPoolMap[podname]
-	if !exist {
-		return false
-	}
-
-	allocatedMac, exist := networks[network.Name]
-
-	if !exist {
-		return false
-	}
-
-	if allocatedMac == network.MacRequest {
-		return true
-	}
-
-	return false
-}
-
 // Revert allocation if one of the requested mac addresses fails to be allocated
 func (p *PoolManager) revertAllocationOnPod(podName string, allocations []string) {
-	log.V(1).Info("Rever vm allocation", "podName", podName, "allocations", allocations)
+	log.V(1).Info("Revert vm allocation", "podName", podName, "allocations", allocations)
 	for _, value := range allocations {
 		delete(p.macPoolMap, value)
 	}

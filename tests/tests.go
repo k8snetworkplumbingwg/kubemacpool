@@ -2,17 +2,16 @@ package tests
 
 import (
 	"fmt"
-	"math"
 	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/util/rand"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -188,49 +187,34 @@ func setRange(rangeStart, rangeEnd string) error {
 	return nil
 }
 
-func DeleteLeaderManager() {
+func DeleteOneManager() {
 	pods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	Expect(err).ToNot(HaveOccurred())
 
-	leaderPodName := ""
-	leaderPodUid := types.UID("")
+	kubemacpoolPodName := ""
+	kubemacpoolPodUid := types.UID("")
 	for _, pod := range pods.Items {
-		if _, ok := pod.Labels[names.LEADER_LABEL]; ok {
-			leaderPodName = pod.Name
-			leaderPodUid = pod.ObjectMeta.UID
-			break
-		}
+		// pick the first one on the list
+		kubemacpoolPodName = pod.Name
+		kubemacpoolPodUid = pod.ObjectMeta.UID
+		break
 	}
 
-	Expect(leaderPodName).ToNot(BeEmpty())
+	Expect(kubemacpoolPodName).ToNot(BeEmpty())
 
-	err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(leaderPodName, &metav1.DeleteOptions{})
+	err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(kubemacpoolPodName, &metav1.DeleteOptions{})
 	Expect(err).ToNot(HaveOccurred())
 
 	Eventually(func() bool {
-		pod, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(leaderPodName, metav1.GetOptions{})
+		pod, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(kubemacpoolPodName, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
-		if pod.ObjectMeta.UID != leaderPodUid {
+		if pod.ObjectMeta.UID != kubemacpoolPodUid {
 			return true
 		}
 
 		return false
-	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool pod")
 
-	Eventually(func() error {
-		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
-		if err != nil {
-			return err
-		}
-
-		for _, currentPod := range currentPods.Items {
-			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
-				return nil
-			}
-		}
-
-		return fmt.Errorf("have not found any manager in the ready state")
-	}, 2*time.Minute, 3*time.Second).ShouldNot(HaveOccurred(), "timed out while waiting for a new leader")
 }
 
 func changeManagerReplicas(numOfReplica int32) error {
@@ -259,8 +243,8 @@ func changeManagerReplicas(numOfReplica int32) error {
 		if managerStatefulset.Status.Replicas != numOfReplica {
 			return false
 		}
-		//due to readiness probe only 1 (the leader) pod will be ready (if any)
-		if float64(managerStatefulset.Status.ReadyReplicas) != math.Min(float64(1), float64(numOfReplica)) {
+
+		if managerStatefulset.Status.ReadyReplicas != numOfReplica {
 			return false
 		}
 

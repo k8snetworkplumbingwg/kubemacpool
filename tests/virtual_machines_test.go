@@ -87,7 +87,7 @@ var _ = Describe("Virtual Machines", func() {
 		})
 
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
-			//2166
+			//2166 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 			Context("When the MAC address is within range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
 					err := setRange(rangeStart, rangeEnd)
@@ -108,7 +108,7 @@ var _ = Describe("Virtual Machines", func() {
 					Expect(err).ToNot(HaveOccurred())
 				})
 			})
-			//2167
+			//2167 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 			Context("When the MAC address is out of range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
 					err := setRange(rangeStart, rangeEnd)
@@ -131,7 +131,7 @@ var _ = Describe("Virtual Machines", func() {
 				})
 			})
 		})
-		//2199
+		//2199 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 		Context("when the client tries to assign the same MAC address for two different interfaces in a single VM.", func() {
 			Context("When the MAC address is within range", func() {
 				It("should reject a VM creation with two interfaces that share the same MAC address", func() {
@@ -145,7 +145,7 @@ var _ = Describe("Virtual Machines", func() {
 					Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
 				})
 			})
-			//2200
+			//2200 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 			Context("When the MAC address is out of range", func() {
 				It("should reject a VM creation with two interfaces that share the same MAC address", func() {
 					err := setRange(rangeStart, rangeEnd)
@@ -278,7 +278,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(newMac2.String()).To(Equal(mac2.String()))
 			})
 		})
-		//2179
+		//2179 TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 		Context("When restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 			It("should return an error because the MAC address is taken by the older VM", func() {
 				err := setRange(rangeStart, rangeEnd)
@@ -404,9 +404,10 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 
+		// TODO until we split the range to 2 separate non overlapping - then this test is expected to fail.
 		Context("testing finalizers", func() {
 			Context("When the VM is not being deleted", func() {
-				It("should have a finalizer and deletion timestamp should be zero ", func() {
+				It("should have a finalizer and deletion timestamp should be zero", func() {
 					err := setRange(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -420,9 +421,7 @@ var _ = Describe("Virtual Machines", func() {
 						Expect(err).ToNot(HaveOccurred())
 						if vm.ObjectMeta.DeletionTimestamp.IsZero() {
 							if len(vm.ObjectMeta.Finalizers) == 1 {
-								if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
-									return true
-								}
+								return strings.Contains(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName+"kubemacpool-mac-controller-manager-")
 							}
 						}
 						return false
@@ -431,7 +430,7 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 
-		Context("When the leader is changed", func() {
+		Context("When 1 pod mgr is down", func() {
 			It("should be able to create a new virtual machine", func() {
 				err := setRange(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
@@ -447,8 +446,8 @@ var _ = Describe("Virtual Machines", func() {
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
-				By("deleting leader manager")
-				DeleteLeaderManager()
+				By("deleting 1 kubemacpool manager pod")
+				DeleteOneManager()
 
 				err = testClient.VirtClient.Create(context.TODO(), anotherVm)
 				Expect(err).ToNot(HaveOccurred())

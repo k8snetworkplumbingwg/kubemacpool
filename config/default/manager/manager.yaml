@@ -19,6 +19,7 @@ metadata:
 data:
   RANGE_START: 02:00:00:00:00:00
   RANGE_END: 02:FF:FF:FF:FF:FF
+  SHARDING_FACTOR: "2"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -83,6 +84,11 @@ spec:
               configMapKeyRef:
                 name: mac-range-config
                 key: RANGE_END
+          - name: SHARDING_FACTOR
+            valueFrom:
+              configMapKeyRef:
+                name: mac-range-config
+                key: SHARDING_FACTOR
           - name: HEALTH_PROBE_HOST
             value: "0.0.0.0"
           - name: HEALTH_PROBE_PORT

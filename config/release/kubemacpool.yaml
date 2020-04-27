@@ -190,6 +190,7 @@ apiVersion: v1
 data:
   RANGE_END: 02:FF:FF:FF:FF:FF
   RANGE_START: "02:00:00:00:00:00"
+  SHARDING_FACTOR: "2"
 kind: ConfigMap
 metadata:
   labels:
@@ -269,6 +270,11 @@ spec:
           valueFrom:
             configMapKeyRef:
               key: RANGE_END
+              name: kubemacpool-mac-range-config
+        - name: SHARDING_FACTOR
+          valueFrom:
+            configMapKeyRef:
+              key: SHARDING_FACTOR
               name: kubemacpool-mac-range-config
         - name: HEALTH_PROBE_HOST
           value: 0.0.0.0

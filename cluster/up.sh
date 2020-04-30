@@ -17,14 +17,15 @@
 set -ex
 
 source ./cluster/kubevirtci.sh
+CNAO_VERSIOV=0.35.0
 kubevirtci::install
 
 $(kubevirtci::path)/cluster-up/up.sh
 
 # Deploy CNA
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.35.0/namespace.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.35.0/network-addons-config.crd.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/0.35.0/operator.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/namespace.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/network-addons-config.crd.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/operator.yaml
 ./cluster/kubectl.sh create -f ./hack/cna/cna-cr.yaml
 
 # wait for cluster operator

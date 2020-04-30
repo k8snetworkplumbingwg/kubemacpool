@@ -152,7 +152,7 @@ rules:
 - apiGroups:
   - apps
   resources:
-  - statefulsets
+  - deployments
   verbs:
   - get
   - create
@@ -212,7 +212,7 @@ spec:
     kubemacpool-leader: "true"
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   labels:
     control-plane: mac-controller-manager
@@ -225,7 +225,6 @@ spec:
     matchLabels:
       control-plane: mac-controller-manager
       controller-tools.k8s.io: "1.0"
-  serviceName: kubemacpool-service
   template:
     metadata:
       labels:

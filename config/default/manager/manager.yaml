@@ -168,6 +168,8 @@ webhooks:
         values:
           - "0"
           - "1"
+      matchLabels:
+        mutatepods.kubemacpool.io: allocateForAll
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]
@@ -193,6 +195,8 @@ webhooks:
         values:
           - "0"
           - "1"
+      matchLabels:
+        mutatevirtualmachines.kubemacpool.io: allocateForAll
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["kubevirt.io"]

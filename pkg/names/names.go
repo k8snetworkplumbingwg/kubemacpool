@@ -19,3 +19,7 @@ const K8S_RUNLABEL = "runlevel"
 const OPENSHIFT_RUNLABEL = "openshift.io/run-level"
 
 const WAITING_VMS_CONFIGMAP = "kubemacpool-vm-configmap"
+
+const NAMESPACE_OPT_IN_LABEL_PODS = "mutatepods.kubemacpool.io"
+
+const NAMESPACE_OPT_IN_LABEL_VMS = "mutatevirtualmachines.kubemacpool.io"

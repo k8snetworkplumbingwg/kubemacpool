@@ -21,6 +21,7 @@ import (
 	"net"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
@@ -175,4 +176,21 @@ func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {
 	}
 
 	return currentMac
+}
+
+// Checks if the namespace of an instance is opted in for kubemacpool
+func (p *PoolManager) IsInstanceOptedIn(namespaceName, labelSelector, labelValue string) (bool, error) {
+	isNamespaceOptedIn := false
+
+	ns, err := p.kubeClient.CoreV1().Namespaces().Get(namespaceName, metav1.GetOptions{})
+	if err != nil {
+		return isNamespaceOptedIn, err
+	}
+
+	log.V(1).Info("namespaceName Labels", "Labels", ns.GetLabels())
+	if value := ns.GetLabels()[labelSelector]; labelValue == value {
+		isNamespaceOptedIn = true
+	}
+
+	return isNamespaceOptedIn, err
 }

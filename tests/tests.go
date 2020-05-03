@@ -137,20 +137,7 @@ func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 	return nil
 }
 
-func setRange(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	configMap.Data["RANGE_START"] = rangeStart
-	configMap.Data["RANGE_END"] = rangeEnd
-
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
-	if err != nil {
-		return err
-	}
-
+func restartKubemacpoolManagerPods() error {
 	oldPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -184,6 +171,33 @@ func setRange(rangeStart, rangeEnd string) error {
 		return fmt.Errorf("have not found any manager in the ready state")
 
 	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to start new set of manager pods within the given timeout")
+
+	return nil
+}
+
+func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	configMap.Data["RANGE_START"] = rangeStart
+	configMap.Data["RANGE_END"] = rangeEnd
+
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func initKubemacpoolParams(rangeStart, rangeEnd string) error {
+	err := setRangeInRangeConfigMap(rangeStart, rangeEnd)
+	Expect(err).ToNot(HaveOccurred())
+
+	err = restartKubemacpoolManagerPods()
+	Expect(err).ToNot(HaveOccurred())
 
 	return nil
 }
@@ -296,6 +310,9 @@ func cleanNamespaceLabels(namespace string) error {
 }
 
 func addLabelsToNamespace(namespace string, labels map[string]string) error {
+	if len(labels) == 0 {
+		return nil
+	}
 	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		return err

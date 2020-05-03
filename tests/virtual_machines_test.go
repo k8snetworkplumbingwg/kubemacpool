@@ -49,6 +49,12 @@ var _ = Describe("Virtual Machines", func() {
 		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
+
+		// add vm opt-in label to the test namespaces
+		for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
+			err := addLabelsToNamespace(namespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_VMS: "allocateForAll"})
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	Context("Check the client", func() {
@@ -69,11 +75,57 @@ var _ = Describe("Virtual Machines", func() {
 				return len(vmList.Items)
 
 			}, timeout, pollingInterval).Should(Equal(0), "failed to remove all vm objects")
+
+			// remove all the labels from the test namespaces
+			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
+				err = cleanNamespaceLabels(namespace)
+				Expect(err).ToNot(HaveOccurred())
+			}
 		})
 
-		Context("When the client wants to create a vm", func() {
+		Context("When the client wants to create a vm on an opted-out namespace", func() {
+			It("should create a vm object without a MAC assigned when no label is set to namespace", func() {
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
+				Expect(err).ToNot(HaveOccurred())
+
+				//remove namespace opt-in labels
+				By("removing the namespace opt-in label")
+				err = cleanNamespaceLabels(TestNamespace)
+				Expect(err).ToNot(HaveOccurred())
+
+				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+					[]kubevirtv1.Network{newNetwork("br")})
+
+				err = testClient.VirtClient.Create(context.TODO(), vm)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""))
+			})
+		})
+
+		Context("When kubemacpool is disabled on a namespace", func() {
+			It("should create a VM object without a MAC assigned", func() {
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
+				Expect(err).ToNot(HaveOccurred())
+
+				//change namespace opt-in label to disable
+				By("updating the namespace opt-in label to disabled")
+				err = cleanNamespaceLabels(TestNamespace)
+				Expect(err).ToNot(HaveOccurred())
+				err = addLabelsToNamespace(TestNamespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_VMS: "disabled"})
+				Expect(err).ToNot(HaveOccurred())
+
+				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+					[]kubevirtv1.Network{newNetwork("br")})
+
+				err = testClient.VirtClient.Create(context.TODO(), vm)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""))
+			})
+		})
+
+		Context("When the client wants to create a vm on an opted-in namespace", func() {
 			It("should create a vm object and automatically assign a static MAC address", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
@@ -90,7 +142,7 @@ var _ = Describe("Virtual Machines", func() {
 			//2166
 			Context("When the MAC address is within range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
-					err := setRange(rangeStart, rangeEnd)
+					err := initKubemacpoolParams(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
@@ -111,7 +163,7 @@ var _ = Describe("Virtual Machines", func() {
 			//2167
 			Context("When the MAC address is out of range", func() {
 				It("should reject a vm creation with an already allocated MAC address", func() {
-					err := setRange(rangeStart, rangeEnd)
+					err := initKubemacpoolParams(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "03:ff:ff:ff:ff:ff")},
@@ -135,7 +187,7 @@ var _ = Describe("Virtual Machines", func() {
 		Context("when the client tries to assign the same MAC address for two different interfaces in a single VM.", func() {
 			Context("When the MAC address is within range", func() {
 				It("should reject a VM creation with two interfaces that share the same MAC address", func() {
-					err := setRange(rangeStart, rangeEnd)
+					err := initKubemacpoolParams(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "02:00:00:00:ff:ff"),
@@ -148,7 +200,7 @@ var _ = Describe("Virtual Machines", func() {
 			//2200
 			Context("When the MAC address is out of range", func() {
 				It("should reject a VM creation with two interfaces that share the same MAC address", func() {
-					err := setRange(rangeStart, rangeEnd)
+					err := initKubemacpoolParams(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "03:ff:ff:ff:ff:ff"),
@@ -162,7 +214,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2164
 		Context("When two VM are deleted and we try to assign their MAC addresses for two newly created VM", func() {
 			It("should not return an error because the MAC addresses of the old VMs should have been released", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				//creating two VMs
@@ -217,7 +269,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2162 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/104
 		PContext("When trying to create a VM after all MAC addresses in range have been occupied", func() {
 			It("should return an error because no MAC address is available", func() {
-				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:01")
+				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
 				Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
@@ -240,7 +292,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2165 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/105
 		PContext("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
 			It("should re-use the released MAC address for the creation of the new VM and not return an error", func() {
-				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:02")
+				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
 				Expect(err).ToNot(HaveOccurred())
 
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
@@ -281,7 +333,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2179
 		Context("When restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 			It("should return an error because the MAC address is taken by the older VM", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1")})
@@ -292,7 +344,7 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				//restart kubeMacPool
-				err = setRange(rangeStart, rangeEnd)
+				err = initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm2 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br2", "02:00:ff:ff:ff:ff")},
@@ -311,7 +363,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2243
 		Context("When we re-apply a VM yaml", func() {
 			It("should assign to the VM the same MAC addresses as before the re-apply, and not return an error", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				intrefaces := make([]kubevirtv1.Interface, 5)
@@ -352,7 +404,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2633
 		Context("When we re-apply a failed VM yaml", func() {
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm1 := CreateVmObject(TestNamespace, false,
@@ -377,7 +429,7 @@ var _ = Describe("Virtual Machines", func() {
 				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 			})
 			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm1 := CreateVmObject(TestNamespace, false,
@@ -407,7 +459,7 @@ var _ = Describe("Virtual Machines", func() {
 		Context("testing finalizers", func() {
 			Context("When the VM is not being deleted", func() {
 				It("should have a finalizer and deletion timestamp should be zero ", func() {
-					err := setRange(rangeStart, rangeEnd)
+					err := initKubemacpoolParams(rangeStart, rangeEnd)
 					Expect(err).ToNot(HaveOccurred())
 
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
@@ -433,7 +485,7 @@ var _ = Describe("Virtual Machines", func() {
 
 		Context("When the leader is changed", func() {
 			It("should be able to create a new virtual machine", func() {
-				err := setRange(rangeStart, rangeEnd)
+				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
@@ -459,7 +511,7 @@ var _ = Describe("Virtual Machines", func() {
 		//2995
 		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
 			It("should successfully release the MAC and the new VM should be created with no errors", func() {
-				err := setRange("02:00:00:00:00:00", "02:00:00:00:00:01")
+				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
 				Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""), newInterface("br2", "")},

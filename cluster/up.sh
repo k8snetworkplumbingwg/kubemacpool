@@ -18,6 +18,7 @@ set -ex
 
 source ./cluster/kubevirtci.sh
 CNAO_VERSIOV=0.35.0
+KUBEVIRT_VERSION=v0.20.4
 kubevirtci::install
 
 $(kubevirtci::path)/cluster-up/up.sh
@@ -33,7 +34,7 @@ $(kubevirtci::path)/cluster-up/up.sh
 
 
 # deploy kubevirt
-./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-operator.yaml
+./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
 
 # Ensure the KubeVirt CRD is created
 count=0
@@ -43,7 +44,7 @@ until ./cluster/kubectl.sh get crd kubevirts.kubevirt.io; do
     sleep 1
 done
 
-./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/v0.20.4/kubevirt-cr.yaml
+./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
 
 # Ensure the KubeVirt CR is created
 count=0

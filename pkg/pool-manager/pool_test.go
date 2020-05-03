@@ -389,7 +389,7 @@ var _ = Describe("Pool", func() {
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:01"]
 			Expect(exist).To(BeTrue())
 
-			Expect(newPod.Annotations[networksAnnotation]).To(Equal(`[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:01"}]`))
+			Expect(newPod.Annotations[networksAnnotation]).To(Equal(`[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:01","cni-args":null}]`))
 			macAddress, exist := poolManager.podToMacPoolMap[podNamespaced(&newPod)]
 			Expect(exist).To(BeTrue())
 			Expect(len(macAddress)).To(Equal(1))

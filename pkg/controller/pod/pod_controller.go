@@ -19,8 +19,8 @@ package pod
 import (
 	"context"
 	"fmt"
+
 	"github.com/intel/multus-cni/logging"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -77,17 +77,17 @@ type ReconcilePolicy struct {
 // Reconcile reads that state of the cluster for a Pod object and makes changes based on the state
 func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	log.V(1).Info("got a pod event in the controller")
-	instanceOptedIn, err := r.poolManager.IsInstanceOptedIn(request.Namespace, names.NAMESPACE_OPT_IN_LABEL_PODS, "allocateForAll")
-	if !instanceOptedIn {
-		log.V(1).Info("pod is opted-out from kubemacpool",
-			"pod", request.Name,
-			"podNamespace", request.Namespace)
-		return reconcile.Result{}, err
-	}
+	instanceOptedIn, err := r.poolManager.IsPodInstanceOptedIn(request.Namespace)
 	if err != nil {
 		// Error reading the object - requeue the request.
 		log.Error(err, "failed to check opt-in selection",
 			"podName", request.Name,
+			"podNamespace", request.Namespace)
+		return reconcile.Result{}, err
+	}
+	if !instanceOptedIn {
+		log.V(1).Info("pod is opted-out from kubemacpool",
+			"pod", request.Name,
 			"podNamespace", request.Namespace)
 		return reconcile.Result{}, err
 	}

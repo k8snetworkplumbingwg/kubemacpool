@@ -52,8 +52,8 @@ var _ = Describe("Virtual Machines", func() {
 
 		// add vm opt-in label to the test namespaces
 		for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-			err := addLabelsToNamespace(namespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_VMS: "allocateForAll"})
-			Expect(err).ToNot(HaveOccurred())
+			err := addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "allocateForAll"})
+			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 		}
 	})
 
@@ -79,7 +79,7 @@ var _ = Describe("Virtual Machines", func() {
 			// remove all the labels from the test namespaces
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
 				err = cleanNamespaceLabels(namespace)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 			}
 		})
 
@@ -91,7 +91,7 @@ var _ = Describe("Virtual Machines", func() {
 				//remove namespace opt-in labels
 				By("removing the namespace opt-in label")
 				err = cleanNamespaceLabels(TestNamespace)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 					[]kubevirtv1.Network{newNetwork("br")})
@@ -110,9 +110,9 @@ var _ = Describe("Virtual Machines", func() {
 				//change namespace opt-in label to disable
 				By("updating the namespace opt-in label to disabled")
 				err = cleanNamespaceLabels(TestNamespace)
-				Expect(err).ToNot(HaveOccurred())
-				err = addLabelsToNamespace(TestNamespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_VMS: "disabled"})
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+				err = addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "disabled"})
+				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 					[]kubevirtv1.Network{newNetwork("br")})

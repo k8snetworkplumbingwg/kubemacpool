@@ -26,11 +26,13 @@ import (
 )
 
 const (
-	TestNamespace      = "kubemacpool-test"
-	OtherTestNamespace = "kubemacpool-test-alternative"
-	ManagerNamespce    = names.MANAGER_NAMESPACE
-	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	TestNamespace          = "kubemacpool-test"
+	OtherTestNamespace     = "kubemacpool-test-alternative"
+	ManagerNamespce        = names.MANAGER_NAMESPACE
+	nadPostUrl             = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD     = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	podNamespaceOptInLabel = "mutatepods.kubemacpool.io"
+	vmNamespaceOptInLabel  = "mutatevirtualmachines.kubemacpool.io"
 )
 
 var (
@@ -90,7 +92,6 @@ func deleteTestNamespaces(namespace string) error {
 }
 
 func removeTestNamespaces() {
-
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace))
 	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
@@ -194,10 +195,10 @@ func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
 
 func initKubemacpoolParams(rangeStart, rangeEnd string) error {
 	err := setRangeInRangeConfigMap(rangeStart, rangeEnd)
-	Expect(err).ToNot(HaveOccurred())
+	Expect(err).ToNot(HaveOccurred(), "Should succeed setting range in the range config map")
 
 	err = restartKubemacpoolManagerPods()
-	Expect(err).ToNot(HaveOccurred())
+	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
 
 	return nil
 }

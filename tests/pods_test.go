@@ -22,8 +22,8 @@ var _ = Describe("Pods", func() {
 		BeforeEach(func() {
 			// update namespaces opt in labels before every test
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-				err := addLabelsToNamespace(namespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_PODS: "allocateForAll"})
-				Expect(err).ToNot(HaveOccurred())
+				err := addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocateForAll"})
+				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 			}
 		})
 
@@ -62,7 +62,7 @@ var _ = Describe("Pods", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			err = addLabelsToNamespace(OtherTestNamespace, namespaceLabelMap)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 			podObject := createPodObject()
 
@@ -98,9 +98,9 @@ var _ = Describe("Pods", func() {
 
 			By("updating the namespace opt-in label to disabled")
 			err = cleanNamespaceLabels(TestNamespace)
-			Expect(err).ToNot(HaveOccurred())
-			err = addLabelsToNamespace(TestNamespace, map[string]string{names.NAMESPACE_OPT_IN_LABEL_PODS: "disable"})
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+			err = addLabelsToNamespace(TestNamespace, map[string]string{podNamespaceOptInLabel: "disable"})
+			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 			podObject := createPodObject()
 
@@ -120,7 +120,7 @@ var _ = Describe("Pods", func() {
 
 			By("removing the namespace opt-in label")
 			err = cleanNamespaceLabels(TestNamespace)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 
 			podObject := createPodObject()
 

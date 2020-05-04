@@ -19,7 +19,6 @@ package virtualmachine
 import (
 	"context"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirt "kubevirt.io/client-go/api/v1"
@@ -84,16 +83,16 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		"virtualMachineName", request.Name,
 		"virtualMachineNamespace", request.Namespace)
 
-	instanceOptedIn, err := r.poolManager.IsInstanceOptedIn(request.Namespace, names.NAMESPACE_OPT_IN_LABEL_VMS, "allocateForAll")
-	if !instanceOptedIn {
-		log.V(1).Info("vm is opted-out from kubemacpool",
+	instanceOptedIn, err := r.poolManager.IsVmInstanceOptedIn(request.Namespace)
+	if err != nil {
+		// Error reading the object - requeue the request.
+		log.Error(err, "failed to check opt-in selection",
 			"virtualMachineName", request.Name,
 			"virtualMachineNamespace", request.Namespace)
 		return reconcile.Result{}, err
 	}
-	if err != nil {
-		// Error reading the object - requeue the request.
-		log.Error(err, "failed to check opt-in selection",
+	if !instanceOptedIn {
+		log.V(1).Info("vm is opted-out from kubemacpool",
 			"virtualMachineName", request.Name,
 			"virtualMachineNamespace", request.Namespace)
 		return reconcile.Result{}, err

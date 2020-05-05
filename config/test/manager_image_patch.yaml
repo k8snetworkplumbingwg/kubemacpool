@@ -7,8 +7,7 @@ spec:
   template:
     spec:
       containers:
-      - image: registry:5000/kubevirt/kubemacpool:latest
-        name: manager
+      - name: manager
         args:
           - "--v=debug"
           - "--wait-time=10"

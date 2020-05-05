@@ -19,25 +19,41 @@ set -ex
 source ./cluster/kubevirtci.sh
 kubevirtci::install
 
-registry_port=$(./cluster/cli.sh ports registry | tr -d '\r')
-registry=localhost:$registry_port
+if [[ "$KUBEVIRT_PROVIDER" == external ]]; then
+    if [[ ! -v DEV_REGISTRY ]]; then
+        echo "Missing DEV_REGISTRY variable"
+        exit 1
+    fi
+    push_registry=$DEV_REGISTRY
+    manifest_registry=$DEV_REGISTRY
+    config_dir=./config/external
+else
+    registry_port=$(./cluster/cli.sh ports registry | tr -d '\r')
+    push_registry=localhost:$registry_port
+    manifest_registry=registry:5000
+    config_dir=./config/test
+fi
 
-REGISTRY=$registry make container
-REGISTRY=$registry make docker-push
-REGISTRY=$registry make generate
+REGISTRY=$push_registry make container
+REGISTRY=$push_registry make docker-push
+REGISTRY=$manifest_registry make generate
 
-./cluster/kubectl.sh delete --ignore-not-found -f ./config/test/kubemacpool.yaml || true
+# Sometimes this get stuck removing the namespace this is fixed by running
+# ./hack/clean-ns-finalizers.sh
+./cluster/kubectl.sh delete --ignore-not-found -f $config_dir/kubemacpool.yaml || true
 
 # Wait until all objects are deleted
 until [[ `./cluster/kubectl.sh get ns | grep "kubemacpool-system " | wc -l` -eq 0 ]]; do
     sleep 5
 done
 
-./cluster/kubectl.sh apply -f ./config/test/kubemacpool.yaml
+./cluster/kubectl.sh apply -f $config_dir/kubemacpool.yaml
 
 pods_ready_wait() {
-  echo "Waiting for non-kubemacpool containers to be ready ..."
-  ./cluster/kubectl.sh wait pod --all -n kube-system --for=condition=Ready --timeout=5m
+  if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
+    echo "Waiting for non-kubemacpool containers to be ready ..."
+    ./cluster/kubectl.sh wait pod --all -n kube-system --for=condition=Ready --timeout=5m
+  fi
 
   wait_failed=''
   max_retries=12

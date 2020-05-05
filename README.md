@@ -2,7 +2,7 @@
 
 ## About
 
-This project allow to allocate mac addresses from a pool to secondary interfaces using 
+This project allow to allocate mac addresses from a pool to secondary interfaces using
 [Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec).
 
 ## Usage
@@ -34,7 +34,7 @@ Download the project yaml and apply it.
 ```bash
 wget https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/config/release/kubemacpool.yaml
 kubectl apply -f ./kubemacpool.yaml
-``` 
+```
 
 ### Opting-in to kubemacpool service
 
@@ -45,7 +45,7 @@ On releases v0.8.4 and above, kubemacpool is set to apply on pods/vms that resid
 #### Opt-in Example
 
 ```bash
-# Add the opt-in labels to namespace using kubectl 
+# Add the opt-in labels to namespace using kubectl
 kubectl label namespace user-namespace-opting-in-pods-vms mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
 namespace/user-namespace-opting-in-pods-vms labeled
 
@@ -75,7 +75,7 @@ RANGE_START:
 
 pods:
 ```bash
-kubectl -n kubemacpool-system get po                
+kubectl -n kubemacpool-system get po
 NAME                                                  READY   STATUS    RESTARTS   AGE
 kubemacpool-mac-controller-manager-6894f7785d-t6hf4   1/1     Running   0          107s
 ```
@@ -85,8 +85,8 @@ kubemacpool-mac-controller-manager-6894f7785d-t6hf4   1/1     Running   0       
 Create a network-attachment-definition:
 
 The 'NetworkAttachmentDefinition' is used to setup the network attachment, i.e. secondary interface for the pod.
-This is follows the [Kubernetes Network Custom Resource Definition De-facto Standard](https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit) 
-to provide a standardized method by which to specify the configurations for additional network interfaces. 
+This is follows the [Kubernetes Network Custom Resource Definition De-facto Standard](https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit)
+to provide a standardized method by which to specify the configurations for additional network interfaces.
 This standard is put forward by the Kubernetes [Network Plumbing Working Group](https://docs.google.com/document/d/1oE93V3SgOGWJ4O1zeD1UmpeToa0ZiiO6LqRAmZBPFWM/edit).
 
 ```yaml
@@ -115,7 +115,7 @@ spec:
 
 This example used [ovs-cni](https://github.com/kubevirt/ovs-cni/).
 
-**note** the tuning plugin change the mac address after the main plugin was executed so 
+**note** the tuning plugin change the mac address after the main plugin was executed so
 network connectivity will not work if the main plugin configure mac filter on the interface.
 
 **note** make sure that the  pod's namespace is opted in for pods.
@@ -182,7 +182,7 @@ k8s.v1.cni.cncf.io/networks: [{"name":"ovs-conf","namespace":"default","mac":"02
 
 MAC address can be also set manually by the user using the MAC field in the annotation.
 If the mac is already in used the system will reject it even if the MAC address is outside of the range.
- 
+
 
 ## Develop
 
@@ -191,19 +191,20 @@ deploy local cluster.
 
 ### Dockerized Kubernetes Provider
 
-Refer to the [kubernetes 1.13.3 with multus document](cluster/k8s-multus-1.13.3/README.md)
+Refer to the [kubernetes 1.17](https://github.com/kubevirt/kubevirtci/blob/master/cluster-up/cluster/k8s-1.17/README.md)
 
 ### Usage
 
 Use following commands to control it.
 
-*note:* Default Provider is one node (master + worker) of kubernetes 1.13.3
+*note:* Default Provider is one master + one worker of kubernetes 1.17 nodes
 with multus cni plugin.
+
+#### Ephemeral cluster
 
 ```shell
 # Deploy local Kubernetes cluster
-export MACPOOL_PROVIDER=k8s-multus-1.13.3 # choose this provider
-export MACPOOL_NUM_NODES=3 # master + two nodes
+export KUBEVIRT_NUM_NODES=3 # one master + two workers
 make cluster-up
 
 # SSH to node01 and open interactive shell
@@ -220,4 +221,36 @@ make cluster-sync
 
 # Destroy the cluster
 make cluster-down
+
+# Run function test
+make functest
+```
+#### External cluster
+
+To deploy at an external cluster not provided by kubevirtci we can to do
+the following steps
+
+```bash
+# Set env variables
+export KUBEVIRT_PROVIDER=external
+export KUBECONFIG=[path to the cluster's kubeconfig]
+
+# Intermediate registry to deploy kubemacpool
+export DEV_REGISTRY=docker.io # can be different
+
+# Intermediate repo to deploy kubemacpool
+export REPO=$USER # Usually there is a docker.io/$USER this can use
+
+# Deploy kubevirt and multus
+make cluster-up
+
+# Build project, build images, push them to $DEV_REGISTRY/$REPO/kubemacpool and
+# install it
+make cluster-sync
+
+# Destroy the cluster, it will not install kubevirt or multus
+make cluster-down
+
+# Run function test
+make functest
 ```

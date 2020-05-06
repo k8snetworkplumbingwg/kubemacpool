@@ -22,7 +22,7 @@ kubevirtci::install
 registry_port=$(./cluster/cli.sh ports registry | tr -d '\r')
 registry=localhost:$registry_port
 
-REGISTRY=$registry make docker-build
+REGISTRY=$registry make container
 REGISTRY=$registry make docker-push
 REGISTRY=$registry make docker-generate
 

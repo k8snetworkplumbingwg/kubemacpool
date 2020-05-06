@@ -11,7 +11,7 @@ main() {
     cd ${TMP_PROJECT_PATH}
 
     # Let's fail fast if it's not compiling
-    make docker-build
+    make container
 
     make cluster-down
     make cluster-up

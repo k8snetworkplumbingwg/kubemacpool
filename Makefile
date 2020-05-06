@@ -56,8 +56,8 @@ vet:
 	$(GO) vet ./pkg/... ./cmd/... ./tests/...
 
 # Generate code
-generate: fmt vet manifests
-	go generate ./pkg/... ./cmd/...
+generate: $(GO) fmt vet manifests
+	$(GO) generate ./pkg/... ./cmd/...
 
 goveralls:
 	./hack/goveralls.sh
@@ -68,9 +68,12 @@ docker-goveralls: docker-builder docker-test
 docker-generate: docker-builder
 	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
 
+manager: $(GO)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -o $(BIN_DIR)/manager github.com/k8snetworkplumbingwg/kubemacpool/cmd/manager
+
 # Build the docker image
-docker-build: docker-builder
-	docker build . -t ${REGISTRY}/${IMG}:${IMAGE_TAG} --build-arg GO_VERSION=1.12.12
+container: manager
+	docker build build/ -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
 
 # Build the docker builder image
 docker-builder:
@@ -92,4 +95,4 @@ cluster-sync:
 tools-vendoring: $(GO)
 	./hack/vendor-tools.sh $$(pwd)/tools.go
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test docker-build docker-push cluster-up cluster-down cluster-sync tools-vendoring docker-build-base-image
+.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test manager container docker-push cluster-up cluster-down cluster-sync tools-vendoring docker-build-base-image

@@ -21,8 +21,9 @@ import (
 	"fmt"
 
 	"github.com/intel/multus-cni/logging"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -76,26 +77,22 @@ type ReconcilePolicy struct {
 
 // Reconcile reads that state of the cluster for a Pod object and makes changes based on the state
 func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	log.V(1).Info("got a pod event in the controller")
+	logger := log.WithName("Reconcile").WithValues("podName", request.Name, "podNamespace", request.Namespace)
+
+	logger.V(1).Info("got a pod event in the controller")
 	instanceOptedIn, err := r.poolManager.IsPodInstanceOptedIn(request.Namespace)
 	if err != nil {
-		// Error reading the object - requeue the request.
-		log.Error(err, "failed to check opt-in selection",
-			"podName", request.Name,
-			"podNamespace", request.Namespace)
-		return reconcile.Result{}, err
+		return reconcile.Result{}, errors.Wrap(err, "failed to check opt-in selection for pod")
 	}
 	if !instanceOptedIn {
-		log.V(1).Info("pod is opted-out from kubemacpool",
-			"pod", request.Name,
-			"podNamespace", request.Namespace)
-		return reconcile.Result{}, err
+		logger.V(1).Info("pod is opted-out from kubemacpool")
+		return reconcile.Result{}, nil
 	}
 
 	instance := &corev1.Pod{}
 	err = r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if kuberneteserror.IsNotFound(err) {
 			err := r.poolManager.ReleasePodMac(fmt.Sprintf("%s/%s", request.Namespace, request.Name))
 			if err != nil {
 				logging.Printf(logging.ErrorLevel, "failed to release mac for pod %s: %v", request.NamespacedName, err)
@@ -103,7 +100,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
-		return reconcile.Result{}, err
+		return reconcile.Result{}, errors.Wrap(err, "Failed to read the request object")
 	}
 
 	// allocate only when the pod is ready
@@ -113,7 +110,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 
 	err = r.poolManager.AllocatePodMac(instance)
 	if err != nil {
-		log.Error(err, "failed to allocate mac for pod")
+		logger.Error(err, "failed to allocate mac for pod")
 	}
 
 	return reconcile.Result{}, nil

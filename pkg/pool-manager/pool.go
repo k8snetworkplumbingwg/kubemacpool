@@ -184,14 +184,14 @@ func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {
 func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName, webhookName string) (bool, error) {
 	ns, err := p.kubeClient.CoreV1().Namespaces().Get(namespaceName, metav1.GetOptions{})
 	if err != nil {
-		return false, errors.Wrap(err, fmt.Sprintf("Failed to get Namespace %s", namespaceName))
+		return false, errors.Wrapf(err, "Failed to get Namespace %s", namespaceName)
 	}
 	namespaceLabelMap := ns.GetLabels()
 	log.V(3).Info("namespaceName Labels", "namespaceName", namespaceName, "Labels", namespaceLabelMap)
 
 	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(mutatingWebhookConfigName, metav1.GetOptions{})
 	if err != nil {
-		return false, errors.Wrap(err, fmt.Sprintf("Failed to get mutatingWebhookConfig %s", mutatingWebhookConfigName))
+		return false, errors.Wrapf(err, "Failed to get mutatingWebhookConfig %s", mutatingWebhookConfigName)
 	}
 
 	for _, webhook := range mutatingWebhookConfiguration.Webhooks {

@@ -5,11 +5,17 @@ go 1.12
 require (
 	github.com/containernetworking/cni v0.6.0 // indirect
 	github.com/go-logr/logr v0.1.0
+	github.com/go-logr/zapr v0.1.1 // indirect
+	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20190127194101-cd6f9880ac19
 	github.com/onsi/ginkgo v1.10.1
 	github.com/onsi/gomega v1.7.0
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/procfs v0.0.8 // indirect
-	github.com/qinqon/kube-admission-webhook v0.3.0
+	github.com/qinqon/kube-admission-webhook v0.6.0
+	go.uber.org/atomic v1.4.0 // indirect
+	golang.org/x/crypto v0.0.0-20190621222207-cc06ce4a13d4 // indirect
+	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.0-alpha.2
 	k8s.io/apiextensions-apiserver v0.17.2 // indirect
 	k8s.io/apimachinery v0.18.0-alpha.2

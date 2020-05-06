@@ -28,7 +28,6 @@ import (
 	"k8s.io/client-go/tools/leaderelection"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
@@ -163,11 +162,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		err = webhook.AddToManager(mgr, poolManager)
 		if err != nil {
 			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
-		}
-
-		if err := mgr.AddReadyzCheck("ping", healthz.Ping); err != nil {
-			log.Info("Unable to create health check", "error", err)
-			os.Exit(1)
 		}
 
 		err = mgr.Start(k.restartChannel)

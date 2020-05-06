@@ -51,7 +51,7 @@ var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) e
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	s := webhookserver.New(mgr, names.MUTATE_WEBHOOK_CONFIG, certificate.MutatingWebhook, webhookserver.WithPort(WebhookServerPort))
+	s := webhookserver.New(mgr.GetClient(), names.MUTATE_WEBHOOK_CONFIG, certificate.MutatingWebhook, webhookserver.WithPort(WebhookServerPort))
 
 	for _, f := range AddToWebhookFuncs {
 		if err := f(s, poolManager); err != nil {
@@ -59,7 +59,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	mgr.Add(s)
+	s.Add(mgr)
 	return nil
 }
 

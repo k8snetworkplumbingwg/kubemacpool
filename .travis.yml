@@ -8,16 +8,16 @@ services:
 
 install: true
 script:
-  - make docker-build
+  - make container
 
 deploy:
 - provider: script
-  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" quay.io && make docker-build docker-push
+  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" quay.io && make container docker-push
   skip_cleanup: true
   on:
     branch: master
 - provider: script
-  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" quay.io && make docker-build docker-push IMAGE_TAG=$TRAVIS_TAG
+  script: docker login -u="$DOCKER_USER" -p="$DOCKER_PASS" quay.io && make container docker-push IMAGE_TAG=$TRAVIS_TAG
   skip_cleanup: true
   on:
     tags: true

@@ -36,6 +36,23 @@ wget https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/c
 kubectl apply -f ./kubemacpool.yaml
 ``` 
 
+### Opting-in to kubemacpool service
+
+On releases v0.8.4 and above, kubemacpool is set to apply on pods/vms that reside only on opted-in namespaces. You can opt-in your namespace by adding the following labels:
+- `mutatepods.kubemacpool.io=allocateForAll` - to opt in pods mac allocation in your namespace
+- `mutatevirtualmachines.kubemacpool.io=allocateForAll` - to opt in vms mac allocation in your namespace
+
+#### Opt-in Example
+
+```bash
+# Add the opt-in labels to namespace using kubectl 
+kubectl label namespace user-namespace-opting-in-pods-vms mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
+namespace/user-namespace-opting-in-pods-vms labeled
+
+kubectl get namespaces user-namespace-opting-in-pods-vms --show-labels
+NAME                              STATUS   AGE     LABELS
+user-namespace-opting-in-pods-vms Active   22s     mutatepods.kubemacpool.io=allocateForAll,mutatevirtualmachines.kubemacpool.io=allocateForAll
+```
 
 ### Check deployment
 
@@ -101,6 +118,16 @@ This example used [ovs-cni](https://github.com/kubevirt/ovs-cni/).
 **note** the tuning plugin change the mac address after the main plugin was executed so 
 network connectivity will not work if the main plugin configure mac filter on the interface.
 
+**note** make sure that the  pod's namespace is opted in for pods.
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    mutatepods.kubemacpool.io: allocateForAll
+  name: default
+...
+```
 
 **note** the project supports only json configuration for `k8s.v1.cni.cncf.io/networks`, network list will be ignored
 

@@ -26,11 +26,13 @@ import (
 )
 
 const (
-	TestNamespace      = "kubemacpool-test"
-	OtherTestNamespace = "kubemacpool-test-alternative"
-	ManagerNamespce    = names.MANAGER_NAMESPACE
-	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	TestNamespace          = "kubemacpool-test"
+	OtherTestNamespace     = "kubemacpool-test-alternative"
+	ManagerNamespce        = names.MANAGER_NAMESPACE
+	nadPostUrl             = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD     = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	podNamespaceOptInLabel = "mutatepods.kubemacpool.io"
+	vmNamespaceOptInLabel  = "mutatevirtualmachines.kubemacpool.io"
 )
 
 var (
@@ -90,7 +92,6 @@ func deleteTestNamespaces(namespace string) error {
 }
 
 func removeTestNamespaces() {
-
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace))
 	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
@@ -137,20 +138,7 @@ func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 	return nil
 }
 
-func setRange(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	configMap.Data["RANGE_START"] = rangeStart
-	configMap.Data["RANGE_END"] = rangeEnd
-
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
-	if err != nil {
-		return err
-	}
-
+func restartKubemacpoolManagerPods() error {
 	oldPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -184,6 +172,33 @@ func setRange(rangeStart, rangeEnd string) error {
 		return fmt.Errorf("have not found any manager in the ready state")
 
 	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to start new set of manager pods within the given timeout")
+
+	return nil
+}
+
+func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	configMap.Data["RANGE_START"] = rangeStart
+	configMap.Data["RANGE_END"] = rangeEnd
+
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func initKubemacpoolParams(rangeStart, rangeEnd string) error {
+	err := setRangeInRangeConfigMap(rangeStart, rangeEnd)
+	Expect(err).ToNot(HaveOccurred(), "Should succeed setting range in the range config map")
+
+	err = restartKubemacpoolManagerPods()
+	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
 
 	return nil
 }
@@ -296,6 +311,9 @@ func cleanNamespaceLabels(namespace string) error {
 }
 
 func addLabelsToNamespace(namespace string, labels map[string]string) error {
+	if len(labels) == 0 {
+		return nil
+	}
 	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
 	if err != nil {
 		return err

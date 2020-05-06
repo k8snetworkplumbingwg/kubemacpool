@@ -19,6 +19,14 @@ const defaultNumberOfReplicas = 2
 
 var _ = Describe("Pods", func() {
 	Context("Check the pod mutating webhook", func() {
+		BeforeEach(func() {
+			// update namespaces opt in labels before every test
+			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
+				err := addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocateForAll"})
+				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+			}
+		})
+
 		AfterEach(func() {
 			// Clean pods from our test namespaces after every test to start clean
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
@@ -41,6 +49,7 @@ var _ = Describe("Pods", func() {
 
 				// This function remove all the labels from the namespace
 				err = cleanNamespaceLabels(namespace)
+				Expect(err).ToNot(HaveOccurred())
 			}
 
 			// Restore the default number of managers
@@ -48,11 +57,12 @@ var _ = Describe("Pods", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		testCriticalNamespace := func(namespace, label string, matcher types.GomegaMatcher) {
+		testCriticalNamespace := func(namespace string, namespaceLabelMap map[string]string, matcher types.GomegaMatcher) {
 			err := changeManagerReplicas(0)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = addLabelsToNamespace(OtherTestNamespace, map[string]string{label: "0"})
+			err = addLabelsToNamespace(OtherTestNamespace, namespaceLabelMap)
+			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 			podObject := createPodObject()
 
@@ -66,8 +76,8 @@ var _ = Describe("Pods", func() {
 			}, timeout, pollingInterval).Should(matcher, "failed to apply the new pod object")
 		}
 
-		It("should create a pod when mac pool is running in a regular namespace", func() {
-			err := setRange(rangeStart, rangeEnd)
+		It("should create a pod when mac pool is running in a regular opted-in namespace", func() {
+			err := initKubemacpoolParams(rangeStart, rangeEnd)
 			Expect(err).ToNot(HaveOccurred())
 
 			podObject := createPodObject()
@@ -82,16 +92,58 @@ var _ = Describe("Pods", func() {
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
 
-		It("should fail to create a pod on a regular namespace when mac pool is down", func() {
-			testCriticalNamespace(OtherTestNamespace, "not-critical", BeFalse())
+		It("should create a pod when mac pool is running in a regular opted-out namespace (disabled label)", func() {
+			err := initKubemacpoolParams(rangeStart, rangeEnd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("updating the namespace opt-in label to disabled")
+			err = cleanNamespaceLabels(TestNamespace)
+			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+			err = addLabelsToNamespace(TestNamespace, map[string]string{podNamespaceOptInLabel: "disable"})
+			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+
+			podObject := createPodObject()
+
+			Eventually(func() bool {
+				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
+				if err != nil && strings.Contains(err.Error(), "connection refused") {
+					return false
+				}
+
+				return true
+			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
+		})
+
+		It("should create a pod when mac pool is running in a regular opted-out namespace (no label)", func() {
+			err := initKubemacpoolParams(rangeStart, rangeEnd)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("removing the namespace opt-in label")
+			err = cleanNamespaceLabels(TestNamespace)
+			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+
+			podObject := createPodObject()
+
+			Eventually(func() bool {
+				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
+				if err != nil && strings.Contains(err.Error(), "connection refused") {
+					return false
+				}
+
+				return true
+			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
+		})
+
+		It("should fail to create a pod on a regular opted-in namespace when mac pool is down", func() {
+			testCriticalNamespace(OtherTestNamespace, map[string]string{"not-critical": "0"}, BeFalse())
 		})
 
 		It("should create a pod on a critical k8s namespaces when mac pool is down", func() {
-			testCriticalNamespace(OtherTestNamespace, names.K8S_RUNLABEL, BeTrue())
+			testCriticalNamespace(OtherTestNamespace, map[string]string{names.K8S_RUNLABEL: "0"}, BeTrue())
 		})
 
 		It("should create a pod on a critical openshift namespaces when mac pool is down", func() {
-			testCriticalNamespace(OtherTestNamespace, names.OPENSHIFT_RUNLABEL, BeTrue())
+			testCriticalNamespace(OtherTestNamespace, map[string]string{names.OPENSHIFT_RUNLABEL: "0"}, BeTrue())
 		})
 	})
 })

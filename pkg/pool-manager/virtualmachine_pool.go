@@ -477,6 +477,11 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 	}
 }
 
+// Checks if the namespace of a vm instance is opted in for kubemacpool
+func (p *PoolManager) IsVmInstanceOptedIn(namespaceName string) (bool, error) {
+	return p.isInstanceOptedIn(namespaceName, "kubemacpool-mutator", "mutatevirtualmachines.kubemacpool.io")
+}
+
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("%s/%s", machine.Namespace, machine.Name)
 }

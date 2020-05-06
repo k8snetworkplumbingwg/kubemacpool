@@ -97,3 +97,9 @@ rules:
   - create
   - update
   - patch
+- apiGroups:
+    - ""
+  resources:
+    - namespaces
+  verbs:
+    - get

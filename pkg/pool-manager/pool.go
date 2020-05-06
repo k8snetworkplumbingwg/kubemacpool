@@ -21,6 +21,9 @@ import (
 	"net"
 	"sync"
 
+	"github.com/pkg/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 )
@@ -175,4 +178,31 @@ func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {
 	}
 
 	return currentMac
+}
+
+// Checks if the namespace of an instance is opted in for kubemacpool
+func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName, webhookName string) (bool, error) {
+	ns, err := p.kubeClient.CoreV1().Namespaces().Get(namespaceName, metav1.GetOptions{})
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get Namespace %s", namespaceName)
+	}
+	namespaceLabelMap := ns.GetLabels()
+	log.V(3).Info("namespaceName Labels", "namespaceName", namespaceName, "Labels", namespaceLabelMap)
+
+	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(mutatingWebhookConfigName, metav1.GetOptions{})
+	if err != nil {
+		return false, errors.Wrapf(err, "Failed to get mutatingWebhookConfig %s", mutatingWebhookConfigName)
+	}
+
+	for _, webhook := range mutatingWebhookConfiguration.Webhooks {
+		if webhook.Name == webhookName {
+			if namespaceLabelSet := labels.Set(namespaceLabelMap); namespaceLabelSet != nil {
+				if webhookNamespaceLabelSelector, err := metav1.LabelSelectorAsSelector(webhook.NamespaceSelector); err == nil && webhookNamespaceLabelSelector.Matches(namespaceLabelSet) {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	return false, nil
 }

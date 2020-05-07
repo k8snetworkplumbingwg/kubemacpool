@@ -77,10 +77,16 @@ generate-go: $(DEEPCOPY_GEN) fmt vet manifests
 
 generate: generate-go generate-deploy generate-test
 
-goveralls: $(GOVERALLS)
-	GOVERALLS=$(GOVERALLS) ./hack/goveralls.sh
+docker-goveralls: docker-builder docker-test
+	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh goveralls
 
-manager: generate-go
+docker-generate: docker-builder
+	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
+
+check: $(KUSTOMIZE)
+	./hack/check.sh
+
+manager: $(GO)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -o $(BIN_DIR)/manager github.com/k8snetworkplumbingwg/kubemacpool/cmd/manager
 
 # Build the docker image
@@ -124,6 +130,7 @@ tools: $(GO)
 	fmt \
 	vet \
 	goveralls \
+	check \
 	manager \
 	container \
 	push \

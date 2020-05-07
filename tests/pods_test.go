@@ -3,11 +3,9 @@ package tests
 import (
 	"context"
 	"fmt"
-	"github.com/onsi/gomega/types"
-	"strings"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,7 +66,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.KubeClient.CoreV1().Pods(OtherTestNamespace).Create(podObject)
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
+				if err != nil {
 					return false
 				}
 
@@ -84,7 +82,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
+				if err != nil {
 					return false
 				}
 
@@ -106,7 +104,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
+				if err != nil {
 					return false
 				}
 
@@ -126,7 +124,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
-				if err != nil && strings.Contains(err.Error(), "connection refused") {
+				if err != nil {
 					return false
 				}
 

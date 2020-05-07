@@ -80,7 +80,7 @@ generate: generate-go generate-deploy generate-test
 goveralls: $(GOVERALLS)
 	GOVERALLS=$(GOVERALLS) ./hack/goveralls.sh
 
-manager: $(GO)
+manager: generate-go
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -o $(BIN_DIR)/manager github.com/k8snetworkplumbingwg/kubemacpool/cmd/manager
 
 # Build the docker image

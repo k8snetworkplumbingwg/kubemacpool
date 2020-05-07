@@ -24,7 +24,7 @@ registry=localhost:$registry_port
 
 REGISTRY=$registry make container
 REGISTRY=$registry make docker-push
-REGISTRY=$registry make docker-generate
+REGISTRY=$registry make generate
 
 ./cluster/kubectl.sh delete --ignore-not-found -f ./config/test/kubemacpool.yaml || true
 

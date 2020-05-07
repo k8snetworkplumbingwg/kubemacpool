@@ -13,13 +13,29 @@ export GOBIN=$(GOROOT)/bin/
 export PATH := $(GOBIN):$(PATH)
 GOFMT := $(GOBIN)/gofmt
 GO := $(GOBIN)/go
+KUSTOMIZE := $(GOBIN)/kustomize
+CONTROLLER_GEN := $(GOBIN)/controller-gen
+DEEPCOPY_GEN := $(GOBIN)/deepcopy-gen
+GOVERALLS := $(GOBIN)/goveralls
 
 export KUBECTL ?= cluster/kubectl.sh
 
-all: generate generate-deploy generate-test
+all: generate
 
 $(GO):
 	hack/install-go.sh $(BIN_DIR) > /dev/null
+
+$(KUSTOMIZE): go.mod
+	$(MAKE) tools
+
+$(CONTROLLER_GEN): go.mod
+	$(MAKE) tools
+
+$(DEEPCOPY_GEN): go.mod
+	$(MAKE) tools
+
+$(GOVERALLS): go.mod
+	$(MAKE) tools
 
 $(GOFMT): $(GO)
 
@@ -37,38 +53,34 @@ deploy: generate-deploy
 deploy-test: generate-test
 	$(KUBECTL) apply -f config/test/kubemacpool.yaml
 
-generate-deploy: manifests
-	kustomize build config/release > config/release/kubemacpool.yaml
+generate-deploy: $(KUSTOMIZE) manifests
+	$(KUSTOMIZE) build config/release > config/release/kubemacpool.yaml
 
-generate-test: manifests
-	kustomize build config/test > config/test/kubemacpool.yaml
+generate-test: $(KUSTOMIZE) manifests
+	$(KUSTOMIZE) build config/test > config/test/kubemacpool.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests: $(GO)
-	$(GO) run vendor/sigs.k8s.io/controller-tools/cmd/controller-gen/main.go crd rbac:roleName=kubemacpool paths=./pkg/... output:crd:dir=config/ output:stdout
+manifests: $(CONTROLLER_GEN)
+	$(CONTROLLER_GEN) crd rbac:roleName=kubemacpool paths=./pkg/... output:crd:dir=config/ output:stdout
 
 # Run go fmt against code
 fmt: $(GOFMT)
 	$(GOFMT) -d pkg/ cmd/ tests/
 
 # Run go vet against code
-vet:
+vet: $(GO)
 	$(GO) vet ./pkg/... ./cmd/... ./tests/...
 
 # Generate code
-generate: $(GO) fmt vet manifests
-	$(GO) generate ./pkg/... ./cmd/...
+generate-go: $(DEEPCOPY_GEN) fmt vet manifests
+	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
-goveralls:
-	./hack/goveralls.sh
+generate: generate-go generate-deploy generate-test
 
-docker-goveralls: docker-builder docker-test
-	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh goveralls
+goveralls: $(GOVERALLS)
+	GOVERALLS=$(GOVERALLS) ./hack/goveralls.sh
 
-docker-generate: docker-builder
-	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
-
-manager: $(GO)
+manager: generate-go
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -o $(BIN_DIR)/manager github.com/k8snetworkplumbingwg/kubemacpool/cmd/manager
 
 # Build the docker image
@@ -92,7 +104,30 @@ cluster-down:
 cluster-sync:
 	./cluster/sync.sh
 
-tools-vendoring: $(GO)
-	./hack/vendor-tools.sh $$(pwd)/tools.go
+vendor: $(GO)
+	$(GO) mod tidy
+	$(GO) mod vendor
 
-.PHONY: test deploy deploy-test generate-deploy generate-test manifests fmt vet generate goveralls docker-goveralls docker-test manager container docker-push cluster-up cluster-down cluster-sync tools-vendoring docker-build-base-image
+tools: $(GO)
+	GO=$(GO) GOBIN=$(GOBIN) ./hack/install-tools.sh $$(pwd)/tools.go
+
+.PHONY: \
+	vendor \
+	test \
+	deploy \
+	deploy-test \
+	generate \
+	generate-go \
+	generate-deploy \
+	generate-test \
+	manifests \
+	fmt \
+	vet \
+	goveralls \
+	manager \
+	container \
+	push \
+	cluster-up \
+	cluster-down \
+	cluster-sync \
+	tools

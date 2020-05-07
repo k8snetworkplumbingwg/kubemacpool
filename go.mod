@@ -3,11 +3,11 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 go 1.12
 
 require (
-	github.com/containernetworking/cni v0.6.0 // indirect
 	github.com/go-logr/logr v0.1.0
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
-	github.com/intel/multus-cni v3.4.1
+	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
+	github.com/kr/pty v1.1.5 // indirect
 	github.com/mattn/goveralls v0.0.5
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
@@ -15,7 +15,6 @@ require (
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/qinqon/kube-admission-webhook v0.6.0
 	go.uber.org/atomic v1.4.0 // indirect
-	golang.org/x/exp v0.0.0-20190312203227-4b39c73a6495 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2

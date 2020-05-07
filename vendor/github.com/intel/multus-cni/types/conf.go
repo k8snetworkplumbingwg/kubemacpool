@@ -17,10 +17,10 @@ package types
 
 import (
 	"encoding/json"
+	"net"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/containernetworking/cni/pkg/skel"
-	"github.com/containernetworking/cni/pkg/types"
 	"github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/intel/multus-cni/logging"
@@ -31,48 +31,67 @@ const (
 	defaultConfDir                = "/etc/cni/multus/net.d"
 	defaultBinDir                 = "/opt/cni/bin"
 	defaultReadinessIndicatorFile = ""
+	defaultMultusNamespace        = "kube-system"
 )
 
+// LoadDelegateNetConfList reads DelegateNetConf from bytes
 func LoadDelegateNetConfList(bytes []byte, delegateConf *DelegateNetConf) error {
-
 	logging.Debugf("LoadDelegateNetConfList: %s, %v", string(bytes), delegateConf)
+
 	if err := json.Unmarshal(bytes, &delegateConf.ConfList); err != nil {
-		return logging.Errorf("err in unmarshalling delegate conflist: %v", err)
+		return logging.Errorf("LoadDelegateNetConfList: error unmarshalling delegate conflist: %v", err)
 	}
 
 	if delegateConf.ConfList.Plugins == nil {
-		return logging.Errorf("delegate must have the 'type'or 'Plugin' field")
+		return logging.Errorf("LoadDelegateNetConfList: delegate must have the 'type' or 'plugin' field")
 	}
+
 	if delegateConf.ConfList.Plugins[0].Type == "" {
-		return logging.Errorf("a plugin delegate must have the 'type' field")
+		return logging.Errorf("LoadDelegateNetConfList: a plugin delegate must have the 'type' field")
 	}
 	delegateConf.ConfListPlugin = true
 	return nil
 }
 
-// Convert raw CNI JSON into a DelegateNetConf structure
+// LoadDelegateNetConf converts raw CNI JSON into a DelegateNetConf structure
 func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID string) (*DelegateNetConf, error) {
 	var err error
 	logging.Debugf("LoadDelegateNetConf: %s, %v, %s", string(bytes), net, deviceID)
 
-	// If deviceID is present, inject this into delegate config
-	if deviceID != "" {
-		var updatedBytes []byte
-		if updatedBytes, err = delegateAddDeviceID(bytes, deviceID); err != nil {
-			return nil, logging.Errorf("error in LoadDelegateNetConf - delegateAddDeviceID unable to update delegate config: %v", err)
-		}
-		bytes = updatedBytes
-	}
-
 	delegateConf := &DelegateNetConf{}
 	if err := json.Unmarshal(bytes, &delegateConf.Conf); err != nil {
-		return nil, logging.Errorf("error in LoadDelegateNetConf - unmarshalling delegate config: %v", err)
+		return nil, logging.Errorf("LoadDelegateNetConf: error unmarshalling delegate config: %v", err)
 	}
 
 	// Do some minimal validation
 	if delegateConf.Conf.Type == "" {
 		if err := LoadDelegateNetConfList(bytes, delegateConf); err != nil {
-			return nil, logging.Errorf("error in LoadDelegateNetConf: %v", err)
+			return nil, logging.Errorf("LoadDelegateNetConf: failed with: %v", err)
+		}
+		if deviceID != "" {
+			bytes, err = addDeviceIDInConfList(bytes, deviceID)
+			if err != nil {
+				return nil, logging.Errorf("LoadDelegateNetConf: failed to add deviceID in NetConfList bytes: %v", err)
+			}
+		}
+		if net != nil && net.CNIArgs != nil {
+			bytes, err = addCNIArgsInConfList(bytes, net.CNIArgs)
+			if err != nil {
+				return nil, logging.Errorf("LoadDelegateNetConf(): failed to add cni-args in NetConfList bytes: %v", err)
+			}
+		}
+	} else {
+		if deviceID != "" {
+			bytes, err = delegateAddDeviceID(bytes, deviceID)
+			if err != nil {
+				return nil, logging.Errorf("LoadDelegateNetConf: failed to add deviceID in NetConf bytes: %v", err)
+			}
+		}
+		if net != nil && net.CNIArgs != nil {
+			bytes, err = addCNIArgsInConfig(bytes, net.CNIArgs)
+			if err != nil {
+				return nil, logging.Errorf("LoadDelegateNetConf(): failed to add cni-args in NetConfList bytes: %v", err)
+			}
 		}
 	}
 
@@ -83,8 +102,17 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 		if net.MacRequest != "" {
 			delegateConf.MacRequest = net.MacRequest
 		}
-		if net.IPRequest != "" {
+		if net.IPRequest != nil {
 			delegateConf.IPRequest = net.IPRequest
+		}
+		if net.BandwidthRequest != nil {
+			delegateConf.BandwidthRequest = net.BandwidthRequest
+		}
+		if net.PortMappingsRequest != nil {
+			delegateConf.PortMappingsRequest = net.PortMappingsRequest
+		}
+		if net.GatewayRequest != nil {
+			delegateConf.GatewayRequest = append(delegateConf.GatewayRequest, net.GatewayRequest...)
 		}
 	}
 
@@ -93,9 +121,37 @@ func LoadDelegateNetConf(bytes []byte, net *NetworkSelectionElement, deviceID st
 	return delegateConf, nil
 }
 
-func LoadCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc *RuntimeConfig) (*libcni.RuntimeConf, error) {
+// MergeCNIRuntimeConfig creates CNI runtimeconfig from delegate
+func MergeCNIRuntimeConfig(runtimeConfig *RuntimeConfig, delegate *DelegateNetConf) *RuntimeConfig {
+	logging.Debugf("MergeCNIRuntimeConfig: %v %v", runtimeConfig, delegate)
+	if runtimeConfig == nil {
+		runtimeConfig = &RuntimeConfig{}
+	}
 
+	// multus inject RuntimeConfig only in case of non MasterPlugin.
+	if delegate.MasterPlugin != true {
+		logging.Debugf("MergeCNIRuntimeConfig: add runtimeConfig for net-attach-def: %v", runtimeConfig)
+		if delegate.PortMappingsRequest != nil {
+			runtimeConfig.PortMaps = delegate.PortMappingsRequest
+		}
+		if delegate.BandwidthRequest != nil {
+			runtimeConfig.Bandwidth = delegate.BandwidthRequest
+		}
+		if delegate.IPRequest != nil {
+			runtimeConfig.IPs = delegate.IPRequest
+		}
+		if delegate.MacRequest != "" {
+			runtimeConfig.Mac = delegate.MacRequest
+		}
+	}
+
+	return runtimeConfig
+}
+
+// CreateCNIRuntimeConf create CNI RuntimeConf
+func CreateCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc *RuntimeConfig) *libcni.RuntimeConf {
 	logging.Debugf("LoadCNIRuntimeConf: %v, %v, %s, %v", args, k8sArgs, ifName, rc)
+
 	// In part, adapted from K8s pkg/kubelet/dockershim/network/cni/cni.go#buildCNIRuntimeConf
 	// Todo
 	// ingress, egress and bandwidth capability features as same as kubelet.
@@ -104,7 +160,7 @@ func LoadCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc 
 		NetNS:       args.Netns,
 		IfName:      ifName,
 		Args: [][2]string{
-			{"IgnoreUnknown", "1"},
+			{"IgnoreUnknown", string("true")},
 			{"K8S_POD_NAMESPACE", string(k8sArgs.K8S_POD_NAMESPACE)},
 			{"K8S_POD_NAME", string(k8sArgs.K8S_POD_NAME)},
 			{"K8S_POD_INFRA_CONTAINER_ID", string(k8sArgs.K8S_POD_INFRA_CONTAINER_ID)},
@@ -112,56 +168,43 @@ func LoadCNIRuntimeConf(args *skel.CmdArgs, k8sArgs *K8sArgs, ifName string, rc 
 	}
 
 	if rc != nil {
-		rt.CapabilityArgs = map[string]interface{}{
-			"portMappings": rc.PortMaps,
+		capabilityArgs := map[string]interface{}{}
+		if len(rc.PortMaps) != 0 {
+			capabilityArgs["portMappings"] = rc.PortMaps
 		}
+		if rc.Bandwidth != nil {
+			capabilityArgs["bandwidth"] = rc.Bandwidth
+		}
+		if len(rc.IPs) != 0 {
+			capabilityArgs["ips"] = rc.IPs
+		}
+		if len(rc.Mac) != 0 {
+			capabilityArgs["mac"] = rc.Mac
+		}
+		rt.CapabilityArgs = capabilityArgs
 	}
-	return rt, nil
+	return rt
 }
 
-func LoadNetworkStatus(r types.Result, netName string, defaultNet bool) (*NetworkStatus, error) {
-	logging.Debugf("LoadNetworkStatus: %v, %s, %t", r, netName, defaultNet)
+// GetGatewayFromResult retrieves gateway IP addresses from CNI result
+func GetGatewayFromResult(result *current.Result) []net.IP {
+	var gateways []net.IP
 
-	// Convert whatever the IPAM result was into the current Result type
-	result, err := current.NewResultFromResult(r)
-	if err != nil {
-		return nil, logging.Errorf("error convert the type.Result to current.Result: %v", err)
-	}
-
-	netstatus := &NetworkStatus{}
-	netstatus.Name = netName
-	netstatus.Default = defaultNet
-
-	for _, ifs := range result.Interfaces {
-		//Only pod interfaces can have sandbox information
-		if ifs.Sandbox != "" {
-			netstatus.Interface = ifs.Name
-			netstatus.Mac = ifs.Mac
+	for _, route := range result.Routes {
+		if mask, _ := route.Dst.Mask.Size(); mask == 0 {
+			gateways = append(gateways, route.GW)
 		}
 	}
-
-	for _, ipconfig := range result.IPs {
-		if ipconfig.Version == "4" && ipconfig.Address.IP.To4() != nil {
-			netstatus.IPs = append(netstatus.IPs, ipconfig.Address.IP.String())
-		}
-
-		if ipconfig.Version == "6" && ipconfig.Address.IP.To16() != nil {
-			netstatus.IPs = append(netstatus.IPs, ipconfig.Address.IP.String())
-		}
-	}
-
-	netstatus.DNS = result.DNS
-
-	return netstatus, nil
-
+	return gateways
 }
 
+// LoadNetConf converts inputs (i.e. stdin) to NetConf
 func LoadNetConf(bytes []byte) (*NetConf, error) {
 	netconf := &NetConf{}
 
 	logging.Debugf("LoadNetConf: %s", string(bytes))
 	if err := json.Unmarshal(bytes, netconf); err != nil {
-		return nil, logging.Errorf("failed to load netconf: %v", err)
+		return nil, logging.Errorf("LoadNetConf: failed to load netconf: %v", err)
 	}
 
 	// Logging
@@ -176,16 +219,16 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	if netconf.RawPrevResult != nil {
 		resultBytes, err := json.Marshal(netconf.RawPrevResult)
 		if err != nil {
-			return nil, logging.Errorf("could not serialize prevResult: %v", err)
+			return nil, logging.Errorf("LoadNetConf: could not serialize prevResult: %v", err)
 		}
 		res, err := version.NewResult(netconf.CNIVersion, resultBytes)
 		if err != nil {
-			return nil, logging.Errorf("could not parse prevResult: %v", err)
+			return nil, logging.Errorf("LoadNetConf: could not parse prevResult: %v", err)
 		}
 		netconf.RawPrevResult = nil
 		netconf.PrevResult, err = current.NewResultFromResult(res)
 		if err != nil {
-			return nil, logging.Errorf("could not convert result to current version: %v", err)
+			return nil, logging.Errorf("LoadNetConf: could not convert result to current version: %v", err)
 		}
 	}
 
@@ -196,7 +239,7 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 	// the existing delegate list and all delegates executed in-order.
 
 	if len(netconf.RawDelegates) == 0 && netconf.ClusterNetwork == "" {
-		return nil, logging.Errorf("at least one delegate/defaultNetwork must be specified")
+		return nil, logging.Errorf("LoadNetConf: at least one delegate/defaultNetwork must be specified")
 	}
 
 	if netconf.CNIDir == "" {
@@ -215,20 +258,28 @@ func LoadNetConf(bytes []byte) (*NetConf, error) {
 		netconf.ReadinessIndicatorFile = defaultReadinessIndicatorFile
 	}
 
+	if len(netconf.SystemNamespaces) == 0 {
+		netconf.SystemNamespaces = []string{"kube-system"}
+	}
+
+	if netconf.MultusNamespace == "" {
+		netconf.MultusNamespace = defaultMultusNamespace
+	}
+
 	// get RawDelegates and put delegates field
 	if netconf.ClusterNetwork == "" {
 		// for Delegates
 		if len(netconf.RawDelegates) == 0 {
-			return nil, logging.Errorf("at least one delegate must be specified")
+			return nil, logging.Errorf("LoadNetConf: at least one delegate must be specified")
 		}
 		for idx, rawConf := range netconf.RawDelegates {
 			bytes, err := json.Marshal(rawConf)
 			if err != nil {
-				return nil, logging.Errorf("error marshalling delegate %d config: %v", idx, err)
+				return nil, logging.Errorf("LoadNetConf: error marshalling delegate %d config: %v", idx, err)
 			}
 			delegateConf, err := LoadDelegateNetConf(bytes, nil, "")
 			if err != nil {
-				return nil, logging.Errorf("failed to load delegate %d config: %v", idx, err)
+				return nil, logging.Errorf("LoadNetConf: failed to load delegate %d config: %v", idx, err)
 			}
 			netconf.Delegates = append(netconf.Delegates, delegateConf)
 		}
@@ -259,9 +310,142 @@ func delegateAddDeviceID(inBytes []byte, deviceID string) ([]byte, error) {
 	}
 	// Inject deviceID
 	rawConfig["deviceID"] = deviceID
+	rawConfig["pciBusID"] = deviceID
 	configBytes, err := json.Marshal(rawConfig)
 	if err != nil {
 		return nil, logging.Errorf("delegateAddDeviceID: failed to re-marshal Spec.Config: %v", err)
 	}
+	logging.Debugf("delegateAddDeviceID updated configBytes %s", string(configBytes))
 	return configBytes, nil
+}
+
+// addDeviceIDInConfList injects deviceID information in delegate bytes
+func addDeviceIDInConfList(inBytes []byte, deviceID string) ([]byte, error) {
+	var rawConfig map[string]interface{}
+	var err error
+
+	err = json.Unmarshal(inBytes, &rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addDeviceIDInConfList: failed to unmarshal inBytes: %v", err)
+	}
+
+	pList, ok := rawConfig["plugins"]
+	if !ok {
+		return nil, logging.Errorf("addDeviceIDInConfList: unable to get plugin list")
+	}
+
+	pMap, ok := pList.([]interface{})
+	if !ok {
+		return nil, logging.Errorf("addDeviceIDInConfList: unable to typecast plugin list")
+	}
+
+	for idx, plugin := range pMap {
+		currentPlugin, ok := plugin.(map[string]interface{})
+		if !ok {
+			return nil, logging.Errorf("addDeviceIDInConfList: unable to typecast plugin #%d", idx)
+		}
+		// Inject deviceID
+		currentPlugin["deviceID"] = deviceID
+		currentPlugin["pciBusID"] = deviceID
+	}
+
+	configBytes, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addDeviceIDInConfList: failed to re-marshal: %v", err)
+	}
+	logging.Debugf("addDeviceIDInConfList: updated configBytes %s", string(configBytes))
+	return configBytes, nil
+}
+
+// injectCNIArgs injects given args to cniConfig
+func injectCNIArgs(cniConfig *map[string]interface{}, args *map[string]interface{}) error {
+	if argsval, ok := (*cniConfig)["args"]; ok {
+		argsvalmap := argsval.(map[string]interface{})
+		if cnival, ok := argsvalmap["cni"]; ok {
+			cnivalmap := cnival.(map[string]interface{})
+			// merge it if conf has args
+			for key, val := range *args {
+				cnivalmap[key] = val
+			}
+		} else {
+			argsvalmap["cni"] = *args
+		}
+	} else {
+		argsval := map[string]interface{}{}
+		argsval["cni"] = *args
+		(*cniConfig)["args"] = argsval
+	}
+	return nil
+}
+
+// addCNIArgsInConfig injects given cniArgs to CNI config in inBytes
+func addCNIArgsInConfig(inBytes []byte, cniArgs *map[string]interface{}) ([]byte, error) {
+	var rawConfig map[string]interface{}
+	var err error
+
+	err = json.Unmarshal(inBytes, &rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addCNIArgsInConfig(): failed to unmarshal inBytes: %v", err)
+	}
+
+	injectCNIArgs(&rawConfig, cniArgs)
+
+	configBytes, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addCNIArgsInConfig(): failed to re-marshal: %v", err)
+	}
+	return configBytes, nil
+}
+
+// addCNIArgsInConfList injects given cniArgs to CNI conflist in inBytes
+func addCNIArgsInConfList(inBytes []byte, cniArgs *map[string]interface{}) ([]byte, error) {
+	var rawConfig map[string]interface{}
+	var err error
+
+	err = json.Unmarshal(inBytes, &rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addCNIArgsInConfList(): failed to unmarshal inBytes: %v", err)
+	}
+
+	pList, ok := rawConfig["plugins"]
+	if !ok {
+		return nil, logging.Errorf("addCNIArgsInConfList(): unable to get plugin list")
+	}
+
+	pMap, ok := pList.([]interface{})
+	if !ok {
+		return nil, logging.Errorf("addCNIArgsInConfList(): unable to typecast plugin list")
+	}
+
+	for idx := range pMap {
+		valMap := pMap[idx].(map[string]interface{})
+		injectCNIArgs(&valMap, cniArgs)
+	}
+
+	configBytes, err := json.Marshal(rawConfig)
+	if err != nil {
+		return nil, logging.Errorf("addCNIArgsInConfList(): failed to re-marshal: %v", err)
+	}
+	return configBytes, nil
+}
+
+// CheckGatewayConfig check gatewayRequest and mark IsFilterGateway flag if
+// gw filtering is required
+func CheckGatewayConfig(delegates []*DelegateNetConf) {
+	// Check the Gateway
+	for i, delegate := range delegates {
+		if delegate.GatewayRequest == nil {
+			delegates[i].IsFilterGateway = true
+		}
+	}
+}
+
+// CheckSystemNamespaces checks whether given namespace is in systemNamespaces or not.
+func CheckSystemNamespaces(namespace string, systemNamespaces []string) bool {
+	for _, nsname := range systemNamespaces {
+		if namespace == nsname {
+			return true
+		}
+	}
+	return false
 }

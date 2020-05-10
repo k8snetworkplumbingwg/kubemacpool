@@ -17,19 +17,18 @@ limitations under the License.
 package pool_manager
 
 import (
-	multus "github.com/intel/multus-cni/types"
-	"github.com/k8snetworkplumbingwg/kubemacpool/build/_output/bin/go/src/encoding/json"
-	"github.com/k8snetworkplumbingwg/kubemacpool/build/_output/bin/go/src/fmt"
+	"encoding/json"
+	"fmt"
 	"net"
-
-	"k8s.io/apimachinery/pkg/runtime"
 
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
+	multus "github.com/intel/multus-cni/types"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	kubevirt "kubevirt.io/client-go/api/v1"
 
@@ -418,23 +417,22 @@ var _ = Describe("Pool", func() {
 	})
 
 	Describe("Multus Network Annotations API Tests", func() {
-		pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
-		poolManager := &PoolManager{}
+		Context("when pool-manager is configured with available addresses", func() {
+			poolManager := &PoolManager{}
 
-		Context("When pool-manager is configured with available addresses", func(){
-			Context("Pod is created with networks annotation with mac-address and single ip-address request as string array", func(){
-				BeforeEach(func() {
-					poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
-					Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
-				})
+			BeforeEach(func() {
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
+			})
 
-				It("should successfully allocate requested mac-address", func() {
-					networkRequestAnnotation := `[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1"],"mac":"02:00:00:00:00:00"}]`
-					pod.Annotations = map[string]string{networksAnnotation: fmt.Sprintf("%s",networkRequestAnnotation)}
+			table.DescribeTable("should allocate mac-address correspond to the one specified in the networks annotation",
+				func(networkRequestAnnotation string) {
+					pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
+					pod.Annotations = map[string]string{networksAnnotation: fmt.Sprintf("%s", networkRequestAnnotation)}
 
 					By("Request specific mac-address by adding the address to the networks pod annotation")
 					err := poolManager.AllocatePodMac(&pod)
-					Expect(err).ToNot(HaveOccurred(),"should allocate mac address and ip address correspond to networks annotation")
+					Expect(err).ToNot(HaveOccurred(), "should allocate mac address and ip address correspond to networks annotation")
 
 					By("Convert obtained networks annotation JSON to multus.NetworkSelectionElement array")
 					obtainedNetworksAnnotationJson := pod.Annotations[networksAnnotation]
@@ -447,64 +445,28 @@ var _ = Describe("Pool", func() {
 					err = json.Unmarshal([]byte(networkRequestAnnotation), &expectedNetworksAnnotation)
 					Expect(err).ToNot(HaveOccurred(), "should convert expected annotation as json to multus.NetworkSelectionElement")
 
-					By("Convert expected networks annotation JSON to multus.NetworkSelectionElement")
-					for _, obtainedNetwork := range obtainedNetworksAnnotation {
-						for _, expectedNetwork := range expectedNetworksAnnotation {
-							if obtainedNetwork.MacRequest == expectedNetwork.MacRequest {
-								Expect(obtainedNetwork).To(Equal(expectedNetwork), "test pod annotation should be equal to expected annotation")
-							}
-						}
+					By("Compare between each obtained and expected network request")
+					for _, expectedNetwork := range expectedNetworksAnnotation {
+						Expect(obtainedNetworksAnnotation).To(ContainElement(expectedNetwork))
 					}
-				})
-			})
-			Context("Pod is created with networks annotation with mac-address and single ip-address request as string array", func(){
-				BeforeEach(func() {
-					poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
-					Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
-				})
+				},
+				table.Entry("with single ip-address request as string array",
+					`[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1"],"mac":"02:00:00:00:00:00"}]`),
+				table.Entry("with multiple ip-address request as string array",
+					`[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1","10.10.0.2","10.0.0.3"],"mac":"02:00:00:00:00:00"}]`),
+				table.Entry("with multiple networks requsets", `[
+						{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1","10.10.0.2","10.0.0.3"],"mac":"02:00:00:00:00:00"},
+						{"name":"cnv-bridge","namespace":"openshift-cnv","ips":["192.168.66.100","192.168.66.101"],"mac":"02:F0:F0:F0:F0:F0"}
+				]`),
+			)
+			It("should fail to allocate requested mac-address, with ip-address request as string instead of string array", func() {
+				pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
+				pod.Annotations = map[string]string{
+					networksAnnotation: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
 
-				It("should successfully should allocate requested mac-address", func() {
-					networkRequestAnnotation := []byte(`[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1","10.10.0.2","10.0.0.3"],"mac":"02:00:00:00:00:00","cni-args": null}]`)
-					pod.Annotations = map[string]string{networksAnnotation: fmt.Sprintf("%s",networkRequestAnnotation)}
-
-					By("Request specific mac-address by adding the address to the networks pod annotation")
-					err := poolManager.AllocatePodMac(&pod)
-					Expect(err).ToNot(HaveOccurred(),"should allocate mac address and multiple ip addresses correspond to networks annotation")
-
-					By("Convert obtained networks annotation JSON to multus.NetworkSelectionElement array")
-					obtainedNetworksAnnotationJson := pod.Annotations[networksAnnotation]
-					obtainedNetworksAnnotation := []multus.NetworkSelectionElement{}
-					err = json.Unmarshal([]byte(obtainedNetworksAnnotationJson), &obtainedNetworksAnnotation)
-					Expect(err).ToNot(HaveOccurred(), "should convert obtained annotation as json to multus.NetworkSelectionElement")
-
-					By("Convert expected networks annotation JSON to multus.NetworkSelectionElement array")
-					expectedNetworksAnnotation := []multus.NetworkSelectionElement{}
-					err = json.Unmarshal([]byte(networkRequestAnnotation), &expectedNetworksAnnotation)
-					Expect(err).ToNot(HaveOccurred(), "should convert expected annotation as json to multus.NetworkSelectionElement")
-
-					By("Compare between each obtained and expected network request according to the mac-address")
-					for _, obtainedNetwork := range obtainedNetworksAnnotation {
-						for _, expectedNetwork := range expectedNetworksAnnotation {
-							if obtainedNetwork.MacRequest == expectedNetwork.MacRequest {
-								Expect(obtainedNetwork).To(Equal(expectedNetwork), "test pod annotation should be equal to expected annotation")
-							}
-						}
-					}
-				})
-			})
-			Context("Pod is created with networks annotation with mac-address and single ip-address request as string", func(){
-				BeforeEach(func() {
-					poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
-					Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
-				})
-
-				It("should fail to allocate requested mac-address", func() {
-					pod.Annotations = map[string]string{networksAnnotation: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
-
-					By("Request specific mac-address by adding the address to the networks pod annotation")
-					err := poolManager.AllocatePodMac(&pod)
-					Expect(err).To(HaveOccurred(), "should fail to allocate mac address due to bad annotation format")
-				})
+				By("Request specific mac-address by adding the address to the networks pod annotation")
+				err := poolManager.AllocatePodMac(&pod)
+				Expect(err).To(HaveOccurred(), "should fail to allocate mac address due to bad annotation format")
 			})
 		})
 	})

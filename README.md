@@ -42,16 +42,68 @@ On releases v0.8.4 and above, kubemacpool is set to apply on pods/vms that resid
 - `mutatepods.kubemacpool.io=allocateForAll` - to opt in pods mac allocation in your namespace
 - `mutatevirtualmachines.kubemacpool.io=allocateForAll` - to opt in vms mac allocation in your namespace
 
+#### How to enable/disable kubemacpool for a namespace 
+
+Kubemacpool is disabled by default on a new namespace.
+To enable kubemacpool on a specific namespace:
+```bash
+kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
+namespace/example-namespace labeled
+```
+
+To disable kubemacpool in a namespace:
+```bash
+kubectl label namespace example-namespace mutatepods.kubemacpool.io- mutatevirtualmachines.kubemacpool.io-
+namespace/example-namespace labeled
+```
+
+**note:** If a VMI is created directly and not through a VM, then it is handled in kubemacpool by the pod handler.
+
+#### How to change the opt-in label value on kubemacpool
+
+The kubemacpool opt-in label and value is set in the mutatingwebhookconfiguration instance called `kubemacpool-mutator` by a `namespaceSelector`.
+In order to change the opt-in label value - you need to edit the mutatingwebhookconfiguration instance and change the label value accordingly. This can be done separately for vms and pods.
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+ ...
+  name: kubemacpool-mutator
+ ...
+webhooks:
+- admissionReviewVersions:
+ ...
+  name: mutatepods.kubemacpool.io
+  namespaceSelector:
+ ...
+    matchLabels:
+      mutatepods.kubemacpool.io: allocateForAll
+- admissionReviewVersions:
+ ...
+  name: mutatevirtualmachines.kubemacpool.io
+  namespaceSelector:
+ ...
+    matchLabels:
+      mutatevirtualmachines.kubemacpool.io: allocateForAll
+ ...
+``` 
+
+**note:** if the kubemacpool's mutatingwebhookconfiguration `kubemacpool-mutator` namespace-selector value per vm/pod is set to `allocateForAll`, then you can also opt-out your namespace by setting the label value to `disable` in your namespace:
+```bash
+kubectl label namespace example-namespace --overwrite mutatepods.kubemacpool.io=disable mutatevirtualmachines.kubemacpool.io=disable
+namespace/example-namespace labeled
+```
+
 #### Opt-in Example
 
 ```bash
 # Add the opt-in labels to namespace using kubectl
-kubectl label namespace user-namespace-opting-in-pods-vms mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
-namespace/user-namespace-opting-in-pods-vms labeled
+kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
+namespace/example-namespace labeled
 
-kubectl get namespaces user-namespace-opting-in-pods-vms --show-labels
+kubectl get namespaces example-namespace --show-labels
 NAME                              STATUS   AGE     LABELS
-user-namespace-opting-in-pods-vms Active   22s     mutatepods.kubemacpool.io=allocateForAll,mutatevirtualmachines.kubemacpool.io=allocateForAll
+example-namespace Active   22s     mutatepods.kubemacpool.io=allocateForAll,mutatevirtualmachines.kubemacpool.io=allocateForAll
 ```
 
 ### Check deployment

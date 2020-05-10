@@ -266,8 +266,8 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		//2162 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/104
-		PContext("When trying to create a VM after all MAC addresses in range have been occupied", func() {
+		//2162
+		Context("When trying to create a VM after all MAC addresses in range have been occupied", func() {
 			It("should return an error because no MAC address is available", func() {
 				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
 				Expect(err).ToNot(HaveOccurred())
@@ -289,8 +289,8 @@ var _ = Describe("Virtual Machines", func() {
 				Expect(err).To(HaveOccurred())
 			})
 		})
-		//2165 test postponed due to issue: https://github.com/k8snetworkplumbingwg/kubemacpool/issues/105
-		PContext("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
+		//2165
+		Context("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
 			It("should re-use the released MAC address for the creation of the new VM and not return an error", func() {
 				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
 				Expect(err).ToNot(HaveOccurred())

@@ -21,8 +21,8 @@ require (
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/code-generator v0.18.0-alpha.2
 	k8s.io/utils v0.0.0-20200109141947-94aeca20bf09 // indirect
-	kubevirt.io/client-go v0.25.0
-	kubevirt.io/kubevirt v0.25.0
+	kubevirt.io/client-go v0.29.0
+	kubevirt.io/kubevirt v0.29.0
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/controller-tools v0.3.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0

@@ -419,14 +419,8 @@ var _ = Describe("Virtual Machines", func() {
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
-				Eventually(func() error {
-					err = testClient.VirtClient.Create(context.TODO(), baseVM)
-					if err != nil {
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
-					}
-					return err
-
-				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				err = testClient.VirtClient.Create(context.TODO(), baseVM)
+				Expect(err).ToNot(HaveOccurred(), "should successfully create VM after yaml is fixed")
 			})
 			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -445,14 +439,8 @@ var _ = Describe("Virtual Machines", func() {
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
-				Eventually(func() error {
-					err = testClient.VirtClient.Create(context.TODO(), baseVM)
-					if err != nil {
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
-					}
-					return err
-
-				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				err = testClient.VirtClient.Create(context.TODO(), baseVM)
+				Expect(err).ToNot(HaveOccurred(), "should successfully create VM after yaml is fixed")
 			})
 		})
 

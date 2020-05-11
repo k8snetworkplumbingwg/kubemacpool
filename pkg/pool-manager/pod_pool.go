@@ -61,7 +61,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	}
 
 	// validate if the pod is related to kubevirt
-	if p.isRelatedToKubevirt(pod) {
+	if p.isRelatedToKubevirt(pod, networks) {
 		// nothing to do here. the mac is already by allocated by the virtual machine webhook
 		log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
 		return nil
@@ -220,7 +220,7 @@ func (p *PoolManager) initPodMap() error {
 		}
 
 		// validate if the pod is related to kubevirt
-		if p.isRelatedToKubevirt(&pod) {
+		if p.isRelatedToKubevirt(&pod, networks) {
 			// nothing to do here. the mac is already by allocated by the virtual machine webhook
 			log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
 			continue

@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	multus "github.com/intel/multus-cni/types"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -323,14 +324,23 @@ func (p *PoolManager) IsKubevirtEnabled() bool {
 	return p.isKubevirt
 }
 
-func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
+func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod, networks []*multus.NetworkSelectionElement) bool {
 	if pod.ObjectMeta.OwnerReferences == nil {
+		log.V(1).Info("this pod has no OwnerReferences, so will be considered as a regular pod")
+		return false
+	}
+
+	// since the pod request may not have owned the vm namespace in this early state of vm making,
+	// we need to receive the namespace from the network annotation
+	namespace, ok := selectNamespaceFromNetworks(networks)
+	if !ok {
+		log.V(1).Info("this pod has more than 1 namespace in its secondary networks, so will be considered as a regular pod")
 		return false
 	}
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
-			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
+			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", namespace, ref.Name)
 			log.V(1).Info("test", "requestURI", requestUrl)
 			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do()
 
@@ -480,6 +490,18 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 // Checks if the namespace of a vm instance is opted in for kubemacpool
 func (p *PoolManager) IsVmInstanceOptedIn(namespaceName string) (bool, error) {
 	return p.isInstanceOptedIn(namespaceName, "kubemacpool-mutator", "mutatevirtualmachines.kubemacpool.io")
+}
+
+//making sure that all networks have the same namespace, otherwise returning error.
+func selectNamespaceFromNetworks(networks []*multus.NetworkSelectionElement) (string, bool) {
+	firstNamespace := networks[0].Namespace
+	for _, network := range networks {
+		if network.Namespace != firstNamespace {
+			return "", false
+		}
+	}
+
+	return firstNamespace, true
 }
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {

@@ -414,8 +414,7 @@ var _ = Describe("Virtual Machines", func() {
 				baseVM := vm1.DeepCopy()
 
 				err = testClient.VirtClient.Create(context.TODO(), vm1)
-				Expect(err).To(HaveOccurred())
-				Expect(strings.Contains(err.Error(), "every network must be mapped to an interface")).To(Equal(true))
+				Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
@@ -440,8 +439,7 @@ var _ = Describe("Virtual Machines", func() {
 				baseVM.Name = "new-vm"
 
 				err = testClient.VirtClient.Create(context.TODO(), vm1)
-				Expect(err).To(HaveOccurred())
-				Expect(strings.Contains(err.Error(), "every network must be mapped to an interface")).To(Equal(true))
+				Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 

@@ -61,7 +61,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.Firmware":                                  schema_kubevirtio_client_go_api_v1_Firmware(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.FloppyTarget":                              schema_kubevirtio_client_go_api_v1_FloppyTarget(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GPU":                                       schema_kubevirtio_client_go_api_v1_GPU(ref),
-		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GenieNetwork":                              schema_kubevirtio_client_go_api_v1_GenieNetwork(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.HPETTimer":                                 schema_kubevirtio_client_go_api_v1_HPETTimer(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.HostDisk":                                  schema_kubevirtio_client_go_api_v1_HostDisk(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.Hugepages":                                 schema_kubevirtio_client_go_api_v1_Hugepages(ref),
@@ -100,6 +99,9 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineCondition":                   schema_kubevirtio_client_go_api_v1_VirtualMachineCondition(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstance":                    schema_kubevirtio_client_go_api_v1_VirtualMachineInstance(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceCondition":           schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceCondition(ref),
+		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceFileSystemList":      schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceFileSystemList(ref),
+		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestAgentInfo":      schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceGuestAgentInfo(ref),
+		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSUserList":     schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceGuestOSUserList(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceList":                schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceList(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceMigration":           schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigration(ref),
 		"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceMigrationCondition":  schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationCondition(ref),
@@ -133,10 +135,9 @@ func schema_kubevirtio_client_go_api_v1_BIOS(ref common.ReferenceCallback) commo
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "If set (default), BIOS will be used.",
-				Properties:  map[string]spec.Schema{},
+				Type:        []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -145,6 +146,7 @@ func schema_kubevirtio_client_go_api_v1_Bootloader(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the firmware blob used to assist in the domain creation process. Used for setting the QEMU BIOS file path for the libvirt domain.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bios": {
 						SchemaProps: spec.SchemaProps{
@@ -170,6 +172,7 @@ func schema_kubevirtio_client_go_api_v1_CDRomTarget(ref common.ReferenceCallback
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bus": {
 						SchemaProps: spec.SchemaProps{
@@ -195,7 +198,6 @@ func schema_kubevirtio_client_go_api_v1_CDRomTarget(ref common.ReferenceCallback
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -204,6 +206,7 @@ func schema_kubevirtio_client_go_api_v1_CPU(ref common.ReferenceCallback) common
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "CPU allows specifying the CPU topology.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"cores": {
 						SchemaProps: spec.SchemaProps{
@@ -273,6 +276,7 @@ func schema_kubevirtio_client_go_api_v1_CPUFeature(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "CPUFeature allows specifying a CPU feature.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -292,7 +296,6 @@ func schema_kubevirtio_client_go_api_v1_CPUFeature(ref common.ReferenceCallback)
 				Required: []string{"name"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -301,6 +304,7 @@ func schema_kubevirtio_client_go_api_v1_Chassis(ref common.ReferenceCallback) co
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Chassis specifies the chassis info passed to the domain.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"manufacturer": {
 						SchemaProps: spec.SchemaProps{
@@ -335,7 +339,6 @@ func schema_kubevirtio_client_go_api_v1_Chassis(ref common.ReferenceCallback) co
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -344,6 +347,7 @@ func schema_kubevirtio_client_go_api_v1_Clock(ref common.ReferenceCallback) comm
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the clock and timers of a vmi.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"utc": {
 						SchemaProps: spec.SchemaProps{
@@ -371,6 +375,7 @@ func schema_kubevirtio_client_go_api_v1_ClockOffset(ref common.ReferenceCallback
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Exactly one of its members must be set.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"utc": {
 						SchemaProps: spec.SchemaProps{
@@ -398,6 +403,7 @@ func schema_kubevirtio_client_go_api_v1_ClockOffsetUTC(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "UTC sets the guest clock to UTC on each boot.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"offsetSeconds": {
 						SchemaProps: spec.SchemaProps{
@@ -409,7 +415,6 @@ func schema_kubevirtio_client_go_api_v1_ClockOffsetUTC(ref common.ReferenceCallb
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -418,6 +423,7 @@ func schema_kubevirtio_client_go_api_v1_CloudInitConfigDriveSource(ref common.Re
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents a cloud-init config drive user data source. More info: https://cloudinit.readthedocs.io/en/latest/topics/datasources/configdrive.html",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"secretRef": {
 						SchemaProps: spec.SchemaProps{
@@ -472,6 +478,7 @@ func schema_kubevirtio_client_go_api_v1_CloudInitNoCloudSource(ref common.Refere
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents a cloud-init nocloud user data source. More info: http://cloudinit.readthedocs.io/en/latest/topics/datasources/nocloud.html",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"secretRef": {
 						SchemaProps: spec.SchemaProps{
@@ -526,6 +533,7 @@ func schema_kubevirtio_client_go_api_v1_ConfigMapVolumeSource(ref common.Referen
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "ConfigMapVolumeSource adapts a ConfigMap into a volume. More info: https://kubernetes.io/docs/concepts/storage/volumes/#configmap",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -541,10 +549,16 @@ func schema_kubevirtio_client_go_api_v1_ConfigMapVolumeSource(ref common.Referen
 							Format:      "",
 						},
 					},
+					"volumeLabel": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The volume label of the resulting disk inside the VMI. Different bootstrapping mechanisms require different values. Typical values are \"cidata\" (cloud-init), \"config-2\" (cloud-init) or \"OEMDRV\" (kickstart).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -553,6 +567,7 @@ func schema_kubevirtio_client_go_api_v1_ContainerDiskSource(ref common.Reference
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents a docker image with an embedded disk.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"image": {
 						SchemaProps: spec.SchemaProps{
@@ -586,7 +601,6 @@ func schema_kubevirtio_client_go_api_v1_ContainerDiskSource(ref common.Reference
 				Required: []string{"image"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -595,6 +609,7 @@ func schema_kubevirtio_client_go_api_v1_DHCPOptions(ref common.ReferenceCallback
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Extra DHCP options to use in the interface.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bootFileName": {
 						SchemaProps: spec.SchemaProps{
@@ -649,6 +664,7 @@ func schema_kubevirtio_client_go_api_v1_DataVolumeSource(ref common.ReferenceCal
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -661,7 +677,6 @@ func schema_kubevirtio_client_go_api_v1_DataVolumeSource(ref common.ReferenceCal
 				Required: []string{"name"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -669,6 +684,7 @@ func schema_kubevirtio_client_go_api_v1_Devices(ref common.ReferenceCallback) co
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"disks": {
 						SchemaProps: spec.SchemaProps{
@@ -729,6 +745,13 @@ func schema_kubevirtio_client_go_api_v1_Devices(ref common.ReferenceCallback) co
 							Format:      "",
 						},
 					},
+					"autoattachSerialConsole": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Whether to attach the default serial console or not. Serial console access will not be available if set to false. Defaults to true.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"rng": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Whether to have random number generator from host",
@@ -774,6 +797,7 @@ func schema_kubevirtio_client_go_api_v1_Disk(ref common.ReferenceCallback) commo
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -834,6 +858,13 @@ func schema_kubevirtio_client_go_api_v1_Disk(ref common.ReferenceCallback) commo
 							Format:      "",
 						},
 					},
+					"tag": {
+						SchemaProps: spec.SchemaProps{
+							Description: "If specified, disk address and its tag will be provided to the guest via config drive metadata",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"name"},
 			},
@@ -848,6 +879,7 @@ func schema_kubevirtio_client_go_api_v1_DiskDevice(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the target of a volume to mount. Only one of its members may be specified.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"disk": {
 						SchemaProps: spec.SchemaProps{
@@ -885,6 +917,7 @@ func schema_kubevirtio_client_go_api_v1_DiskTarget(ref common.ReferenceCallback)
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bus": {
 						SchemaProps: spec.SchemaProps{
@@ -910,7 +943,6 @@ func schema_kubevirtio_client_go_api_v1_DiskTarget(ref common.ReferenceCallback)
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -918,6 +950,7 @@ func schema_kubevirtio_client_go_api_v1_DomainSpec(ref common.ReferenceCallback)
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"resources": {
 						SchemaProps: spec.SchemaProps{
@@ -994,10 +1027,9 @@ func schema_kubevirtio_client_go_api_v1_EFI(ref common.ReferenceCallback) common
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "If set, EFI will be used instead of BIOS.",
-				Properties:  map[string]spec.Schema{},
+				Type:        []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1006,6 +1038,7 @@ func schema_kubevirtio_client_go_api_v1_EmptyDiskSource(ref common.ReferenceCall
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "EmptyDisk represents a temporary disk which shares the vmis lifecycle.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"capacity": {
 						SchemaProps: spec.SchemaProps{
@@ -1026,6 +1059,7 @@ func schema_kubevirtio_client_go_api_v1_EphemeralVolumeSource(ref common.Referen
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"persistentVolumeClaim": {
 						SchemaProps: spec.SchemaProps{
@@ -1045,6 +1079,7 @@ func schema_kubevirtio_client_go_api_v1_FeatureAPIC(ref common.ReferenceCallback
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"enabled": {
 						SchemaProps: spec.SchemaProps{
@@ -1063,7 +1098,6 @@ func schema_kubevirtio_client_go_api_v1_FeatureAPIC(ref common.ReferenceCallback
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1072,6 +1106,7 @@ func schema_kubevirtio_client_go_api_v1_FeatureHyperv(ref common.ReferenceCallba
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Hyperv specific features.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"relaxed": {
 						SchemaProps: spec.SchemaProps{
@@ -1169,6 +1204,7 @@ func schema_kubevirtio_client_go_api_v1_FeatureSpinlocks(ref common.ReferenceCal
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"enabled": {
 						SchemaProps: spec.SchemaProps{
@@ -1187,7 +1223,6 @@ func schema_kubevirtio_client_go_api_v1_FeatureSpinlocks(ref common.ReferenceCal
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1196,6 +1231,7 @@ func schema_kubevirtio_client_go_api_v1_FeatureState(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents if a feature is enabled or disabled.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"enabled": {
 						SchemaProps: spec.SchemaProps{
@@ -1207,7 +1243,6 @@ func schema_kubevirtio_client_go_api_v1_FeatureState(ref common.ReferenceCallbac
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1215,6 +1250,7 @@ func schema_kubevirtio_client_go_api_v1_FeatureVendorID(ref common.ReferenceCall
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"enabled": {
 						SchemaProps: spec.SchemaProps{
@@ -1233,7 +1269,6 @@ func schema_kubevirtio_client_go_api_v1_FeatureVendorID(ref common.ReferenceCall
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1241,6 +1276,7 @@ func schema_kubevirtio_client_go_api_v1_Features(ref common.ReferenceCallback) c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"acpi": {
 						SchemaProps: spec.SchemaProps{
@@ -1278,6 +1314,7 @@ func schema_kubevirtio_client_go_api_v1_Firmware(ref common.ReferenceCallback) c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"uuid": {
 						SchemaProps: spec.SchemaProps{
@@ -1311,6 +1348,7 @@ func schema_kubevirtio_client_go_api_v1_FloppyTarget(ref common.ReferenceCallbac
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"readonly": {
 						SchemaProps: spec.SchemaProps{
@@ -1329,7 +1367,6 @@ func schema_kubevirtio_client_go_api_v1_FloppyTarget(ref common.ReferenceCallbac
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1337,6 +1374,7 @@ func schema_kubevirtio_client_go_api_v1_GPU(ref common.ReferenceCallback) common
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -1355,28 +1393,6 @@ func schema_kubevirtio_client_go_api_v1_GPU(ref common.ReferenceCallback) common
 				Required: []string{"name", "deviceName"},
 			},
 		},
-		Dependencies: []string{},
-	}
-}
-
-func schema_kubevirtio_client_go_api_v1_GenieNetwork(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "Represents the genie cni network.",
-				Properties: map[string]spec.Schema{
-					"networkName": {
-						SchemaProps: spec.SchemaProps{
-							Description: "References the CNI plugin name.",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-				},
-				Required: []string{"networkName"},
-			},
-		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1384,6 +1400,7 @@ func schema_kubevirtio_client_go_api_v1_HPETTimer(ref common.ReferenceCallback) 
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"tickPolicy": {
 						SchemaProps: spec.SchemaProps{
@@ -1402,7 +1419,6 @@ func schema_kubevirtio_client_go_api_v1_HPETTimer(ref common.ReferenceCallback) 
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1411,6 +1427,7 @@ func schema_kubevirtio_client_go_api_v1_HostDisk(ref common.ReferenceCallback) c
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents a disk created on the cluster level",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"path": {
 						SchemaProps: spec.SchemaProps{
@@ -1453,6 +1470,7 @@ func schema_kubevirtio_client_go_api_v1_Hugepages(ref common.ReferenceCallback) 
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Hugepages allow to use hugepages for the VirtualMachineInstance instead of regular memory.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"pageSize": {
 						SchemaProps: spec.SchemaProps{
@@ -1464,7 +1482,6 @@ func schema_kubevirtio_client_go_api_v1_Hugepages(ref common.ReferenceCallback) 
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1472,6 +1489,7 @@ func schema_kubevirtio_client_go_api_v1_HypervTimer(ref common.ReferenceCallback
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"present": {
 						SchemaProps: spec.SchemaProps{
@@ -1483,7 +1501,6 @@ func schema_kubevirtio_client_go_api_v1_HypervTimer(ref common.ReferenceCallback
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1492,6 +1509,7 @@ func schema_kubevirtio_client_go_api_v1_I6300ESBWatchdog(ref common.ReferenceCal
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "i6300esb watchdog device.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"action": {
 						SchemaProps: spec.SchemaProps{
@@ -1503,7 +1521,6 @@ func schema_kubevirtio_client_go_api_v1_I6300ESBWatchdog(ref common.ReferenceCal
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1511,6 +1528,7 @@ func schema_kubevirtio_client_go_api_v1_Input(ref common.ReferenceCallback) comm
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bus": {
 						SchemaProps: spec.SchemaProps{
@@ -1537,7 +1555,6 @@ func schema_kubevirtio_client_go_api_v1_Input(ref common.ReferenceCallback) comm
 				Required: []string{"type", "name"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1545,6 +1562,7 @@ func schema_kubevirtio_client_go_api_v1_Interface(ref common.ReferenceCallback) 
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -1620,6 +1638,13 @@ func schema_kubevirtio_client_go_api_v1_Interface(ref common.ReferenceCallback) 
 							Ref:         ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.DHCPOptions"),
 						},
 					},
+					"tag": {
+						SchemaProps: spec.SchemaProps{
+							Description: "If specified, the virtual network interface address and its tag will be provided to the guest via config drive",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"name"},
 			},
@@ -1634,6 +1659,7 @@ func schema_kubevirtio_client_go_api_v1_InterfaceBindingMethod(ref common.Refere
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the method which will be used to connect the interface to the guest. Only one of its members may be specified.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bridge": {
 						SchemaProps: spec.SchemaProps{
@@ -1667,10 +1693,9 @@ func schema_kubevirtio_client_go_api_v1_InterfaceBridge(ref common.ReferenceCall
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Properties: map[string]spec.Schema{},
+				Type: []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1678,10 +1703,9 @@ func schema_kubevirtio_client_go_api_v1_InterfaceMasquerade(ref common.Reference
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Properties: map[string]spec.Schema{},
+				Type: []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1689,10 +1713,9 @@ func schema_kubevirtio_client_go_api_v1_InterfaceSRIOV(ref common.ReferenceCallb
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Properties: map[string]spec.Schema{},
+				Type: []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1700,10 +1723,9 @@ func schema_kubevirtio_client_go_api_v1_InterfaceSlirp(ref common.ReferenceCallb
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Properties: map[string]spec.Schema{},
+				Type: []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1711,6 +1733,7 @@ func schema_kubevirtio_client_go_api_v1_KVMTimer(ref common.ReferenceCallback) c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"present": {
 						SchemaProps: spec.SchemaProps{
@@ -1722,7 +1745,6 @@ func schema_kubevirtio_client_go_api_v1_KVMTimer(ref common.ReferenceCallback) c
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -1731,17 +1753,18 @@ func schema_kubevirtio_client_go_api_v1_KubeVirt(ref common.ReferenceCallback) c
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "KubeVirt represents the object deploying all KubeVirt resources",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1770,6 +1793,7 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtCondition(ref common.ReferenceCa
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "KubeVirtCondition represents a condition of a KubeVirt deployment",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -1819,17 +1843,18 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtList(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "KubeVirtList is a list of KubeVirts",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -1864,6 +1889,7 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtSpec(ref common.ReferenceCallbac
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"imageTag": {
 						SchemaProps: spec.SchemaProps{
@@ -1900,10 +1926,23 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtSpec(ref common.ReferenceCallbac
 							Format:      "",
 						},
 					},
+					"uninstallStrategy": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Specifies if kubevirt can be deleted if workloads are still present. This is mainly a precaution to avoid accidental data loss",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"certificateRotateStrategy": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.KubeVirtCertificateRotateStrategy"),
+						},
+					},
 				},
 			},
 		},
-		Dependencies: []string{},
+		Dependencies: []string{
+			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.KubeVirtCertificateRotateStrategy"},
 	}
 }
 
@@ -1912,6 +1951,7 @@ func schema_kubevirtio_client_go_api_v1_KubeVirtStatus(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "KubeVirtStatus represents information pertaining to a KubeVirt deployment.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"phase": {
 						SchemaProps: spec.SchemaProps{
@@ -1997,6 +2037,7 @@ func schema_kubevirtio_client_go_api_v1_LunTarget(ref common.ReferenceCallback) 
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"bus": {
 						SchemaProps: spec.SchemaProps{
@@ -2015,7 +2056,6 @@ func schema_kubevirtio_client_go_api_v1_LunTarget(ref common.ReferenceCallback) 
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2023,6 +2063,7 @@ func schema_kubevirtio_client_go_api_v1_Machine(ref common.ReferenceCallback) co
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -2035,7 +2076,6 @@ func schema_kubevirtio_client_go_api_v1_Machine(ref common.ReferenceCallback) co
 				Required: []string{"type"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2044,6 +2084,7 @@ func schema_kubevirtio_client_go_api_v1_Memory(ref common.ReferenceCallback) com
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Memory allows specifying the VirtualMachineInstance memory features.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"hugepages": {
 						SchemaProps: spec.SchemaProps{
@@ -2070,6 +2111,7 @@ func schema_kubevirtio_client_go_api_v1_MultusNetwork(ref common.ReferenceCallba
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the multus cni network.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"networkName": {
 						SchemaProps: spec.SchemaProps{
@@ -2089,7 +2131,6 @@ func schema_kubevirtio_client_go_api_v1_MultusNetwork(ref common.ReferenceCallba
 				Required: []string{"networkName"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2098,6 +2139,7 @@ func schema_kubevirtio_client_go_api_v1_Network(ref common.ReferenceCallback) co
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Network represents a network type and a resource that should be connected to the vm.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -2116,17 +2158,12 @@ func schema_kubevirtio_client_go_api_v1_Network(ref common.ReferenceCallback) co
 							Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork"),
 						},
 					},
-					"genie": {
-						SchemaProps: spec.SchemaProps{
-							Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GenieNetwork"),
-						},
-					},
 				},
 				Required: []string{"name"},
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GenieNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.PodNetwork"},
+			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.PodNetwork"},
 	}
 }
 
@@ -2135,6 +2172,7 @@ func schema_kubevirtio_client_go_api_v1_NetworkSource(ref common.ReferenceCallba
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the source resource that will be connected to the vm. Only one of its members may be specified.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"pod": {
 						SchemaProps: spec.SchemaProps{
@@ -2146,16 +2184,11 @@ func schema_kubevirtio_client_go_api_v1_NetworkSource(ref common.ReferenceCallba
 							Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork"),
 						},
 					},
-					"genie": {
-						SchemaProps: spec.SchemaProps{
-							Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GenieNetwork"),
-						},
-					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.GenieNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.PodNetwork"},
+			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.MultusNetwork", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.PodNetwork"},
 	}
 }
 
@@ -2163,6 +2196,7 @@ func schema_kubevirtio_client_go_api_v1_PITTimer(ref common.ReferenceCallback) c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"tickPolicy": {
 						SchemaProps: spec.SchemaProps{
@@ -2181,7 +2215,6 @@ func schema_kubevirtio_client_go_api_v1_PITTimer(ref common.ReferenceCallback) c
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2190,6 +2223,7 @@ func schema_kubevirtio_client_go_api_v1_PodNetwork(ref common.ReferenceCallback)
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the stock pod network interface.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"vmNetworkCIDR": {
 						SchemaProps: spec.SchemaProps{
@@ -2201,7 +2235,6 @@ func schema_kubevirtio_client_go_api_v1_PodNetwork(ref common.ReferenceCallback)
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2210,6 +2243,7 @@ func schema_kubevirtio_client_go_api_v1_Port(ref common.ReferenceCallback) commo
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Port repesents a port to expose from the virtual machine. Default protocol TCP. The port field is mandatory",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -2236,7 +2270,6 @@ func schema_kubevirtio_client_go_api_v1_Port(ref common.ReferenceCallback) commo
 				Required: []string{"port"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2244,6 +2277,7 @@ func schema_kubevirtio_client_go_api_v1_RTCTimer(ref common.ReferenceCallback) c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"tickPolicy": {
 						SchemaProps: spec.SchemaProps{
@@ -2269,7 +2303,6 @@ func schema_kubevirtio_client_go_api_v1_RTCTimer(ref common.ReferenceCallback) c
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2277,12 +2310,14 @@ func schema_kubevirtio_client_go_api_v1_ResourceRequirements(ref common.Referenc
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"requests": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Requests is a description of the initial vmi resources. Valid resource keys are \"memory\" and \"cpu\".",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Ref: ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
@@ -2296,6 +2331,7 @@ func schema_kubevirtio_client_go_api_v1_ResourceRequirements(ref common.Referenc
 							Description: "Limits describes the maximum amount of compute resources allowed. Valid resource keys are \"memory\" and \"cpu\".",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Ref: ref("k8s.io/apimachinery/pkg/api/resource.Quantity"),
@@ -2324,17 +2360,18 @@ func schema_kubevirtio_client_go_api_v1_RestartOptions(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "RestartOptions may be provided when deleting an API object.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2349,7 +2386,6 @@ func schema_kubevirtio_client_go_api_v1_RestartOptions(ref common.ReferenceCallb
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2358,10 +2394,9 @@ func schema_kubevirtio_client_go_api_v1_Rng(ref common.ReferenceCallback) common
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Rng represents the random device passed from host",
-				Properties:  map[string]spec.Schema{},
+				Type:        []string{"object"},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2370,6 +2405,7 @@ func schema_kubevirtio_client_go_api_v1_SecretVolumeSource(ref common.ReferenceC
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "SecretVolumeSource adapts a Secret into a volume.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"secretName": {
 						SchemaProps: spec.SchemaProps{
@@ -2385,10 +2421,16 @@ func schema_kubevirtio_client_go_api_v1_SecretVolumeSource(ref common.ReferenceC
 							Format:      "",
 						},
 					},
+					"volumeLabel": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The volume label of the resulting disk inside the VMI. Different bootstrapping mechanisms require different values. Typical values are \"cidata\" (cloud-init), \"config-2\" (cloud-init) or \"OEMDRV\" (kickstart).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2397,6 +2439,7 @@ func schema_kubevirtio_client_go_api_v1_ServiceAccountVolumeSource(ref common.Re
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "ServiceAccountVolumeSource adapts a ServiceAccount into a volume.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"serviceAccountName": {
 						SchemaProps: spec.SchemaProps{
@@ -2408,7 +2451,6 @@ func schema_kubevirtio_client_go_api_v1_ServiceAccountVolumeSource(ref common.Re
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2417,6 +2459,7 @@ func schema_kubevirtio_client_go_api_v1_Timer(ref common.ReferenceCallback) comm
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents all available timers in a vmi.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"hpet": {
 						SchemaProps: spec.SchemaProps{
@@ -2461,17 +2504,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachine(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachine handles the VirtualMachines that are not running or are in a stopped state The VirtualMachine contains the template to create the VirtualMachineInstance. It also mirrors the running state of the created VirtualMachineInstance in its status.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2502,6 +2546,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineCondition(ref common.Refer
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineCondition represents the state of VirtualMachine",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -2551,17 +2596,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstance(ref common.Refere
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstance is *the* VirtualMachineInstance Definition. It represents a virtual machine in the runtime environment of kubernetes.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2591,6 +2637,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceCondition(ref comm
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -2635,22 +2682,192 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceCondition(ref comm
 	}
 }
 
-func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceFileSystemList(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "VirtualMachineInstanceList is a list of VirtualMachines",
+				Description: "VirtualMachineInstanceFileSystemList comprises the list of all filesystems on guest machine",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceFileSystem"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceFileSystem"},
+	}
+}
+
+func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceGuestAgentInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VirtualMachineInstanceGuestAgentInfo represents information from the installed guest agent",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"guestAgentVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GAVersion is a version of currently installed guest agent",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"hostname": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Hostname represents FQDN of a guest",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"os": {
+						SchemaProps: spec.SchemaProps{
+							Description: "OS contains the guest operating system information",
+							Ref:         ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSInfo"),
+						},
+					},
+					"timezone": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Timezone is guest os current timezone",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"userList": {
+						SchemaProps: spec.SchemaProps{
+							Description: "UserList is a list of active guest OS users",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSUser"),
+									},
+								},
+							},
+						},
+					},
+					"fsInfo": {
+						SchemaProps: spec.SchemaProps{
+							Description: "FSInfo is a guest os filesystem information containing the disk mapping and disk mounts with usage",
+							Ref:         ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceFileSystemInfo"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceFileSystemInfo", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSInfo", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSUser"},
+	}
+}
+
+func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceGuestOSUserList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VirtualMachineInstanceGuestOSUserList comprises the list of all active users on guest machine",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSUser"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta", "kubevirt.io/kubevirt/staging/src/kubevirt.io/client-go/api/v1.VirtualMachineInstanceGuestOSUser"},
+	}
+}
+
+func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VirtualMachineInstanceList is a list of VirtualMachines",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2686,17 +2903,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigration(ref comm
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstanceMigration represents the object tracking a VMI's migration to another host in the cluster",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2724,6 +2942,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationCondition
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -2773,17 +2992,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationList(ref 
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstanceMigrationList is a list of VirtualMachineMigrations",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2818,6 +3038,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationSpec(ref 
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"vmiName": {
 						SchemaProps: spec.SchemaProps{
@@ -2829,7 +3050,6 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationSpec(ref 
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2838,6 +3058,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceMigrationStatus(re
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstanceMigration reprents information pertaining to a VMI's migration.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"phase": {
 						SchemaProps: spec.SchemaProps{
@@ -2869,6 +3090,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceNetworkInterface(r
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"ipAddress": {
 						SchemaProps: spec.SchemaProps{
@@ -2915,7 +3137,6 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceNetworkInterface(r
 				},
 			},
 		},
-		Dependencies: []string{},
 	}
 }
 
@@ -2923,17 +3144,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstancePreset(ref common.
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -2957,17 +3179,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstancePresetList(ref com
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstancePresetList is a list of VirtualMachinePresets",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3002,6 +3225,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstancePresetSpec(ref com
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"selector": {
 						SchemaProps: spec.SchemaProps{
@@ -3029,17 +3253,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceReplicaSet(ref com
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstance is *the* VirtualMachineInstance Definition. It represents a virtual machine in the runtime environment of kubernetes.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3069,6 +3294,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceReplicaSetConditio
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"type": {
 						SchemaProps: spec.SchemaProps{
@@ -3118,17 +3344,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceReplicaSetList(ref
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VMIList is a list of VMIs",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3163,6 +3390,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceReplicaSetSpec(ref
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"replicas": {
 						SchemaProps: spec.SchemaProps{
@@ -3203,6 +3431,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceReplicaSetStatus(r
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"replicas": {
 						SchemaProps: spec.SchemaProps{
@@ -3250,7 +3479,15 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceSpec(ref common.Re
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstanceSpec is a description of a VirtualMachineInstance.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
+					"priorityClassName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "If specified, indicates the pod's priority. If not specified, the pod priority will be default or zero if there is no default.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"domain": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Specification of the desired behavior of the VirtualMachineInstance on the host.",
@@ -3262,6 +3499,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceSpec(ref common.Re
 							Description: "NodeSelector is a selector which must be true for the vmi to fit on a node. Selector which must match a node's labels for the vmi to be scheduled on that node. More info: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/",
 							Type:        []string{"object"},
 							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
 										Type:   []string{"string"},
@@ -3275,6 +3513,13 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceSpec(ref common.Re
 						SchemaProps: spec.SchemaProps{
 							Description: "If affinity is specifies, obey all the affinity rules",
 							Ref:         ref("k8s.io/api/core/v1.Affinity"),
+						},
+					},
+					"schedulerName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "If specified, the VMI will be dispatched by specified scheduler. If not specified, the VMI will be dispatched by default scheduler.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 					"tolerations": {
@@ -3383,6 +3628,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceStatus(ref common.
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineInstanceStatus represents information about the status of a VirtualMachineInstance. Status may trail the actual state of a system.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"nodeName": {
 						SchemaProps: spec.SchemaProps{
@@ -3457,6 +3703,21 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceStatus(ref common.
 							Format:      "",
 						},
 					},
+					"activePods": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActivePods is a mapping of pod UID to node name. It is possible for multiple pods to be running for a single VMI during migration.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
@@ -3469,6 +3730,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineInstanceTemplateSpec(ref c
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
 					"metadata": {
 						SchemaProps: spec.SchemaProps{
@@ -3494,17 +3756,18 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineList(ref common.ReferenceC
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineList is a list of virtualmachines",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"kind": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#types-kinds",
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
 							Type:        []string{"string"},
 							Format:      "",
 						},
 					},
 					"apiVersion": {
 						SchemaProps: spec.SchemaProps{
-							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#resources",
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -3540,6 +3803,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineSpec(ref common.ReferenceC
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineSpec describes how the proper VirtualMachine should look like",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"running": {
 						SchemaProps: spec.SchemaProps{
@@ -3588,6 +3852,7 @@ func schema_kubevirtio_client_go_api_v1_VirtualMachineStatus(ref common.Referenc
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "VirtualMachineStatus represents the status returned by the controller to describe how the VirtualMachine is doing",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"created": {
 						SchemaProps: spec.SchemaProps{
@@ -3642,6 +3907,7 @@ func schema_kubevirtio_client_go_api_v1_Volume(ref common.ReferenceCallback) com
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Volume represents a named volume in a vmi.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -3730,6 +3996,7 @@ func schema_kubevirtio_client_go_api_v1_VolumeSource(ref common.ReferenceCallbac
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Represents the source of a volume to mount. Only one of its members may be specified.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"hostDisk": {
 						SchemaProps: spec.SchemaProps{
@@ -3810,6 +4077,7 @@ func schema_kubevirtio_client_go_api_v1_Watchdog(ref common.ReferenceCallback) c
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Named watchdog device.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
 						SchemaProps: spec.SchemaProps{
@@ -3838,6 +4106,7 @@ func schema_kubevirtio_client_go_api_v1_WatchdogDevice(ref common.ReferenceCallb
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
 				Description: "Hardware watchdog device. Exactly one of its members must be set.",
+				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"i6300esb": {
 						SchemaProps: spec.SchemaProps{

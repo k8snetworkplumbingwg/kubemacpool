@@ -18,7 +18,7 @@ set -ex
 
 source ./cluster/kubevirtci.sh
 CNAO_VERSIOV=0.35.0
-KUBEVIRT_VERSION=v0.20.4
+KUBEVIRT_VERSION=v0.29.0
 kubevirtci::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

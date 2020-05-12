@@ -3,14 +3,17 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 go 1.12
 
 require (
+	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/go-logr/logr v0.1.0
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
+	github.com/improbable-eng/thanos v0.5.0 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
 	github.com/kr/pty v1.1.5 // indirect
 	github.com/mattn/goveralls v0.0.5
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
+	github.com/openshift/api v3.9.1-0.20190401220125-3a6077f1f910+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/qinqon/kube-admission-webhook v0.6.0
@@ -18,11 +21,11 @@ require (
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
-	k8s.io/client-go v11.0.0+incompatible
+	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.18.0-alpha.2
 	k8s.io/utils v0.0.0-20200109141947-94aeca20bf09 // indirect
-	kubevirt.io/client-go v0.25.0
-	kubevirt.io/kubevirt v0.25.0
+	kubevirt.io/client-go v0.29.0
+	kubevirt.io/kubevirt v0.29.0
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/controller-tools v0.3.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0

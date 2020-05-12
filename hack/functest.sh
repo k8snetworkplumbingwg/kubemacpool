@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-set -e
+set -xe
 
 source ./cluster/kubevirtci.sh
 
-KUBECONFIG=$(kubevirtci::kubeconfig) go test -timeout 20m -v -race ./tests/...
+KUBECONFIG=${KUBECONFIG:-$(kubevirtci::kubeconfig)} $GO test -timeout 20m -v -race ./tests/...

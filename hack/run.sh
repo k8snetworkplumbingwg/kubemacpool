@@ -13,4 +13,6 @@ docker run --rm -t --user $(id -u):$(id -g) \
            --env RANGE_END=02:FF:FF:FF:FF:FF \
            --env POD_NAMESPACE=default \
            --env POD_NAME=kubemacpool-pod \
+           --env REGISTRY=${REGISTRY} \
+           --env REPO=${REPO} \
             ${DOCKER_BASE_IMAGE} make $@

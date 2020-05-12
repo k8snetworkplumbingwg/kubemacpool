@@ -22,3 +22,7 @@ cluster/k8s-1.13.3/.kubectl
 hack/config-provider-*
 
 _kubevirtci/
+
+# config/external is something generated when KUBEVIRT_PROVIDER=external
+# it's a modified copy of config/test
+config/external

@@ -21,7 +21,9 @@ CNAO_VERSIOV=0.35.0
 KUBEVIRT_VERSION=v0.20.4
 kubevirtci::install
 
-$(kubevirtci::path)/cluster-up/up.sh
+if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
+    $(kubevirtci::path)/cluster-up/up.sh
+fi
 
 # Deploy CNA
 ./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/namespace.yaml

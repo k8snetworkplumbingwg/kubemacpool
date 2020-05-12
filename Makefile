@@ -1,7 +1,8 @@
 # Image URL to use all building/pushing image targets
 REGISTRY ?= quay.io
+REPO ?= kubevirt
 IMAGE_TAG ?= latest
-IMG ?= kubevirt/kubemacpool
+IMG ?= $(REPO)/kubemacpool
 DOCKER_BUILDER_LOCATION=hack/docker-image
 
 BIN_DIR = $(CURDIR)/build/_output/bin/
@@ -59,6 +60,12 @@ generate-deploy: $(KUSTOMIZE) manifests
 generate-test: $(KUSTOMIZE) manifests
 	$(KUSTOMIZE) build config/test > config/test/kubemacpool.yaml
 
+generate-external: $(KUSTOMIZE) manifests
+	cp -r config/test config/external
+	cd config/external && \
+		$(KUSTOMIZE) edit set image quay.io/kubevirt/kubemacpool=$(REGISTRY)/$(IMG)
+	$(KUSTOMIZE) build config/external > config/external/kubemacpool.yaml
+
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(CONTROLLER_GEN)
 	$(CONTROLLER_GEN) crd rbac:roleName=kubemacpool paths=./pkg/... output:crd:dir=config/ output:stdout
@@ -75,13 +82,13 @@ vet: $(GO)
 generate-go: $(DEEPCOPY_GEN) fmt vet manifests
 	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
-generate: generate-go generate-deploy generate-test
+generate: generate-go generate-deploy generate-test generate-external
 
 docker-goveralls: docker-builder docker-test
 	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh goveralls
 
 docker-generate: docker-builder
-	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
+	REGISTRY=$(REGISTRY) REPO=$(REPO) DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
 
 check: $(KUSTOMIZE)
 	./hack/check.sh
@@ -109,6 +116,9 @@ cluster-down:
 
 cluster-sync:
 	./cluster/sync.sh
+
+cluster-clean:
+	./cluster/clean.sh
 
 vendor: $(GO)
 	$(GO) mod tidy

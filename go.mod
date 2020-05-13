@@ -16,7 +16,7 @@ require (
 	github.com/openshift/api v3.9.1-0.20190401220125-3a6077f1f910+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/procfs v0.0.8 // indirect
-	github.com/qinqon/kube-admission-webhook v0.6.0
+	github.com/qinqon/kube-admission-webhook v0.7.0
 	go.uber.org/atomic v1.4.0 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.2

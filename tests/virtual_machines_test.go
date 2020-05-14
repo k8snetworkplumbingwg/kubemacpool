@@ -41,12 +41,12 @@ var _ = Describe("Virtual Machines", func() {
 		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
 		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
 
-		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 
 		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
 		clearMap(vmWaitConfigMap.Data)
-		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(names.MANAGER_NAMESPACE).Update(vmWaitConfigMap)
+		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(vmWaitConfigMap)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
 

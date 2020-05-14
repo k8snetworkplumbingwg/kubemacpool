@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"math"
+	"os"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -28,7 +29,6 @@ import (
 const (
 	TestNamespace          = "kubemacpool-test"
 	OtherTestNamespace     = "kubemacpool-test-alternative"
-	ManagerNamespce        = names.MANAGER_NAMESPACE
 	nadPostUrl             = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
 	linuxBridgeConfCRD     = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
 	podNamespaceOptInLabel = "mutatepods.kubemacpool.io"
@@ -36,6 +36,9 @@ const (
 )
 
 var (
+	// The MANAGER_NAMESPACE variables is passed to the test suite in case
+	// different kmp manager is at not default namespace
+	managerNamespace         = getEnv("MANAGER_NAMESPACE", names.MANAGER_NAMESPACE)
 	gracePeriodSeconds int64 = 3
 	rangeStart               = "02:00:00:00:00:00"
 	rangeEnd                 = "02:FF:FF:FF:FF:FF"
@@ -139,20 +142,23 @@ func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 }
 
 func restartKubemacpoolManagerPods() error {
-	oldPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+	filterByApp := metav1.ListOptions{
+		LabelSelector: "app=kubemacpool",
+	}
+	oldPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(filterByApp)
 	if err != nil {
 		return err
 	}
 
 	for _, pod := range oldPods.Items {
-		err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+		err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 		if err != nil {
 			return err
 		}
 	}
 
 	Eventually(func() error {
-		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		currentPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(filterByApp)
 		if err != nil {
 			return err
 		}
@@ -177,7 +183,7 @@ func restartKubemacpoolManagerPods() error {
 }
 
 func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -185,7 +191,7 @@ func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
 	configMap.Data["RANGE_START"] = rangeStart
 	configMap.Data["RANGE_END"] = rangeEnd
 
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(ManagerNamespce).Update(configMap)
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(configMap)
 	if err != nil {
 		return err
 	}
@@ -204,7 +210,7 @@ func initKubemacpoolParams(rangeStart, rangeEnd string) error {
 }
 
 func DeleteLeaderManager() {
-	pods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+	pods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
 	Expect(err).ToNot(HaveOccurred())
 
 	leaderPodName := ""
@@ -217,11 +223,11 @@ func DeleteLeaderManager() {
 
 	Expect(leaderPodName).ToNot(BeEmpty())
 
-	err = testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Delete(leaderPodName, &metav1.DeleteOptions{})
+	err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(leaderPodName, &metav1.DeleteOptions{})
 	Expect(err).ToNot(HaveOccurred())
 
 	Eventually(func() bool {
-		_, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).Get(leaderPodName, metav1.GetOptions{})
+		_, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).Get(leaderPodName, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			return true
 		}
@@ -230,7 +236,7 @@ func DeleteLeaderManager() {
 	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
 
 	Eventually(func() error {
-		currentPods, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		currentPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
 		if err != nil {
 			return err
 		}
@@ -247,14 +253,14 @@ func DeleteLeaderManager() {
 
 func changeManagerReplicas(numOfReplica int32) error {
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
 		managerDeployment.Spec.Replicas = &numOfReplica
 
-		_, err = testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Update(managerDeployment)
+		_, err = testClient.KubeClient.AppsV1().Deployments(managerNamespace).Update(managerDeployment)
 		if err != nil {
 			return err
 		}
@@ -263,7 +269,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
 
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(ManagerNamespce).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
@@ -276,7 +282,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 			return false
 		}
 
-		podsList, err := testClient.KubeClient.CoreV1().Pods(ManagerNamespce).List(metav1.ListOptions{})
+		podsList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
 		if err != nil {
 			return false
 		}
@@ -329,6 +335,14 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 
 	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
 	return err
+}
+
+func getEnv(key, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if !exists {
+		value = fallback
+	}
+	return value
 }
 
 func BeforeAll(fn func()) {

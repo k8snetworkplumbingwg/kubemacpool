@@ -306,14 +306,3 @@ make cluster-down
 # Run function test
 make functest
 ```
-
-In just the functest want to be deployed at pre-deployed external cluster
-the namespace where kubemacpool is living can be parameterize at functest
-
-```bash
-# If kubemacpool is living at HCO
-MANAGER_NAMESPACE=kubevirt-hyperconverged make functest
-
-# If kubemacpool is living at CNAO
-MANAGER_NAMESPACE=cluster-network-addons make functest
-```

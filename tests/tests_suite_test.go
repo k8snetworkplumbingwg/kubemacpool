@@ -25,6 +25,8 @@ var _ = BeforeSuite(func() {
 	removeTestNamespaces()
 	err = createTestNamespaces()
 	Expect(err).ToNot(HaveOccurred())
+
+	managerNamespace = findManagerNamespace()
 })
 
 var _ = AfterSuite(func() {

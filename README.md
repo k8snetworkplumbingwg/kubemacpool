@@ -42,7 +42,7 @@ On releases v0.8.4 and above, kubemacpool is set to apply on pods/vms that resid
 - `mutatepods.kubemacpool.io=allocateForAll` - to opt in pods mac allocation in your namespace
 - `mutatevirtualmachines.kubemacpool.io=allocateForAll` - to opt in vms mac allocation in your namespace
 
-#### How to enable/disable kubemacpool for a namespace 
+#### How to enable/disable kubemacpool for a namespace
 
 Kubemacpool is disabled by default on a new namespace.
 To enable kubemacpool on a specific namespace:
@@ -86,7 +86,7 @@ webhooks:
     matchLabels:
       mutatevirtualmachines.kubemacpool.io: allocateForAll
  ...
-``` 
+```
 
 **note:** if the kubemacpool's mutatingwebhookconfiguration `kubemacpool-mutator` namespace-selector value per vm/pod is set to `allocateForAll`, then you can also opt-out your namespace by setting the label value to `disable` in your namespace:
 ```bash
@@ -305,4 +305,15 @@ make cluster-down
 
 # Run function test
 make functest
+```
+
+In just the functest want to be deployed at pre-deployed external cluster
+the namespace where kubemacpool is living can be parameterize at functest
+
+```bash
+# If kubemacpool is living at HCO
+MANAGER_NAMESPACE=kubevirt-hyperconverged make functest
+
+# If kubemacpool is living at CNAO
+MANAGER_NAMESPACE=cluster-network-addons make functest
 ```

@@ -19,3 +19,5 @@ const K8S_RUNLABEL = "runlevel"
 const OPENSHIFT_RUNLABEL = "openshift.io/run-level"
 
 const WAITING_VMS_CONFIGMAP = "kubemacpool-vm-configmap"
+
+const WAIT_TIME_ARG = "wait-time"

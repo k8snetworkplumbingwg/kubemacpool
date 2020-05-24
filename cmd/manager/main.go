@@ -25,6 +25,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
@@ -47,7 +48,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
-	flag.IntVar(&waitingTime, "wait-time", 600, "waiting time to release the mac if object was not created")
+	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
 	flag.Parse()
 
 	if logType == "debug" {

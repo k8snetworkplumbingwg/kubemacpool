@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"regexp"
+	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -11,6 +13,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,12 +31,13 @@ import (
 )
 
 const (
-	TestNamespace          = "kubemacpool-test"
-	OtherTestNamespace     = "kubemacpool-test-alternative"
-	nadPostUrl             = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD     = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
-	podNamespaceOptInLabel = "mutatepods.kubemacpool.io"
-	vmNamespaceOptInLabel  = "mutatevirtualmachines.kubemacpool.io"
+	TestNamespace           = "kubemacpool-test"
+	OtherTestNamespace      = "kubemacpool-test-alternative"
+	nadPostUrl              = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD      = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	podNamespaceOptInLabel  = "mutatepods.kubemacpool.io"
+	vmNamespaceOptInLabel   = "mutatevirtualmachines.kubemacpool.io"
+	deploymentContainerName = "manager"
 )
 
 var (
@@ -226,6 +230,38 @@ func initKubemacpoolParams(rangeStart, rangeEnd string) error {
 	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
 
 	return nil
+}
+
+func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
+	r := regexp.MustCompile(fmt.Sprintf("--%s=(\\d+)", names.WAIT_TIME_ARG))
+	for _, arg := range args {
+		match := r.FindStringSubmatch(arg)
+		if match != nil {
+			waitTimeValue, err := strconv.Atoi(match[1])
+			Expect(err).ToNot(HaveOccurred(), "Should successfully parse wait-time argument")
+			return time.Duration(waitTimeValue) * time.Second, true
+		}
+	}
+
+	return 0, false
+}
+
+func getVmFailCleanupWaitTime() time.Duration {
+	managerDeployment := v1.Deployment{}
+	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MANAGER_DEPLOYMENT}, &managerDeployment)
+	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
+	Expect(managerDeployment.Spec.Template.Spec.Containers).ToNot(BeEmpty(), "Manager's deployment should contain containers")
+
+	for _, container := range managerDeployment.Spec.Template.Spec.Containers {
+		if container.Name == deploymentContainerName {
+			if waitTimeDuration, found := getWaitTimeValueFromArguments(container.Args); found {
+				return waitTimeDuration
+			}
+		}
+	}
+
+	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment", deploymentContainerName, names.MANAGER_DEPLOYMENT))
+	return 0
 }
 
 func ChangeManagerLeadership() {

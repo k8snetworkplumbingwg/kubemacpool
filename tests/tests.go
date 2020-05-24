@@ -1,9 +1,9 @@
 package tests
 
 import (
+	"context"
 	"fmt"
 	"math"
-	"os"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -36,9 +36,7 @@ const (
 )
 
 var (
-	// The MANAGER_NAMESPACE variables is passed to the test suite in case
-	// different kmp manager is at not default namespace
-	managerNamespace         = getEnv("MANAGER_NAMESPACE", names.MANAGER_NAMESPACE)
+	managerNamespace         = ""
 	gracePeriodSeconds int64 = 3
 	rangeStart               = "02:00:00:00:00:00"
 	rangeEnd                 = "02:FF:FF:FF:FF:FF"
@@ -141,11 +139,31 @@ func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 	return nil
 }
 
-func restartKubemacpoolManagerPods() error {
-	filterByApp := metav1.ListOptions{
-		LabelSelector: "app=kubemacpool",
+func getKubemacpoolPods() (*corev1.PodList, error) {
+	filterByApp := client.MatchingLabels{
+		"app": "kubemacpool",
 	}
-	oldPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(filterByApp)
+	pods := &corev1.PodList{}
+	err := testClient.VirtClient.List(context.TODO(), pods, filterByApp)
+	if err != nil {
+		return nil, err
+	}
+	return pods, nil
+}
+
+func findManagerNamespace() string {
+	// Retrieve manager namespace serching for pods
+	// with app=kubemacpool and getting the env var POD_NAMESPACE
+	pods, err := getKubemacpoolPods()
+	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should be able to retrieve manager pods")
+	ExpectWithOffset(1, pods.Items).ToNot(BeEmpty(), "should have multiple manager pods")
+	namespace := pods.Items[0].ObjectMeta.Namespace
+	ExpectWithOffset(1, namespace).ToNot(BeEmpty(), "should be a namespace at manager pods")
+	return namespace
+}
+
+func restartKubemacpoolManagerPods() error {
+	oldPods, err := getKubemacpoolPods()
 	if err != nil {
 		return err
 	}
@@ -158,7 +176,7 @@ func restartKubemacpoolManagerPods() error {
 	}
 
 	Eventually(func() error {
-		currentPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(filterByApp)
+		currentPods, err := getKubemacpoolPods()
 		if err != nil {
 			return err
 		}
@@ -335,14 +353,6 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 
 	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
 	return err
-}
-
-func getEnv(key, fallback string) string {
-	value, exists := os.LookupEnv(key)
-	if !exists {
-		value = fallback
-	}
-	return value
 }
 
 func BeforeAll(fn func()) {

@@ -18,6 +18,7 @@ KUSTOMIZE := $(GOBIN)/kustomize
 CONTROLLER_GEN := $(GOBIN)/controller-gen
 DEEPCOPY_GEN := $(GOBIN)/deepcopy-gen
 GOVERALLS := $(GOBIN)/goveralls
+GINKGO := $(GOBIN)/ginkgo
 
 export KUBECTL ?= cluster/kubectl.sh
 
@@ -38,14 +39,17 @@ $(DEEPCOPY_GEN): go.mod
 $(GOVERALLS): go.mod
 	$(MAKE) tools
 
+$(GINKGO): go.mod
+	$(MAKE) tools
+
 $(GOFMT): $(GO)
 
 # Run tests
-test: $(GO)
-	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
+test: $(GINKGO)
+	$(GINKGO) ./pkg/... ./cmd/... -coverprofile cover.out
 
-functest: $(GO)
-	GO=$(GO) ./hack/functest.sh
+functest: $(GINKGO)
+	GINKGO=$(GINKGO) ./hack/functest.sh
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy

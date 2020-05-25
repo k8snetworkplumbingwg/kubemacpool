@@ -45,7 +45,7 @@ test: $(GO)
 	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
 
 functest: $(GO)
-	./hack/functest.sh
+	GO=$(GO) ./hack/functest.sh
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy

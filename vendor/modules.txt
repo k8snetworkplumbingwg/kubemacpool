@@ -486,6 +486,9 @@ kubevirt.io/containerized-data-importer/pkg/apis/core
 kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1
 # kubevirt.io/kubevirt v0.29.0
 kubevirt.io/kubevirt/tools/vms-generator/utils
+# kubevirt.io/qe-tools v0.1.3-0.20190512140058-934db0579e0c
+kubevirt.io/qe-tools/pkg/ginkgo-reporters
+kubevirt.io/qe-tools/pkg/polarion-xml
 # sigs.k8s.io/controller-runtime v0.4.0
 sigs.k8s.io/controller-runtime/pkg/cache
 sigs.k8s.io/controller-runtime/pkg/cache/internal

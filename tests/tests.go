@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -227,46 +228,51 @@ func initKubemacpoolParams(rangeStart, rangeEnd string) error {
 	return nil
 }
 
-func DeleteLeaderManager() {
-	pods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
-	Expect(err).ToNot(HaveOccurred())
-
-	leaderPodName := ""
-	for _, pod := range pods.Items {
-		if _, ok := pod.Labels[names.LEADER_LABEL]; ok {
-			leaderPodName = pod.Name
-			break
-		}
+func ChangeManagerLeadership() {
+	filterByLeaderLabel := client.MatchingLabels{
+		"kubemacpool-leader": "true",
 	}
+	leaderPods := corev1.PodList{}
+	err := testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
+	Expect(err).ToNot(HaveOccurred(), "should success listing leader manager pod")
+	Expect(leaderPods.Items).To(HaveLen(1), "should have just one leader manager pod")
 
-	Expect(leaderPodName).ToNot(BeEmpty())
+	leaderPod := leaderPods.Items[0]
+	leaderPodKey := types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
 
-	err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(leaderPodName, &metav1.DeleteOptions{})
-	Expect(err).ToNot(HaveOccurred())
+	By("Delete leader election pod")
+	err = testClient.VirtClient.Delete(context.TODO(), &leaderPod)
+	Expect(err).ToNot(HaveOccurred(), "should success deleting leader manager pod")
 
 	Eventually(func() bool {
-		_, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).Get(leaderPodName, metav1.GetOptions{})
-		if err != nil && errors.IsNotFound(err) {
-			return true
+		err = testClient.VirtClient.Get(context.TODO(), leaderPodKey, &corev1.Pod{})
+		if err != nil && !errors.IsNotFound(err) {
+			Fail(fmt.Sprintf("should fail with IsNotFound if pod does not exist but failed with: %v", err))
 		}
+		return errors.IsNotFound(err)
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "should fail with IsNotFound when kubemacpool leader pod is delete")
 
-		return false
-	}, 30*time.Second, 3*time.Second).Should(BeTrue(), "failed to delete kubemacpool leader pod")
+	By("Wait for the other pod to take over leadership")
+	Eventually(func() []corev1.Pod {
+		leaderPods = corev1.PodList{}
+		testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
+		return leaderPods.Items
+	}, 2*time.Minute, 3*time.Second).Should(HaveLen(1), "should have just one leader manager pod after deleting previous leader")
 
-	Eventually(func() error {
-		currentPods, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
-		if err != nil {
-			return err
-		}
+	leaderPod = leaderPods.Items[0]
+	leaderPodKey = types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
 
-		for _, currentPod := range currentPods.Items {
-			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
-				return nil
+	By("Wait for leader pod to be ready")
+	Eventually(func() corev1.ConditionStatus {
+		err = testClient.VirtClient.Get(context.TODO(), leaderPodKey, &leaderPod)
+		Expect(err).ToNot(HaveOccurred(), "should success getting new leader manager pod")
+		for _, condition := range leaderPod.Status.Conditions {
+			if condition.Type == corev1.PodReady {
+				return condition.Status
 			}
 		}
-
-		return fmt.Errorf("have not found any manager in the ready state")
-	}, 2*time.Minute, 3*time.Second).ShouldNot(HaveOccurred(), "timed out while waiting for a new leader")
+		return corev1.ConditionUnknown
+	}, 2*time.Minute, 3*time.Second).Should(Equal(corev1.ConditionTrue), "should have a leader manager pod with ready condition")
 }
 
 func changeManagerReplicas(numOfReplica int32) error {

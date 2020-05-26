@@ -3,13 +3,17 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 go 1.13
 
 require (
+	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/go-logr/logr v0.1.0
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
+	github.com/improbable-eng/thanos v0.5.0 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
+	github.com/kr/pty v1.1.5 // indirect
 	github.com/mattn/goveralls v0.0.5
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
+	github.com/openshift/api v3.9.1-0.20190401220125-3a6077f1f910+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/qinqon/kube-admission-webhook v0.8.0

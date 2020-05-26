@@ -52,7 +52,7 @@ var _ = Describe("Virtual Machines", func() {
 
 		// add vm opt-in label to the test namespaces
 		for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-			err := addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "allocateForAll"})
+			err := addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
 			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 		}
 	})

@@ -20,8 +20,9 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
-	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -95,7 +96,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	instance := &kubevirt.VirtualMachine{}
 	err = r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
-		if kuberneteserror.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return reconcile.Result{}, nil
 		}
 		// Error reading the object - requeue the request.
@@ -106,7 +107,10 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		logger.V(1).Info("The VM is not being deleted")
 		// The object is not being deleted, so if it does not have a finalizer,
 		// then lets add the finalizer and update the object.
-		err = r.addFinalizerAndUpdate(instance, &request)
+		if !helper.ContainsString(instance.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
+			err = r.addFinalizerAndUpdate(&request)
+		}
+
 		return reconcile.Result{}, err
 	}
 	// The object is being deleted
@@ -115,20 +119,26 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	return reconcile.Result{}, err
 }
 
-func (r *ReconcilePolicy) addFinalizerAndUpdate(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {
+func (r *ReconcilePolicy) addFinalizerAndUpdate(request *reconcile.Request) error {
 	logger := log.WithName("addFinalizerAndUpdate").WithValues("virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
-
-	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
-		return nil
-	}
-
 	logger.V(1).Info("The VM does not have a finalizer")
-	virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
 
-	err := r.Update(context.Background(), virtualMachine)
-	if err != nil {
-		logger.Error(err, "failed to update the VM with the new finalizer")
+	virtualMachine := &kubevirt.VirtualMachine{}
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh vm instance
+		err := r.Get(context.TODO(), request.NamespacedName, virtualMachine)
+		if err != nil {
+			return errors.Wrap(err, "Failed to refresh vm instance")
+		}
+		virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+
+		err = r.Update(context.Background(), virtualMachine)
+
 		return err
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to add the finalizer from the VM")
 	}
 
 	logger.V(1).Info("Finalizer was added to the VM")
@@ -146,18 +156,27 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.
 	logger.V(1).Info("The VM contains the finalizer. Releasing mac")
 	err := r.poolManager.ReleaseVirtualMachineMac(virtualMachine)
 	if err != nil {
-		logger.Error(err, "failed to release mac")
-		return err
+		return errors.Wrap(err, "failed to release mac")
 	}
 
-	// remove our finalizer from the list and update it.
-	logger.V(1).Info("removing finalizers")
-	virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh vm instance
+		err = r.Get(context.TODO(), request.NamespacedName, virtualMachine)
+		if err != nil {
+			return errors.Wrap(err, "Failed to refresh vm instance")
+		}
 
-	err = r.Update(context.Background(), virtualMachine)
-	if err != nil {
-		logger.Error(err, "failed to remove the finalizer")
+		// remove our finalizer from the list and update it.
+		logger.V(1).Info("removing finalizers")
+		virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+
+		err = r.Update(context.Background(), virtualMachine)
+
 		return err
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to remove the finalizer from the VM")
 	}
 
 	logger.V(1).Info("Removed the finalizer from the VM")

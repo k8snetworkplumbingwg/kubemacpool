@@ -22,9 +22,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	kubevirt "kubevirt.io/client-go/api/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -336,7 +338,7 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 
 			data, err := result.Raw()
 			log.V(1).Info("get kubevirt virtual machine object response", "err", err, "response", string(data))
-			if err != nil && errors.IsNotFound(err) {
+			if err != nil && apierrors.IsNotFound(err) {
 				log.V(1).Info("this pod is an ephemeral vmi object allocating mac as a regular pod")
 				return false
 			}
@@ -364,7 +366,7 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
 	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			_, err = p.kubeClient.CoreV1().
 				ConfigMaps(p.managerNamespace).
 				Create(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: names.WAITING_VMS_CONFIGMAP,
@@ -381,52 +383,78 @@ func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
 
 // Add all the allocated mac addresses to the waiting config map with the current time.
 func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-	if err != nil {
+	logger := log.WithName("AddMacToWaitingConfig").WithValues("macPoolMap", p.macPoolMap, "allocations", allocations)
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh ConfigMaps instance
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		if configMap.Data == nil {
+			configMap.Data = map[string]string{}
+		}
+
+		for _, macAddress := range allocations {
+			logger.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
+			macAddress = strings.Replace(macAddress, ":", "-", 5)
+			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
+		}
+
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+
 		return err
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "Failed to update manager's configmap with allocated macs waiting for approval")
 	}
 
-	if configMap.Data == nil {
-		configMap.Data = map[string]string{}
-	}
+	logger.V(1).Info("Successfuly updated manager's configmap with allocated macs waiting for approval")
 
-	for _, macAddress := range allocations {
-		log.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
-		macAddress = strings.Replace(macAddress, ":", "-", 5)
-		configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
-	}
-
-	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
 	return err
 }
 
 // Remove all the mac addresses from the waiting configmap this mean the vm was saved in the etcd and pass validations
 func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
+	logger := log.WithName("MarkVMAsReady").WithValues("macPoolMap", p.macPoolMap, "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name)
+
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	if configMap.Data == nil {
-		log.Info("the configMap is empty")
-		return nil
-	}
-
-	for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-		if vmInterface.MacAddress != "" {
-			p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
-			macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
-			delete(configMap.Data, macAddress)
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh ConfigMaps instance
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		if err != nil {
+			return errors.Wrap(err, "Failed to refresh manager's configmap instance")
 		}
+
+		if configMap.Data == nil {
+			logger.Info("the configMap is empty")
+			return nil
+		}
+
+		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+			if vmInterface.MacAddress != "" {
+				p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
+				macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
+				delete(configMap.Data, macAddress)
+			}
+		}
+
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+
+		return err
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "Failed to update manager's configmap with approved allocated macs")
 	}
 
-	_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
-	log.V(1).Info("marked virtual machine as ready", "virtualMachineNamespace", vm.Namespace,
-		"virtualMachineName", vm.Name)
-	return err
+	logger.V(1).Info("marked virtual machine as ready")
+
+	return nil
 }
 
 // This function check if there are virtual machines that hits the create
@@ -434,20 +462,22 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
 // this mean the create was failed by some other mutating or validating webhook
 // so we release the virtual machine
 func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
+	logger := log.WithName("vmWaitingCleanupLook").WithValues("macPoolMap", p.macPoolMap)
 	c := time.Tick(3 * time.Second)
-	log.Info("starting cleanup loop for waiting mac addresses")
+	logger.Info("starting cleanup loop for waiting mac addresses")
 	for _ = range c {
 		p.poolMutex.Lock()
 
 		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
-			log.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
+			logger.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
 			p.poolMutex.Unlock()
 			continue
 		}
 
+		configMapUpdateNeeded := false
 		if configMap.Data == nil {
-			log.Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP)
+			logger.Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP)
 			p.poolMutex.Unlock()
 			continue
 		}
@@ -456,21 +486,21 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 			t, err := time.Parse(time.RFC3339, allocationTime)
 			if err != nil {
 				// TODO: remove the mac from the wait map??
-				log.Error(err, "failed to parse allocation time")
+				logger.Error(err, "failed to parse allocation time")
 				continue
 			}
 
 			if time.Now().After(t.Add(time.Duration(waitTime) * time.Second)) {
+				configMapUpdateNeeded = true
 				delete(configMap.Data, macAddress)
 				macAddress = strings.Replace(macAddress, "-", ":", 5)
 				delete(p.macPoolMap, macAddress)
-				log.V(1).Info("released mac address in waiting loop", "macAddress", macAddress)
+				logger.V(1).Info("released mac address in waiting loop", "macAddress", macAddress)
 			}
 		}
 
-		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
-		if err != nil {
-			log.Error(err, "failed to update config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
+		if configMapUpdateNeeded {
+			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
 		}
 
 		p.poolMutex.Unlock()

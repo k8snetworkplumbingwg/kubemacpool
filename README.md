@@ -4,6 +4,7 @@
 
 This project allow to allocate mac addresses from a pool to secondary interfaces using
 [Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec).
+For VirtualMachines, it also allocates a mac address for the primary interface if [masquerade](https://kubevirt.io/user-guide/#/creation/interfaces-and-networks?id=masquerade) or [slirp](https://kubevirt.io/user-guide/#/creation/interfaces-and-networks?id=slirp) binding mechanism is used.
 
 ## Usage
 
@@ -38,16 +39,16 @@ kubectl apply -f ./kubemacpool.yaml
 
 ### Opting-in to kubemacpool service
 
-On releases v0.8.4 and above, kubemacpool is set to apply on pods/vms that reside only on opted-in namespaces. You can opt-in your namespace by adding the following labels:
-- `mutatepods.kubemacpool.io=allocateForAll` - to opt in pods mac allocation in your namespace
-- `mutatevirtualmachines.kubemacpool.io=allocateForAll` - to opt in vms mac allocation in your namespace
+Kubemacpool is set to allocate mac to [supported interfaces](#About) on pods/vms that reside only on opted-in namespaces. You can opt-in your namespace by adding the following labels:
+- `mutatepods.kubemacpool.io=allocate` - to opt in pods mac allocation in your namespace
+- `mutatevirtualmachines.kubemacpool.io=allocate` - to opt in vms mac allocation in your namespace
 
 #### How to enable/disable kubemacpool for a namespace
 
 Kubemacpool is disabled by default on a new namespace.
 To enable kubemacpool on a specific namespace:
 ```bash
-kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
+kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocate mutatevirtualmachines.kubemacpool.io=allocate
 namespace/example-namespace labeled
 ```
 
@@ -77,18 +78,18 @@ webhooks:
   namespaceSelector:
  ...
     matchLabels:
-      mutatepods.kubemacpool.io: allocateForAll
+      mutatepods.kubemacpool.io: allocate
 - admissionReviewVersions:
  ...
   name: mutatevirtualmachines.kubemacpool.io
   namespaceSelector:
  ...
     matchLabels:
-      mutatevirtualmachines.kubemacpool.io: allocateForAll
+      mutatevirtualmachines.kubemacpool.io: allocate
  ...
 ```
 
-**note:** if the kubemacpool's mutatingwebhookconfiguration `kubemacpool-mutator` namespace-selector value per vm/pod is set to `allocateForAll`, then you can also opt-out your namespace by setting the label value to `disable` in your namespace:
+**note:** if the kubemacpool's mutatingwebhookconfiguration `kubemacpool-mutator` namespace-selector value per vm/pod is set to `allocate`, then you can also opt-out your namespace by setting the label value to `disable` in your namespace:
 ```bash
 kubectl label namespace example-namespace --overwrite mutatepods.kubemacpool.io=disable mutatevirtualmachines.kubemacpool.io=disable
 namespace/example-namespace labeled
@@ -98,12 +99,12 @@ namespace/example-namespace labeled
 
 ```bash
 # Add the opt-in labels to namespace using kubectl
-kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocateForAll mutatevirtualmachines.kubemacpool.io=allocateForAll
+kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocate mutatevirtualmachines.kubemacpool.io=allocate
 namespace/example-namespace labeled
 
 kubectl get namespaces example-namespace --show-labels
 NAME                              STATUS   AGE     LABELS
-example-namespace Active   22s     mutatepods.kubemacpool.io=allocateForAll,mutatevirtualmachines.kubemacpool.io=allocateForAll
+example-namespace Active   22s     mutatepods.kubemacpool.io=allocate,mutatevirtualmachines.kubemacpool.io=allocate
 ```
 
 ### Check deployment
@@ -176,7 +177,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    mutatepods.kubemacpool.io: allocateForAll
+    mutatepods.kubemacpool.io: allocate
   name: default
 ...
 ```

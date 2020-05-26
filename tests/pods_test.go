@@ -20,7 +20,7 @@ var _ = Describe("Pods", func() {
 		BeforeEach(func() {
 			// update namespaces opt in labels before every test
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-				err := addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocateForAll"})
+				err := addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocate"})
 				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 			}
 		})

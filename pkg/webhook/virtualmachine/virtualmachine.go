@@ -23,9 +23,11 @@ import (
 	"net/http"
 	"reflect"
 
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
+	"github.com/pkg/errors"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -92,20 +94,28 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 
 // mutateCreateVirtualMachinesFn calls the create allocation function
 func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
-	log.Info("got a create mutate virtual machine event",
-		"virtualMachineName", virtualMachine.Name,
-		"virtualMachineNamespace", virtualMachine.Namespace)
+	logger := log.WithName("mutateCreateVirtualMachinesFn").WithValues("virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+	logger.V(1).Info("got a create mutate virtual machine event")
 
 	existingVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, existingVirtualMachine)
 	if err != nil {
 		// If the VM does not exist yet, allocate a new MAC address
-		if errors.IsNotFound(err) {
-			return a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+		if apierrors.IsNotFound(err) {
+			if virtualMachine.ObjectMeta.DeletionTimestamp.IsZero() {
+				logger.V(1).Info("The VM is not being deleted.")
+				// If the object is not being deleted, then lets allocate macs and add the finalizer
+				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+				if err != nil {
+					return errors.Wrap(err, "Failed to allocate mac to the vm object")
+				}
+
+				return addFinalizer(virtualMachine)
+			}
 		}
 
 		// Unexpected error
-		return err
+		return errors.Wrap(err, "Failed to get the existing vm object")
 	}
 
 	// If the object exist this mean the user run kubectl/oc create
@@ -121,7 +131,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
 	if err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return err
@@ -141,5 +151,18 @@ func (a *virtualMachineAnnotator) InjectClient(c client.Client) error {
 // InjectDecoder injects the decoder.
 func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
 	a.decoder = d
+	return nil
+}
+
+func addFinalizer(virtualMachine *kubevirt.VirtualMachine) error {
+	logger := log.WithName("addFinalizer").WithValues("virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+
+	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
+		return nil
+	}
+
+	virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+	logger.V(1).Info("Finalizer was added to the VM instance")
+
 	return nil
 }

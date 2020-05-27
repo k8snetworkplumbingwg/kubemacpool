@@ -30,11 +30,18 @@ if [[ "$CNAO_PROVIDER" != external ]]; then
   ./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/namespace.yaml
   ./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/network-addons-config.crd.yaml
   ./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/operator.yaml
+  # Deploy NetworkAddonsConfig
+  ./cluster/kubectl.sh apply -f ./hack/cna/cna-cr.yaml
+  # wait for cluster operator
+  ./cluster/kubectl.sh wait networkaddonsconfig cluster --for condition=Available --timeout=800s
+else # CNAO_PROVIDER == external
+  if [[ -z $(./cluster/kubectl.sh get pod -A -l app=kubemacpool) ]]; then
+    if [[ -z $(./cluster/kubectl.sh get networkaddonsconfig --no-headers -o custom-columns=:.metadata.name) ]]; then
+      ./cluster/kubectl.sh apply -f ./hack/cna/cna-cr.yaml
+    fi
+    ./cluster/kubectl.sh patch networkaddonsconfig cluster --type json -p='[{"op":"replace","path":"/spec/kubeMacPool","value":{}}]'
+  fi
 fi
-
-# wait for cluster operator
-./cluster/kubectl.sh wait networkaddonsconfig cluster --for condition=Available --timeout=800s
-
 
 # deploy kubevirt
 ./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml

@@ -403,6 +403,13 @@ var _ = Describe("Virtual Machines", func() {
 		})
 		//2633
 		Context("When we re-apply a failed VM yaml", func() {
+			totalTimeout := time.Duration(0)
+			BeforeAll(func() {
+				vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
+				// since this test checks vmWaitingCleanupLook routine, we nned to adjust the total timeout with the wait-time argument.
+				// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
+				totalTimeout = timeout + vmFailCleanupWaitTime
+			})
 			It("should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred())
@@ -425,7 +432,7 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return err
 
-				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 			})
 			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -450,7 +457,7 @@ var _ = Describe("Virtual Machines", func() {
 					}
 					return err
 
-				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 			})
 		})
 

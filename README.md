@@ -307,3 +307,12 @@ make cluster-down
 # Run function test
 make functest
 ```
+
+In order to run functests on external cluster
+with CNAO installed:
+
+``` bash 
+export KUBEVIRT_PROVIDER=external
+export CNAO_PROVIDER=external
+make functest
+```

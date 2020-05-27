@@ -22,6 +22,7 @@ require (
 	k8s.io/utils v0.0.0-20200109141947-94aeca20bf09 // indirect
 	kubevirt.io/client-go v0.29.0
 	kubevirt.io/kubevirt v0.29.0
+	kubevirt.io/qe-tools v0.1.3-0.20190512140058-934db0579e0c
 	sigs.k8s.io/controller-runtime v0.4.0
 	sigs.k8s.io/controller-tools v0.3.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0

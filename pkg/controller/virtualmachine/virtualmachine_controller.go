@@ -18,7 +18,9 @@ package virtualmachine
 
 import (
 	"context"
+	"math/rand"
 
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -81,7 +83,9 @@ type ReconcilePolicy struct {
 
 // Reconcile reads that state of the cluster for a virtual machine object and makes changes based on the state
 func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	logger := log.WithName("Reconcile").WithValues("virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
+	//used for multi thread log separation
+	reconcileRequestId := rand.Int()
+	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
 	logger.V(1).Info("got a virtual machine event in the controller")
 
 	instanceOptedIn, err := r.poolManager.IsVmInstanceOptedIn(request.Namespace)
@@ -108,19 +112,19 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		// The object is not being deleted, so if it does not have a finalizer,
 		// then lets add the finalizer and update the object.
 		if !helper.ContainsString(instance.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
-			err = r.addFinalizerAndUpdate(&request)
+			err = r.addFinalizerAndUpdate(&request, logger)
 		}
 
 		return reconcile.Result{}, err
 	}
 	// The object is being deleted
 	logger.V(1).Info("The VM is being marked for deletion")
-	err = r.removeFinalizerAndReleaseMac(instance, &request)
+	err = r.removeFinalizerAndReleaseMac(instance, &request, logger)
 	return reconcile.Result{}, err
 }
 
-func (r *ReconcilePolicy) addFinalizerAndUpdate(request *reconcile.Request) error {
-	logger := log.WithName("addFinalizerAndUpdate").WithValues("virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
+func (r *ReconcilePolicy) addFinalizerAndUpdate(request *reconcile.Request, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("addFinalizerAndUpdate")
 	logger.V(1).Info("The VM does not have a finalizer")
 
 	virtualMachine := &kubevirt.VirtualMachine{}
@@ -143,18 +147,18 @@ func (r *ReconcilePolicy) addFinalizerAndUpdate(request *reconcile.Request) erro
 
 	logger.V(1).Info("Finalizer was added to the VM")
 
-	return r.poolManager.MarkVMAsReady(virtualMachine)
+	return r.poolManager.MarkVMAsReady(virtualMachine, parentLogger)
 }
 
-func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request) error {
-	logger := log.WithName("removeFinalizerAndReleaseMac").WithValues("virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
+func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(virtualMachine *kubevirt.VirtualMachine, request *reconcile.Request, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("removeFinalizerAndReleaseMac")
 
 	if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
 		return nil
 	}
 	// our finalizer is present, so lets handle our external dependency
 	logger.V(1).Info("The VM contains the finalizer. Releasing mac")
-	err := r.poolManager.ReleaseVirtualMachineMac(virtualMachine)
+	err := r.poolManager.ReleaseVirtualMachineMac(virtualMachine, parentLogger)
 	if err != nil {
 		return errors.Wrap(err, "failed to release mac")
 	}

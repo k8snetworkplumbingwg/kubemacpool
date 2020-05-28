@@ -286,7 +286,7 @@ the following steps
 ```bash
 # Set env variables
 export KUBEVIRT_PROVIDER=external
-export KUBECONFIG=[path to the cluster's kubeconfig]
+export KUBECONFIG=[path to the kubeconfig of the cluster]
 
 # Intermediate registry to deploy kubemacpool
 export DEV_REGISTRY=docker.io # can be different

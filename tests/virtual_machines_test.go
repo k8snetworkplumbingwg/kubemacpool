@@ -140,7 +140,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
-			//2166
 			Context("When the MAC address is within range", func() {
 				It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {
 					err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -161,7 +160,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).ToNot(HaveOccurred())
 				})
 			})
-			//2167
 			Context("When the MAC address is out of range", func() {
 				It("[test_id:2167]should reject a vm creation with an already allocated MAC address", func() {
 					err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -184,7 +182,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 		})
-		//2199
 		Context("when the client tries to assign the same MAC address for two different interfaces in a single VM.", func() {
 			Context("When the MAC address is within range", func() {
 				It("[test_id:2199]should reject a VM creation with two interfaces that share the same MAC address", func() {
@@ -198,7 +195,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
 				})
 			})
-			//2200
 			Context("When the MAC address is out of range", func() {
 				It("[test_id:2200]should reject a VM creation with two interfaces that share the same MAC address", func() {
 					err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -212,7 +208,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 		})
-		//2164
 		Context("When two VM are deleted and we try to assign their MAC addresses for two newly created VM", func() {
 			It("[test_id:2164]should not return an error because the MAC addresses of the old VMs should have been released", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -267,7 +262,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		//2162
 		Context("When trying to create a VM after all MAC addresses in range have been occupied", func() {
 			It("[test_id:2162]should return an error because no MAC address is available", func() {
 				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
@@ -290,7 +284,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).To(HaveOccurred())
 			})
 		})
-		//2165
 		Context("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
 			It("[test_id:2165]should re-use the released MAC address for the creation of the new VM and not return an error", func() {
 				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -331,7 +324,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(newMac2.String()).To(Equal(mac2.String()))
 			})
 		})
-		//2179
 		Context("When restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 			It("[test_id:2179]should return an error because the MAC address is taken by the older VM", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -361,7 +353,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}, timeout, pollingInterval).Should(HaveOccurred())
 			})
 		})
-		//2243
 		Context("When we re-apply a VM yaml", func() {
 			It("[test_id:2243]should assign to the VM the same MAC addresses as before the re-apply, and not return an error", func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
@@ -402,7 +393,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}
 			})
 		})
-		//2633
 		Context("When we re-apply a failed VM yaml", func() {
 			totalTimeout := time.Duration(0)
 			BeforeAll(func() {
@@ -513,7 +503,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		//2995
 		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
 			It("[test_id:2995]should successfully release the MAC and the new VM should be created with no errors", func() {
 				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")

@@ -12,7 +12,7 @@ require (
 	github.com/onsi/gomega v1.8.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/procfs v0.0.8 // indirect
-	github.com/qinqon/kube-admission-webhook v0.8.0
+	github.com/qinqon/kube-admission-webhook v0.8.1-0.20200525102605-cc8da9191286
 	go.uber.org/atomic v1.4.0 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.2

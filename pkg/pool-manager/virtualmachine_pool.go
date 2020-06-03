@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -98,34 +99,31 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	return nil
 }
 
-func (p *PoolManager) ReleaseVirtualMachineMac(vm *kubevirt.VirtualMachine) error {
+func (p *PoolManager) ReleaseVirtualMachineMac(vm *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("ReleaseVirtualMachineMac")
+
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
-	log.V(1).Info("ReleaseVirtualMachineMac: data",
+	logger.V(1).Info("data",
 		"macmap", p.macPoolMap,
 		"podmap", p.podToMacPoolMap,
 		"currentMac", p.currentMac.String())
 
 	if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
-		log.V(1).Info("no interfaces found for virtual machine, skipping mac release",
-			"virtualMachineName", vm.Name,
-			"virtualMachineNamespace", vm.Namespace)
+		logger.V(1).Info("no interfaces found for virtual machine, skipping mac release")
 		return nil
 	}
 
-	log.V(1).Info("virtual machine data",
-		"virtualMachineName", vm.Name,
-		"virtualMachineNamespace", vm.Namespace,
-		"interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
+	logger.V(1).Info("virtual machine data", "interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
 	for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
 		if iface.MacAddress != "" {
 			delete(p.macPoolMap, iface.MacAddress)
-			log.Info("released mac from virtual machine",
-				"mac", iface.MacAddress,
-				"virtualMachineName", vm.Name,
-				"virtualMachineNamespace", vm.Namespace)
+			logger.Info("released mac from virtual machine",
+				"mac", iface.MacAddress)
 		}
 	}
+
+	logger.V(1).Info("released macs in virtua machine", "macmap", p.macPoolMap)
 
 	return nil
 }
@@ -417,8 +415,8 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 }
 
 // Remove all the mac addresses from the waiting configmap this mean the vm was saved in the etcd and pass validations
-func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
-	logger := log.WithName("MarkVMAsReady").WithValues("macPoolMap", p.macPoolMap, "virtualMachineNamespace", vm.Namespace, "virtualMachineName", vm.Name)
+func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("MarkVMAsReady")
 
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
@@ -442,6 +440,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine) error {
 				delete(configMap.Data, macAddress)
 			}
 		}
+		logger.V(1).Info("set virtual machine's macs as ready", "macPoolMap", p.macPoolMap)
 
 		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
 

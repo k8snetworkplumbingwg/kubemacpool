@@ -12,7 +12,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -41,7 +42,7 @@ var _ = Describe("Virtual Machines", func() {
 		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
 		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
 
-		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, meta_v1.GetOptions{})
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 
 		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
@@ -123,18 +124,52 @@ var _ = Describe("Virtual Machines", func() {
 			})
 		})
 
-		Context("When the client wants to create a vm on an opted-in namespace", func() {
-			It("should create a vm object and automatically assign a static MAC address", func() {
+		Context("When the client creates a vm on an opted-in namespace", func() {
+			var (
+				vm *kubevirtv1.VirtualMachine
+			)
+			BeforeEach(func() {
+				By("Restart kubemacpool to reset cache and mac range")
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should success restarting kubemacpool to reset mac range and cache")
 
-				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+				vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 					[]kubevirtv1.Network{newNetwork("br")})
 
+				By("Create VM")
 				err = testClient.VirtClient.Create(context.TODO(), vm)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
+			})
+			It("should automatically assign the vm with static MAC address within range", func() {
+				vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
+				By("Retrieve VM")
+				err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)
+				Expect(err).ToNot(HaveOccurred(), "should success getting the VM after creating it")
+
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should success parsing mac address")
+			})
+			Context("and then when we opt-out the namespace", func() {
+				BeforeEach(func() {
+					By("Clean test namespace labels to mark it as opted-out")
+					err := cleanNamespaceLabels(TestNamespace)
+					Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+
+					By("Wait 5 seconds for namespace label clean-up to be propagated at server")
+					time.Sleep(5 * time.Second)
+				})
+				AfterEach(func() {
+					By("Put back the opt-in label at namespace")
+					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
+					Expect(err).ToNot(HaveOccurred(), "should success adding opt-in label to namespace")
+
+					By("Wait 5 seconds for opt-in label at namespace to be propagated at server")
+					time.Sleep(5 * time.Second)
+				})
+				It("should able to be deleted", func() {
+					By("Delete the VM after opt-out the namespace")
+					deleteVMI(vm)
+				})
 			})
 		})
 
@@ -582,16 +617,22 @@ func newNetwork(name string) kubevirtv1.Network {
 }
 
 func deleteVMI(vm *kubevirtv1.VirtualMachine) {
+	By(fmt.Sprintf("Delete vm %s/%s", vm.Namespace, vm.Name))
 	err := testClient.VirtClient.Delete(context.TODO(), vm)
-	Expect(err).ToNot(HaveOccurred())
+	if errors.IsNotFound(err) {
+		return
+	}
+	Expect(err).ToNot(HaveOccurred(), "should success deleting VM")
 
+	By(fmt.Sprintf("Wait for vm %s/%s to be deleted", vm.Namespace, vm.Name))
 	Eventually(func() bool {
 		err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
 		if err != nil && errors.IsNotFound(err) {
 			return true
 		}
+		Expect(err).ToNot(HaveOccurred(), "should success getting vm if is still there")
 		return false
-	}, timeout, pollingInterval).Should(BeTrue(), "failed to delete VM")
+	}, timeout, pollingInterval).Should(BeTrue(), "should eventually fail getting vm with IsNotFound after vm deletion")
 }
 
 func clearMap(inputMap map[string]string) {

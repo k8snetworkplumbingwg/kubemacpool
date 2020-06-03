@@ -118,16 +118,6 @@ spec:
             secretName: service
 
 ---
-apiVersion: policy/v1beta1
-kind: PodDisruptionBudget
-metadata:
-  name: mac-controller-manager
-spec:
-  minAvailable: 1
-  selector:
-    matchLabels:
-      control-plane: mac-controller-manager
----
 apiVersion: v1
 kind: Service
 metadata:

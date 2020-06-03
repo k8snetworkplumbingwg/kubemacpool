@@ -31,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	kubevirt "kubevirt.io/client-go/api/v1"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -210,7 +211,7 @@ var _ = Describe("Pool", func() {
 
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-			err = poolManager.ReleaseVirtualMachineMac(&newVM)
+			err = poolManager.ReleaseVirtualMachineMac(&newVM, logf.Log.WithName("pool Test"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(1))
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]
@@ -246,7 +247,7 @@ var _ = Describe("Pool", func() {
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 
-			err = poolManager.ReleaseVirtualMachineMac(newVM)
+			err = poolManager.ReleaseVirtualMachineMac(newVM, logf.Log.WithName("VirtualMachine Controller"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(1))
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]

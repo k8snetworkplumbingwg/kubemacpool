@@ -522,7 +522,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					[]kubevirtv1.Network{newNetwork("br1")})
 				err = testClient.VirtClient.Create(context.TODO(), newVM)
 				Expect(err).To(HaveOccurred())
-				Expect(strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full")).To(Equal(true))
+				Expect(strings.Contains(err.Error(), "Failed to allocate mac to the vm object: the range is full")).To(Equal(true))
 
 				By("checking that the VM's NIC can be removed")
 

@@ -433,6 +433,12 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 			return nil
 		}
 
+		if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
+			logger.Info("interface list is empty")
+			return nil
+		}
+
+		logger.V(1).Info("set vm's mac to status allocated", "vm interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
 		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
 			if vmInterface.MacAddress != "" {
 				p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated

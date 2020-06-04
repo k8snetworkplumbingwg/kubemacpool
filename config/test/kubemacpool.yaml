@@ -260,7 +260,7 @@ spec:
       containers:
       - args:
         - --v=debug
-        - --wait-time=10
+        - --wait-time=600
         command:
         - /manager
         env:

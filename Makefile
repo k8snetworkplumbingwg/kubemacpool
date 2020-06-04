@@ -3,7 +3,6 @@ REGISTRY ?= quay.io
 REPO ?= kubevirt
 IMAGE_TAG ?= latest
 IMG ?= $(REPO)/kubemacpool
-DOCKER_BUILDER_LOCATION=hack/docker-image
 
 BIN_DIR = $(CURDIR)/build/_output/bin/
 
@@ -84,12 +83,6 @@ generate-go: $(DEEPCOPY_GEN) fmt vet manifests
 
 generate: generate-go generate-deploy generate-test generate-external
 
-docker-goveralls: docker-builder docker-test
-	DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh goveralls
-
-docker-generate: docker-builder
-	REGISTRY=$(REGISTRY) REPO=$(REPO) DOCKER_BASE_IMAGE=${REGISTRY}/${IMG}:kubemacpool_builder ./hack/run.sh
-
 check: $(KUSTOMIZE)
 	./hack/check.sh
 
@@ -99,10 +92,6 @@ manager: $(GO)
 # Build the docker image
 container: manager
 	docker build build/ -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
-
-# Build the docker builder image
-docker-builder:
-	docker build ${DOCKER_BUILDER_LOCATION} -t ${REGISTRY}/${IMG}:kubemacpool_builder --build-arg GO_VERSION=1.12.12
 
 # Push the docker image
 docker-push:

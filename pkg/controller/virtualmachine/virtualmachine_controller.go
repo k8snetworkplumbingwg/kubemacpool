@@ -88,17 +88,8 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
 	logger.V(1).Info("got a virtual machine event in the controller")
 
-	instanceOptedIn, err := r.poolManager.IsVmInstanceOptedIn(request.Namespace)
-	if err != nil {
-		return reconcile.Result{}, errors.Wrap(err, "failed to check opt-in selection for vm")
-	}
-	if !instanceOptedIn {
-		logger.V(1).Info("vm is opted-out from kubemacpool")
-		return reconcile.Result{}, nil
-	}
-
 	instance := &kubevirt.VirtualMachine{}
-	err = r.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("vm not found. aborting reconcile")
@@ -109,6 +100,16 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+		instanceOptedIn, err := r.poolManager.IsVmInstanceOptedIn(request.Namespace)
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed to check opt-in selection for vm")
+		}
+
+		if !instanceOptedIn {
+			logger.V(1).Info("vm is opted-out from kubemacpool")
+			return reconcile.Result{}, nil
+		}
+
 		logger.V(1).Info("vm create/update event")
 		// The object is not being deleted, so we can set the macs to allocated
 		err = r.poolManager.MarkVMAsReady(instance, logger)

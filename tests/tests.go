@@ -3,19 +3,20 @@ package tests
 import (
 	"context"
 	"fmt"
-	"math"
 	"regexp"
 	"strconv"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
 
+	"github.com/pkg/errors"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -99,11 +100,11 @@ func deleteTestNamespaces(namespace string) error {
 
 func removeTestNamespaces() {
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace))
-	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
+	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", OtherTestNamespace))
-	EventuallyWithOffset(1, func() bool { return errors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) }, 120*time.Second, 5*time.Second).
+	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) }, 120*time.Second, 5*time.Second).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
@@ -168,39 +169,16 @@ func findManagerNamespace() string {
 }
 
 func restartKubemacpoolManagerPods() error {
-	oldPods, err := getKubemacpoolPods()
+	// Remove all replicas
+	err := changeManagerReplicas(0)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed stopping manager pods")
 	}
 
-	for _, pod := range oldPods.Items {
-		err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
-		if err != nil {
-			return err
-		}
+	err = changeManagerReplicas(2)
+	if err != nil {
+		return errors.Wrap(err, "failed starting manager pods")
 	}
-
-	Eventually(func() error {
-		currentPods, err := getKubemacpoolPods()
-		if err != nil {
-			return err
-		}
-
-		for _, oldPod := range oldPods.Items {
-			if findPodByName(currentPods, oldPod) != nil {
-				return fmt.Errorf("old pod %s has not yet been removed", oldPod.Name)
-			}
-		}
-
-		for _, currentPod := range currentPods.Items {
-			if len(currentPod.Status.ContainerStatuses) >= 1 && currentPod.Status.ContainerStatuses[0].Ready {
-				return nil
-			}
-		}
-
-		return fmt.Errorf("have not found any manager in the ready state")
-
-	}, 2*time.Minute, 3*time.Second).Should(Not(HaveOccurred()), "failed to start new set of manager pods within the given timeout")
 
 	return nil
 }
@@ -282,10 +260,10 @@ func ChangeManagerLeadership() {
 
 	Eventually(func() bool {
 		err = testClient.VirtClient.Get(context.TODO(), leaderPodKey, &corev1.Pod{})
-		if err != nil && !errors.IsNotFound(err) {
+		if err != nil && !apierrors.IsNotFound(err) {
 			Fail(fmt.Sprintf("should fail with IsNotFound if pod does not exist but failed with: %v", err))
 		}
-		return errors.IsNotFound(err)
+		return apierrors.IsNotFound(err)
 	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "should fail with IsNotFound when kubemacpool leader pod is delete")
 
 	By("Wait for the other pod to take over leadership")
@@ -337,10 +315,6 @@ func changeManagerReplicas(numOfReplica int32) error {
 		if managerDeployment.Status.Replicas != numOfReplica {
 			return false
 		}
-		//due to readiness probe only 1 (the leader) pod will be ready (if any)
-		if float64(managerDeployment.Status.ReadyReplicas) != math.Min(float64(1), float64(numOfReplica)) {
-			return false
-		}
 
 		podsList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
 		if err != nil {
@@ -351,10 +325,17 @@ func changeManagerReplicas(numOfReplica int32) error {
 			return false
 		}
 
+		numberOfReadyPods := int32(0)
 		for _, podObject := range podsList.Items {
-			if podObject.Status.Phase != corev1.PodRunning {
-				return false
+			for _, condition := range podObject.Status.Conditions {
+				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+					numberOfReadyPods += 1
+				}
 			}
+		}
+		By(fmt.Sprintf("Waitting for expected ready pods %d/%d", numberOfReadyPods, numOfReplica))
+		if numberOfReadyPods < numOfReplica {
+			return false
 		}
 
 		return true

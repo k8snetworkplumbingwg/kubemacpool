@@ -141,7 +141,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				err = testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
 			})
-			It("should automatically assign the vm with static MAC address within range", func() {
+			FIt("should automatically assign the vm with static MAC address within range", func() {
 				vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
 				By("Retrieve VM")
 				err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)

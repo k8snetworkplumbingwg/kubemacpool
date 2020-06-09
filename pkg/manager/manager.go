@@ -49,7 +49,7 @@ type KubeMacPoolManager struct {
 	stopSignalChannel        chan os.Signal  // stop channel signal
 	podNamespace             string          // manager pod namespace
 	podName                  string          // manager pod name
-	waitingTime              int             // Duration in second to lock a mac address before it was saved to etcd
+	waitingTime              int             // Duration in second to free macs of allocated vms that failed to start.
 	mgr                      manager.Manager // Delegated controller-runtime manager
 }
 
@@ -83,17 +83,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		return fmt.Errorf("unable to create a kubernetes client error %v", err)
 	}
 
-	log.Info("Setting up leader electionManager")
-	leaderElectionManager, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
-	if err != nil {
-		return fmt.Errorf("unable to set up manager error %v", err)
-	}
-
-	err = k.newLeaderElection(k.config, leaderElectionManager.GetScheme())
-	if err != nil {
-		return fmt.Errorf("unable to create a leader election resource lock error %v", err)
-	}
-
 	for k.continueToRunManager {
 		log.Info("Setting up Manager")
 		mgr, err := manager.New(k.config, manager.Options{
@@ -124,7 +113,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 		go k.waitForSignal()
 
-		go k.waitToStartLeading()
+		go k.waitToStartLeading(poolManager)
 
 		log.Info("Setting up controllers")
 		err = controller.AddToManager(mgr, poolManager)

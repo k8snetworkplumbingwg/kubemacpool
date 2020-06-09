@@ -469,6 +469,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 // this mean the create was failed by some other mutating or validating webhook
 // so we release the virtual machine
 func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
+	//if we reach here then we are in the leader pod
 	logger := log.WithName("vmWaitingCleanupLook").WithValues("macPoolMap", p.macPoolMap)
 	c := time.Tick(3 * time.Second)
 	logger.Info("starting cleanup loop for waiting mac addresses")

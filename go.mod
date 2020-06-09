@@ -13,17 +13,14 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/qinqon/kube-admission-webhook v0.8.0
-	go.uber.org/atomic v1.4.0 // indirect
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4 // indirect
 	k8s.io/api v0.18.2
 	k8s.io/apimachinery v0.18.2
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.18.0-alpha.2
-	k8s.io/utils v0.0.0-20200109141947-94aeca20bf09 // indirect
 	kubevirt.io/client-go v0.29.0
 	kubevirt.io/kubevirt v0.29.0
 	kubevirt.io/qe-tools v0.1.3-0.20190512140058-934db0579e0c
-	sigs.k8s.io/controller-runtime v0.4.0
+	sigs.k8s.io/controller-runtime v0.6.0
 	sigs.k8s.io/controller-tools v0.3.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0
 )

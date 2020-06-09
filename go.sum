@@ -579,6 +579,8 @@ github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90 h1:S/YWwWx
 github.com/prometheus/client_model v0.0.0-20190129233127-fd36f4220a90/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4 h1:gQz4mCbXsO+nc9n1hCxHcGA3Zx3Eo+UHZoInFGUIXNM=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
+github.com/prometheus/client_model v0.2.0 h1:uq5h0d+GuxiXLJLNABMgp2qUWDPiLvgCzz2dUR+/W/M=
+github.com/prometheus/client_model v0.2.0/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
 github.com/prometheus/common v0.0.0-20180801064454-c7de2306084e/go.mod h1:daVV7qP5qjZbuso7PdcryaAu0sAZbrN9i7WWcTMWvro=
 github.com/prometheus/common v0.0.0-20181113130724-41aa239b4cce/go.mod h1:daVV7qP5qjZbuso7PdcryaAu0sAZbrN9i7WWcTMWvro=
 github.com/prometheus/common v0.0.0-20181126121408-4724e9255275/go.mod h1:daVV7qP5qjZbuso7PdcryaAu0sAZbrN9i7WWcTMWvro=
@@ -1010,6 +1012,8 @@ rsc.io/pdf v0.1.1/go.mod h1:n8OzWcQ6Sp37PL01nO98y4iUCRdTGarVfzxY20ICaU4=
 sigs.k8s.io/controller-runtime v0.1.9/go.mod h1:HFAYoOh6XMV+jKF1UjFwrknPbowfyHEHHRdJMf2jMX8=
 sigs.k8s.io/controller-runtime v0.4.0 h1:wATM6/m+3w8lj8FXNaO6Fs/rq/vqoOjO1Q116Z9NPsg=
 sigs.k8s.io/controller-runtime v0.4.0/go.mod h1:ApC79lpY3PHW9xj/w9pj+lYkLgwAAUZwfXkME1Lajns=
+sigs.k8s.io/controller-runtime v0.6.0 h1:Fzna3DY7c4BIP6KwfSlrfnj20DJ+SeMBK8HSFvOk9NM=
+sigs.k8s.io/controller-runtime v0.6.0/go.mod h1:CpYf5pdNY/B352A1TFLAS2JVSlnGQ5O2cftPHndTroo=
 sigs.k8s.io/controller-tools v0.2.4/go.mod h1:m/ztfQNocGYBgTTCmFdnK94uVvgxeZeE3LtJvd/jIzA=
 sigs.k8s.io/controller-tools v0.3.0 h1:y3YD99XOyWaXkiF1kd41uRvfp/64teWcrEZFuHxPhJ4=
 sigs.k8s.io/controller-tools v0.3.0/go.mod h1:enhtKGfxZD1GFEoMgP8Fdbu+uKQ/cq1/WGJhdVChfvI=

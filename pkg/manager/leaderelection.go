@@ -10,13 +10,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-func (k *KubeMacPoolManager) waitToStartLeading() error {
+func (k *KubeMacPoolManager) waitToStartLeading(poolManager *poolmanager.PoolManager) error {
 	<-k.mgr.Elected()
 	// If we reach here then we are in the elected pod.
 
-	err := k.markPodAsLeader()
+	err := poolManager.Start()
+	if err != nil {
+		log.Error(err, "failed to start pool manager routines")
+		return err
+	}
+
+	err = k.markPodAsLeader()
 	if err != nil {
 		log.Error(err, "failed marking pod as leader")
 		return err

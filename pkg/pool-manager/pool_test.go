@@ -19,11 +19,10 @@ package pool_manager
 import (
 	"encoding/json"
 	"fmt"
-	"net"
-
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
+	"net"
 
 	multus "github.com/intel/multus-cni/types"
 	v1 "k8s.io/api/core/v1"

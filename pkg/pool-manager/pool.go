@@ -17,6 +17,7 @@ limitations under the License.
 package pool_manager
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"sync"
@@ -182,14 +183,14 @@ func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {
 
 // Checks if the namespace of an instance is opted in for kubemacpool
 func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName, webhookName string) (bool, error) {
-	ns, err := p.kubeClient.CoreV1().Namespaces().Get(namespaceName, metav1.GetOptions{})
+	ns, err := p.kubeClient.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
 	if err != nil {
 		return false, errors.Wrapf(err, "Failed to get Namespace %s", namespaceName)
 	}
 	namespaceLabelMap := ns.GetLabels()
 	log.V(3).Info("namespaceName Labels", "namespaceName", namespaceName, "Labels", namespaceLabelMap)
 
-	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(mutatingWebhookConfigName, metav1.GetOptions{})
+	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
 	if err != nil {
 		return false, errors.Wrapf(err, "Failed to get mutatingWebhookConfig %s", mutatingWebhookConfigName)
 	}

@@ -85,16 +85,16 @@ func NewTestClient() (*TestClient, error) {
 }
 
 func createTestNamespaces() error {
-	_, err := testClient.KubeClient.CoreV1().Namespaces().Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}})
+	_, err := testClient.KubeClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}}, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Create(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}})
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}}, metav1.CreateOptions{})
 	return err
 }
 
 func deleteTestNamespaces(namespace string) error {
-	return testClient.KubeClient.CoreV1().Namespaces().Delete(namespace, &metav1.DeleteOptions{})
+	return testClient.KubeClient.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
 }
 
 func removeTestNamespaces() {
@@ -174,7 +174,7 @@ func restartKubemacpoolManagerPods() error {
 	}
 
 	for _, pod := range oldPods.Items {
-		err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(pod.Name, &metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
+		err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{GracePeriodSeconds: &gracePeriodSeconds})
 		if err != nil {
 			return err
 		}
@@ -206,7 +206,7 @@ func restartKubemacpoolManagerPods() error {
 }
 
 func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get("kubemacpool-mac-range-config", metav1.GetOptions{})
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
 	configMap.Data["RANGE_START"] = rangeStart
 	configMap.Data["RANGE_END"] = rangeEnd
 
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(configMap)
+	_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}
@@ -313,14 +313,14 @@ func ChangeManagerLeadership() {
 
 func changeManagerReplicas(numOfReplica int32) error {
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
 		managerDeployment.Spec.Replicas = &numOfReplica
 
-		_, err = testClient.KubeClient.AppsV1().Deployments(managerNamespace).Update(managerDeployment)
+		_, err = testClient.KubeClient.AppsV1().Deployments(managerNamespace).Update(context.TODO(), managerDeployment, metav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -329,7 +329,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
 
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
@@ -342,7 +342,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 			return false
 		}
 
-		podsList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(metav1.ListOptions{})
+		podsList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			return false
 		}
@@ -365,14 +365,14 @@ func changeManagerReplicas(numOfReplica int32) error {
 }
 
 func cleanNamespaceLabels(namespace string) error {
-	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
+	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
 	nsObject.Labels = make(map[string]string)
 
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
 	return err
 }
 
@@ -380,7 +380,7 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 	if len(labels) == 0 {
 		return nil
 	}
-	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(namespace, metav1.GetOptions{})
+	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -393,7 +393,7 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 		}
 	}
 
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(nsObject)
+	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
 	return err
 }
 

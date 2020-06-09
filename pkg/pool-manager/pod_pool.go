@@ -17,6 +17,7 @@ limitations under the License.
 package pool_manager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -193,7 +194,7 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 
 func (p *PoolManager) initPodMap() error {
 	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
-	pods, err := p.kubeClient.CoreV1().Pods("").List(metav1.ListOptions{})
+	pods, err := p.kubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}

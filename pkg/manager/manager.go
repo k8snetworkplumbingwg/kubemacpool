@@ -32,6 +32,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
@@ -94,19 +95,17 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	}
 
 	for k.continueToRunManager {
-		log.Info("waiting for manager to become leader")
-		err = k.waitToStartLeading()
-		if err != nil {
-			log.Error(err, "failed to wait for leader election")
-			continue
-		}
 		log.Info("Setting up Manager")
 		mgr, err := manager.New(k.config, manager.Options{
-			MetricsBindAddress: k.metricsAddr,
+			MetricsBindAddress:      k.metricsAddr,
+			LeaderElection:          true,
+			LeaderElectionID:        names.LEADER_ID,
+			LeaderElectionNamespace: k.podNamespace,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to set up manager error %v", err)
 		}
+		k.mgr = mgr
 
 		err = kubevirt_api.AddToScheme(mgr.GetScheme())
 		if err != nil {
@@ -124,6 +123,8 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			go k.waitForKubevirt()
 		}
 		go k.waitForSignal()
+
+		go k.waitToStartLeading()
 
 		log.Info("Setting up controller")
 		err = controller.AddToManager(mgr, poolManager)

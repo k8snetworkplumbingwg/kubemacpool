@@ -1,6 +1,8 @@
 package manager
 
 import (
+	"context"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -12,13 +14,13 @@ func (k *KubeMacPoolManager) waitToStartLeading() error {
 }
 
 func (k *KubeMacPoolManager) markPodAsLeader() error {
-	pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(k.podName, metav1.GetOptions{})
+	pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(context.TODO(), k.podName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
 	pod.Labels[names.LEADER_LABEL] = "true"
-	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(pod)
+	_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
 	if err != nil {
 		return err
 	}

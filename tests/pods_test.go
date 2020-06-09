@@ -8,6 +8,7 @@ import (
 	"github.com/onsi/gomega/types"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -65,7 +66,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(OtherTestNamespace).Create(podObject)
+				_, err := testClient.KubeClient.CoreV1().Pods(OtherTestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -81,7 +82,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
+				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -103,7 +104,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
+				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -123,7 +124,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(podObject)
+				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				if err != nil {
 					return false
 				}

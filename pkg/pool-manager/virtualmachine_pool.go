@@ -17,6 +17,7 @@ limitations under the License.
 package pool_manager
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -244,7 +245,7 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
-	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1alpha3/virtualmachines").Do()
+	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1alpha3/virtualmachines").Do(context.TODO())
 	if result.Error() != nil {
 		return result.Error()
 	}
@@ -332,7 +333,7 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
 			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
 			log.V(1).Info("test", "requestURI", requestUrl)
-			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do()
+			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
 
 			data, err := result.Raw()
 			log.V(1).Info("get kubevirt virtual machine object response", "err", err, "response", string(data))
@@ -362,13 +363,13 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 
 // This function return or creates a config map that contains mac address and the allocation time.
 func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			_, err = p.kubeClient.CoreV1().
 				ConfigMaps(p.managerNamespace).
-				Create(&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: names.WAITING_VMS_CONFIGMAP,
-					Namespace: p.managerNamespace}})
+				Create(context.TODO(), &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: names.WAITING_VMS_CONFIGMAP,
+					Namespace: p.managerNamespace}}, metav1.CreateOptions{})
 
 			return map[string]string{}, nil
 		}
@@ -385,7 +386,7 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// refresh ConfigMaps instance
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -400,7 +401,7 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string) error
 			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
 		}
 
-		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 
 		return err
 	})
@@ -423,7 +424,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// refresh ConfigMaps instance
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
 			return errors.Wrap(err, "Failed to refresh manager's configmap instance")
 		}
@@ -448,7 +449,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 		}
 		logger.V(1).Info("set virtual machine's macs as ready", "macPoolMap", p.macPoolMap)
 
-		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 
 		return err
 	})
@@ -473,7 +474,7 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 	for _ = range c {
 		p.poolMutex.Lock()
 
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
 			logger.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
 			p.poolMutex.Unlock()
@@ -505,7 +506,7 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 		}
 
 		if configMapUpdateNeeded {
-			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(configMap)
+			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 		}
 
 		p.poolMutex.Unlock()

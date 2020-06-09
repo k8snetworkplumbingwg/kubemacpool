@@ -32,7 +32,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Post().
 			RequestURI(fmt.Sprintf(nadPostUrl, TestNamespace, "linux-bridge")).
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
-			Do()
+			Do(context.TODO())
 		Expect(result.Error()).NotTo(HaveOccurred(), "KubeCient should successfully respond to post request")
 	})
 
@@ -43,12 +43,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
 		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
 
-		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 
 		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
 		clearMap(vmWaitConfigMap.Data)
-		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(vmWaitConfigMap)
+		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, metav1.UpdateOptions{})
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
 		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
 
@@ -141,7 +141,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				err = testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
 			})
-			FIt("should automatically assign the vm with static MAC address within range", func() {
+			It("should automatically assign the vm with static MAC address within range", func() {
 				vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
 				By("Retrieve VM")
 				err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)

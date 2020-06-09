@@ -85,17 +85,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		return fmt.Errorf("unable to create a kubernetes client error %v", err)
 	}
 
-	log.Info("Setting up leader electionManager")
-	leaderElectionManager, err := manager.New(k.config, manager.Options{MetricsBindAddress: k.metricsAddr})
-	if err != nil {
-		return fmt.Errorf("unable to set up manager error %v", err)
-	}
-
-	err = k.newLeaderElection(k.config, leaderElectionManager.GetScheme())
-	if err != nil {
-		return fmt.Errorf("unable to create a leader election resource lock error %v", err)
-	}
-
 	for k.continueToRunManager {
 		log.Info("waiting for manager to become leader")
 		err = k.waitToStartLeading()

@@ -606,8 +606,6 @@ github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40T
 github.com/prometheus/tsdb v0.8.0/go.mod h1:fSI0j+IUQrDd7+ZtR9WKIGtoYAYAJUKcKhYLG25tN4g=
 github.com/qinqon/kube-admission-webhook v0.8.0 h1:Gpe2jqav0P6ulZA3PTlmmBL+QiDD45fV3KBMEetqeaA=
 github.com/qinqon/kube-admission-webhook v0.8.0/go.mod h1:q/RO2hTfSH6UzaUVy6IN+yXSDd4FHSA/LGp7jpHFRwQ=
-github.com/qinqon/kube-admission-webhook v0.8.1-0.20200525102605-cc8da9191286 h1:sRCMbYp4N8F+ATbadjMV4EHaJ4eK4/EJKW+y2wjhijU=
-github.com/qinqon/kube-admission-webhook v0.8.1-0.20200525102605-cc8da9191286/go.mod h1:q/RO2hTfSH6UzaUVy6IN+yXSDd4FHSA/LGp7jpHFRwQ=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/remyoudompheng/bigfft v0.0.0-20170806203942-52369c62f446/go.mod h1:uYEyJGbgTkfkS4+E/PavXkNJcbFIpEtjt2B0KDQ5+9M=
 github.com/rlmcpherson/s3gof3r v0.5.0/go.mod h1:s7vv7SMDPInkitQMuZzH615G7yWHdrU2r/Go7Bo71Rs=

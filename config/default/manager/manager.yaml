@@ -41,6 +41,8 @@ spec:
         control-plane: mac-controller-manager
         controller-tools.k8s.io: "1.0"
     spec:
+      readinessGates:
+        - conditionType: "kubemacpool.io/leader-ready"
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

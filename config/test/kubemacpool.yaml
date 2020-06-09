@@ -132,6 +132,7 @@ rules:
   - ""
   resources:
   - pods
+  - pods/status
   verbs:
   - get
   - list
@@ -314,6 +315,8 @@ spec:
         - mountPath: /etc/webhook/certs
           name: tls-key-pair
           readOnly: true
+      readinessGates:
+      - conditionType: kubemacpool.io/leadership
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
       volumes:

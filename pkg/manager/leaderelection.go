@@ -7,6 +7,8 @@ import (
 )
 
 func (k *KubeMacPoolManager) waitToStartLeading() error {
+	<-k.mgr.Elected()
+	// If we reach here then we are in the elected pod.
 	return k.markPodAsLeader()
 }
 

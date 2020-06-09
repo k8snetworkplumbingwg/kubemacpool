@@ -26,7 +26,6 @@ import (
 	"github.com/go-logr/logr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/leaderelection"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -44,14 +43,13 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	restartChannel           chan struct{}  // Close the channel if we need to regenerate certs
-	kubevirtInstalledChannel chan struct{}  // This channel is close after we found kubevirt to reload the manager
-	stopSignalChannel        chan os.Signal // stop channel signal
-	leaderElectionChannel    chan error     // Channel used by the leader election function send error if we lose the election
-	podNamespace             string         // manager pod namespace
-	podName                  string         // manager pod name
-	waitingTime              int            // Duration in second to lock a mac address before it was saved to etcd
-	leaderElection           *leaderelection.LeaderElector
+	restartChannel           chan struct{}   // Close the channel if we need to regenerate certs
+	kubevirtInstalledChannel chan struct{}   // This channel is close after we found kubevirt to reload the manager
+	stopSignalChannel        chan os.Signal  // stop channel signal
+	podNamespace             string          // manager pod namespace
+	podName                  string          // manager pod name
+	waitingTime              int             // Duration in second to lock a mac address before it was saved to etcd
+	mgr                      manager.Manager // Delegated controller-runtime manager
 }
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
@@ -60,7 +58,6 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 		restartChannel:           make(chan struct{}),
 		kubevirtInstalledChannel: make(chan struct{}),
 		stopSignalChannel:        make(chan os.Signal, 1),
-		leaderElectionChannel:    make(chan error, 1),
 		podNamespace:             podNamespace,
 		podName:                  podName,
 		metricsAddr:              metricsAddr,

@@ -95,11 +95,11 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 func (p *PoolManager) Start() error {
 	err := p.InitMaps()
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed Init pool manager maps")
 	}
 
 	if p.isKubevirt {
-		go p.vmWaitingCleanupLook(p.waitTime)
+		go p.vmWaitingCleanupLook()
 	}
 	return nil
 }

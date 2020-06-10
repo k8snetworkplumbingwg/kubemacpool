@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -13,35 +14,32 @@ import (
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-func (k *KubeMacPoolManager) waitToStartLeading(poolManager *poolmanager.PoolManager) error {
-	<-k.mgr.Elected()
+func (k *KubeMacPoolManager) waitToStartLeading(poolManger *poolmanager.PoolManager) error {
+	<-k.runtimeManager.Elected()
 	// If we reach here then we are in the elected pod.
 
-	err := poolManager.Start()
+	err := poolManger.Start()
 	if err != nil {
-		log.Error(err, "failed to start pool manager routines")
-		return err
+		return errors.Wrap(err, "failed to start pool manager routines")
 	}
 
-	err = k.markPodAsLeader()
+	err = k.AddLeaderLabelToElectedPod()
 	if err != nil {
-		log.Error(err, "failed marking pod as leader")
-		return err
+		return errors.Wrap(err, "failed marking pod as leader")
 	}
 
 	err = k.setLeadershipConditions(corev1.ConditionTrue)
 	if err != nil {
-		log.Error(err, "failed changing leadership condition to true")
-		return err
+		return errors.Wrap(err, "failed changing leadership condition to true")
 	}
 	return nil
 }
 
-func (k *KubeMacPoolManager) markPodAsLeader() error {
+func (k *KubeMacPoolManager) AddLeaderLabelToElectedPod() error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(context.TODO(), k.podName, metav1.GetOptions{})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to get currently running kubemacpool manager pod")
 		}
 
 		pod.Labels[names.LEADER_LABEL] = "true"
@@ -51,7 +49,7 @@ func (k *KubeMacPoolManager) markPodAsLeader() error {
 	})
 
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to update leader label to elected kubemacpool manager pod")
 	}
 
 	log.Info("marked this manager as leader for webhook", "podName", k.podName)
@@ -61,28 +59,25 @@ func (k *KubeMacPoolManager) markPodAsLeader() error {
 // By setting this status to true in all pods, we declare the kubemacpool as ready and allow the webhooks to start running.
 func (k *KubeMacPoolManager) setLeadershipConditions(status corev1.ConditionStatus) error {
 	podList := corev1.PodList{}
-	err := k.mgr.GetClient().List(context.TODO(), &podList, &client.ListOptions{Namespace: k.podNamespace})
+	err := k.runtimeManager.GetClient().List(context.TODO(), &podList, &client.ListOptions{Namespace: k.podNamespace})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "failed to list kubemacpool manager pods")
 	}
 	for _, pod := range podList.Items {
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 			podKey := types.NamespacedName{Namespace: k.podNamespace, Name: pod.Name}
-			err := k.mgr.GetClient().Get(context.TODO(), podKey, &pod)
+			err := k.runtimeManager.GetClient().Get(context.TODO(), podKey, &pod)
 			if err != nil {
-				return err
+				return errors.Wrap(err, "failed to get kubemacpool manager pods")
 			}
 
-			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{Type: "kubemacpool.io/leader-ready", Status: status, LastProbeTime: metav1.Time{}})
+			pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{Type: names.LEADER_READY_CONDITION_TYPE, Status: status, LastProbeTime: metav1.Time{}})
 
-			err = k.mgr.GetClient().Status().Update(context.TODO(), &pod)
-			if err != nil {
-				return err
-			}
-			return nil
+			err = k.runtimeManager.GetClient().Status().Update(context.TODO(), &pod)
+			return err
 		})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to update Leadership readiness gate status to  kubemacpool manager pods")
 		}
 	}
 	return nil

@@ -466,9 +466,9 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 // mutating webhook but we didn't get the creation event in the controller loop
 // this mean the create was failed by some other mutating or validating webhook
 // so we release the virtual machine
-func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
+func (p *PoolManager) vmWaitingCleanupLook() {
 	//if we reach here then we are in the leader pod
-	logger := log.WithName("vmWaitingCleanupLook").WithValues("macPoolMap", p.macPoolMap)
+	logger := log.WithName("vmWaitingCleanupLook")
 	c := time.Tick(3 * time.Second)
 	logger.Info("starting cleanup loop for waiting mac addresses")
 	for _ = range c {
@@ -483,7 +483,7 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 
 		configMapUpdateNeeded := false
 		if configMap.Data == nil {
-			logger.Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP)
+			logger.Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
 			p.poolMutex.Unlock()
 			continue
 		}
@@ -496,7 +496,9 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 				continue
 			}
 
-			if time.Now().After(t.Add(time.Duration(waitTime) * time.Second)) {
+			logger.Info("data:", "configMapName", names.WAITING_VMS_CONFIGMAP, "configMap.Data", configMap.Data, "macPoolMap", p.macPoolMap)
+
+			if time.Now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
 				configMapUpdateNeeded = true
 				delete(configMap.Data, macAddress)
 				macAddress = strings.Replace(macAddress, "-", ":", 5)
@@ -507,6 +509,12 @@ func (p *PoolManager) vmWaitingCleanupLook(waitTime int) {
 
 		if configMapUpdateNeeded {
 			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+		}
+
+		if err == nil {
+			logger.Info("the configMap successfully updated", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
+		} else {
+			logger.Info("the configMap failed to update", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
 		}
 
 		p.poolMutex.Unlock()

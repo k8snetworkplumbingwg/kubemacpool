@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
@@ -50,7 +51,7 @@ type KubeMacPoolManager struct {
 	podNamespace             string          // manager pod namespace
 	podName                  string          // manager pod name
 	waitingTime              int             // Duration in second to free macs of allocated vms that failed to start.
-	mgr                      manager.Manager // Delegated controller-runtime manager
+	runtimeManager           manager.Manager // Delegated controller-runtime manager
 }
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
@@ -84,27 +85,20 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	}
 
 	for k.continueToRunManager {
-		log.Info("Setting up Manager")
-		mgr, err := manager.New(k.config, manager.Options{
-			MetricsBindAddress:      k.metricsAddr,
-			LeaderElection:          true,
-			LeaderElectionID:        names.LEADER_ID,
-			LeaderElectionNamespace: k.podNamespace,
-		})
+		err = k.initRuntimeManager()
 		if err != nil {
-			return fmt.Errorf("unable to set up manager error %v", err)
+			return errors.Wrap(err, "unable to set up manager")
 		}
-		k.mgr = mgr
 
-		err = kubevirt_api.AddToScheme(mgr.GetScheme())
+		err = kubevirt_api.AddToScheme(k.runtimeManager.GetScheme())
 		if err != nil {
-			return fmt.Errorf("unable to register kubevirt scheme error %v", err)
+			errors.Wrap(err, "unable to register kubevirt scheme")
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
-			return fmt.Errorf("unable to create pool manager error %v", err)
+			errors.Wrap(err, "unable to create pool manager")
 		}
 
 		if !isKubevirtInstalled {
@@ -116,20 +110,20 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		go k.waitToStartLeading(poolManager)
 
 		log.Info("Setting up controllers")
-		err = controller.AddToManager(mgr, poolManager)
+		err = controller.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
-			return fmt.Errorf("unable to register controllers to the manager error %v", err)
+			errors.Wrap(err, "unable to register controllers to the manager")
 		}
 
 		log.Info("Setting up webhooks")
-		err = webhook.AddToManager(mgr, poolManager)
+		err = webhook.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
-			return fmt.Errorf("unable to register webhooks to the manager error %v", err)
+			errors.Wrap(err, "unable to register webhooks to the manager")
 		}
 
-		err = mgr.Start(k.restartChannel)
+		err = k.runtimeManager.Start(k.restartChannel)
 		if err != nil {
-			return fmt.Errorf("unable to run the manager error %v", err)
+			errors.Wrap(err, "unable to run the manager")
 		}
 
 		// restart channels
@@ -147,6 +141,19 @@ func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
 	}
 
 	return false
+}
+
+func (k *KubeMacPoolManager) initRuntimeManager() error {
+	log.Info("Setting up Manager")
+	var err error
+	k.runtimeManager, err = manager.New(k.config, manager.Options{
+		MetricsBindAddress:      k.metricsAddr,
+		LeaderElection:          true,
+		LeaderElectionID:        names.LEADER_ID,
+		LeaderElectionNamespace: k.podNamespace,
+	})
+
+	return err
 }
 
 // Check for Kubevirt CRD to be available

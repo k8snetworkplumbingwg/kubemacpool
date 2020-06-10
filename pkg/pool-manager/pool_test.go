@@ -44,11 +44,13 @@ var _ = Describe("Pool", func() {
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
 		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
 		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
+		err = poolManager.Start()
+		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
 
 		return poolManager
 	}

@@ -103,23 +103,9 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			log.Error(err, "failed to wait for leader election")
 			continue
 		}
-
-		healthProbeHost, ok := os.LookupEnv("HEALTH_PROBE_HOST")
-		if !ok {
-			log.Error(err, "Failed to load HEALTH_PROBE_HOST from environment variable")
-			os.Exit(1)
-		}
-
-		healthProbePort, ok := os.LookupEnv("HEALTH_PROBE_PORT")
-		if !ok {
-			log.Error(err, "Failed to load HEALTH_PROBE_PORT from environment variable")
-			os.Exit(1)
-		}
-
 		log.Info("Setting up Manager")
 		mgr, err := manager.New(k.config, manager.Options{
-			MetricsBindAddress:     k.metricsAddr,
-			HealthProbeBindAddress: fmt.Sprintf("%s:%s", healthProbeHost, healthProbePort),
+			MetricsBindAddress: k.metricsAddr,
 		})
 		if err != nil {
 			return fmt.Errorf("unable to set up manager error %v", err)

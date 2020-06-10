@@ -314,32 +314,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 			return false
 		}
 
-		if managerDeployment.Status.Replicas != numOfReplica {
-			return false
-		}
-
 		if managerDeployment.Status.ReadyReplicas != numOfReplica {
-			return false
-		}
-
-		podsList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return false
-		}
-
-		if len(podsList.Items) != int(numOfReplica) {
-			return false
-		}
-
-		numberOfReadyPods := int32(0)
-		for _, podObject := range podsList.Items {
-			for _, condition := range podObject.Status.Conditions {
-				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
-					numberOfReadyPods += 1
-				}
-			}
-		}
-		if numberOfReadyPods < numOfReplica {
 			return false
 		}
 

@@ -282,10 +282,6 @@ spec:
             configMapKeyRef:
               key: RANGE_END
               name: kubemacpool-mac-range-config
-        - name: HEALTH_PROBE_HOST
-          value: 0.0.0.0
-        - name: HEALTH_PROBE_PORT
-          value: "9440"
         image: registry:5000/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager

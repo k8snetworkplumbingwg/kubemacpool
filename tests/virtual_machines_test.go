@@ -130,7 +130,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				vm *kubevirtv1.VirtualMachine
 			)
 			BeforeEach(func() {
-				By("Restart kubemacpool to reset cache and mac range")
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
 				Expect(err).ToNot(HaveOccurred(), "should success restarting kubemacpool to reset mac range and cache")
 
@@ -515,27 +514,42 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 
 		Context("When the leader is changed", func() {
-			It("should be able to create a new virtual machine", func() {
+			var (
+				vm *kubevirtv1.VirtualMachine
+			)
+			BeforeEach(func() {
 				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred(), "should success restarting kubemacpool to reset mac range and cache")
 
-				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+				vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "02:00:ff:ff:ff:ff")},
 					[]kubevirtv1.Network{newNetwork("br")})
 
+				By("Create VM")
+				err = testClient.VirtClient.Create(context.TODO(), vm)
+				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
+				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+				Expect(err).ToNot(HaveOccurred(), "should success parsing the vm's mac")
+
+				ChangeManagerLeadership()
+			})
+			It("should be able to create a new virtual machine", func() {
+				anotherVm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+					[]kubevirtv1.Network{newNetwork("br")})
+				anotherVm.Name = "another-vm"
+
+				By("checking that a new VM can be created on new leader")
+				err := testClient.VirtClient.Create(context.TODO(), anotherVm)
+				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
+				_, err = net.ParseMAC(anotherVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+				Expect(err).ToNot(HaveOccurred(), "should success parsing the vm's mac")
+			})
+			It("should successfully prevent collisions with virtual machine created on previous leader", func() {
 				anotherVm := vm.DeepCopy()
 				anotherVm.Name = "another-vm"
 
-				err = testClient.VirtClient.Create(context.TODO(), vm)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-				Expect(err).ToNot(HaveOccurred())
-
-				ChangeManagerLeadership()
-
-				err = testClient.VirtClient.Create(context.TODO(), anotherVm)
-				Expect(err).ToNot(HaveOccurred())
-				_, err = net.ParseMAC(anotherVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-				Expect(err).ToNot(HaveOccurred())
+				By("checking that a new VM with same mac as old vm cannot be created")
+				err := testClient.VirtClient.Create(context.TODO(), anotherVm)
+				Expect(err).To(HaveOccurred(), "should fail creating vm with duplicate mac")
 			})
 		})
 		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {

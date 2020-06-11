@@ -87,7 +87,7 @@ func main() {
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {
-		log.Error(err, "Failed to run the manager")
+		log.Error(err, "Failed to run the kubemacpool manager")
 		os.Exit(1)
 	}
 }

@@ -17,7 +17,6 @@ package manager
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -76,12 +75,12 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	log.Info("Setting up client for manager")
 	k.config, err = config.GetConfig()
 	if err != nil {
-		return fmt.Errorf("unable to set up client config error %v", err)
+		return errors.Wrap(err, "unable to set up client config")
 	}
 
 	k.clientset, err = kubernetes.NewForConfig(k.config)
 	if err != nil {
-		return fmt.Errorf("unable to create a kubernetes client error %v", err)
+		return errors.Wrap(err, "unable to create a kubernetes client")
 	}
 
 	for k.continueToRunManager {
@@ -92,13 +91,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 
 		err = kubevirt_api.AddToScheme(k.runtimeManager.GetScheme())
 		if err != nil {
-			errors.Wrap(err, "unable to register kubevirt scheme")
+			return errors.Wrap(err, "unable to register kubevirt scheme")
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
-			errors.Wrap(err, "unable to create pool manager")
+			return errors.Wrap(err, "unable to create pool manager")
 		}
 
 		if !isKubevirtInstalled {
@@ -112,18 +111,18 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		log.Info("Setting up controllers")
 		err = controller.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
-			errors.Wrap(err, "unable to register controllers to the manager")
+			return errors.Wrap(err, "unable to register controllers to the manager")
 		}
 
 		log.Info("Setting up webhooks")
 		err = webhook.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
-			errors.Wrap(err, "unable to register webhooks to the manager")
+			return errors.Wrap(err, "unable to register webhooks to the manager")
 		}
 
 		err = k.runtimeManager.Start(k.restartChannel)
 		if err != nil {
-			errors.Wrap(err, "unable to run the manager")
+			log.Error(err, "unable to run the manager")
 		}
 
 		// restart channels
@@ -173,6 +172,7 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	select {
 	// This channel is a system interrupt this will stop the container
 	case <-k.stopSignalChannel:
+		log.Info("received stop signal interrupt. exiting.")
 		k.continueToRunManager = false
 	// This interrupt occurred when kubevirt is installed in the cluster and will restart the manager code only
 	// The container will not restart in this scenario

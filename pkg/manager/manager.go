@@ -16,6 +16,7 @@ limitations under the License.
 package manager
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -166,7 +167,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 }
 
 func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
-	result := kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("/apis/apiextensions.k8s.io/v1beta1/customresourcedefinitions/virtualmachines.kubevirt.io").Do()
+	result := kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("/apis/apiextensions.k8s.io/v1beta1/customresourcedefinitions/virtualmachines.kubevirt.io").Do(context.TODO())
 	if result.Error() == nil {
 		return true
 	}

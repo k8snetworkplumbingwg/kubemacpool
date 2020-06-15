@@ -441,7 +441,9 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 		logger.V(1).Info("set vm's mac to status allocated", "vm interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
 		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
 			if vmInterface.MacAddress != "" {
-				p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
+				if _, exist := p.macPoolMap[vmInterface.MacAddress]; exist {
+					p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
+				}
 				macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
 				delete(configMap.Data, macAddress)
 			}

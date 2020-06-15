@@ -17,15 +17,17 @@ limitations under the License.
 package pool_manager
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 
 	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
 	multus "github.com/intel/multus-cni/types"
+	"github.com/onsi/ginkgo/extensions/table"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,11 +47,11 @@ var _ = Describe("Pool", func() {
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
 		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
 		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, names.MANAGER_NAMESPACE, false, 10)
-		Expect(err).ToNot(HaveOccurred())
+		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
 
 		return poolManager
 	}
@@ -372,6 +374,72 @@ var _ = Describe("Pool", func() {
 
 				_, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
 				Expect(exist).To(BeFalse())
+			})
+		})
+		Context("check create a vm with mac address allocation", func() {
+			var (
+				newVM        *kubevirt.VirtualMachine
+				poolManager  *PoolManager
+				allocatedMac string
+			)
+			BeforeEach(func() {
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:01", &vmConfigMap)
+				newVM = masqueradeVM.DeepCopy()
+				newVM.Name = "newVM"
+
+				By("Create a VM")
+				err := poolManager.AllocateVirtualMachineMac(newVM)
+				Expect(err).ToNot(HaveOccurred(), "should successfully  allocated macs")
+
+				allocatedMac = newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+			})
+			It("should set a mac in configmap with new mac", func() {
+				By("get configmap")
+				configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+				Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
+
+				By("checking the configmap is updated with mac allocated")
+				macAddressInConfigMapFormat := strings.Replace(allocatedMac, ":", "-", 5)
+				Expect(configMap.Data).To(HaveLen(1), "configmap should hold the mac address waiting for approval")
+				fmt.Printf("configMap Data %v\n", configMap.Data)
+				_, exist := configMap.Data[macAddressInConfigMapFormat]
+				Expect(exist).To(Equal(true), "should have an entry of the mac in the configmap")
+			})
+			It("should set a mac in pool cache in AllocationStatusWaitingForPod status", func() {
+				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
+				Expect(poolManager.macPoolMap[allocatedMac]).To(Equal(AllocationStatusWaitingForPod), "macPoolMap's mac's status should be set to AllocationStatusWaitingForPod status")
+			})
+			Context("and VM is marked as ready", func() {
+				BeforeEach(func() {
+					By("mark the vm as allocated")
+					err := poolManager.MarkVMAsReady(newVM, log.WithName("fake-Reconcile"))
+					Expect(err).ToNot(HaveOccurred(), "should mark allocated macs as valid")
+				})
+				It("should successfully allocate the first mac in the range", func() {
+					By("check mac allocated as expected")
+					Expect(allocatedMac).To(Equal("02:00:00:00:00:01"), "should successfully allocate the first mac in the range")
+				})
+				It("should properly update the configmap after vm creation", func() {
+					By("check configmap is empty")
+					configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
+					Expect(configMap.Data).To(BeEmpty(), "configmap should hold no more mac addresses for approval")
+				})
+				It("should properly update the pool cache after vm creation", func() {
+					By("check allocated pool is populated and set to AllocationStatusAllocated status")
+					Expect(poolManager.macPoolMap[allocatedMac]).To(Equal(AllocationStatusAllocated), "macPoolMap's mac's status should be set to AllocationStatusAllocated status")
+				})
+				It("should check no mac is inserted if the pool does not contain the mac address", func() {
+					By("deleting the mac from the pool")
+					delete(poolManager.macPoolMap, allocatedMac)
+
+					By("re-marking the vm as ready")
+					err := poolManager.MarkVMAsReady(newVM, log.WithName("fake-Reconcile"))
+					Expect(err).ToNot(HaveOccurred(), "should not return err if there are no macs to mark as ready")
+
+					By("checking the pool cache is not updated")
+					Expect(poolManager.macPoolMap).To(BeEmpty(), "macPoolMap should be empty")
+				})
 			})
 		})
 	})

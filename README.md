@@ -8,32 +8,29 @@ For VirtualMachines, it also allocates a mac address for the primary interface i
 
 ## Usage
 
-For test environment you can use the [development environment](#Develop)
+For test environment you can use the [development environment](#Develop).
 
 For Production deployment:
 
-Install any supported [Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec) implementation.
-
-For example [Multus](https://github.com/intel/multus-cni).
-To deploy multus on a kubernetes cluster with flannel cni.
+* Install any supported [Network Plumbing Working Group de-facto standard](https://github.com/k8snetworkplumbingwg/multi-net-spec) implementation, for example [Multus](https://github.com/intel/multus-cni).
+  To deploy multus on a kubernetes cluster with flannel cni:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/multus/kubernetes-multus.yaml
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/multus/multus.yaml
 ```
 
-[CNI plugins](https://github.com/containernetworking/plugins) must be installed in the cluster.
-For CNI plugins you can use the follow command to deploy them inside your cluster.
-
+* [CNI plugins](https://github.com/containernetworking/plugins) must be installed in the cluster, for example
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/cni-plugins/cni-plugins.yaml
 ```
 
-
-Download the project yaml and apply it.
-
-**note:** default mac range is from 02:00:00:00:00:00 to FD:FF:FF:FF:FF:FF the can be edited in the configmap
+* Download the project yaml and modify its mac range to avoid collisions with nearby clusters.
+  Finally, deploy the project by applying its yaml.
 ```bash
 wget https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/config/release/kubemacpool.yaml
+mac_oui=02:`openssl rand -hex 1`:`openssl rand -hex 1`
+sed -i "s/02:00:00:00:00:00/$mac_oui:00:00:00/" kubemacpool.yaml
+sed -i "s/02:FF:FF:FF:FF:FF/$mac_oui:FF:FF:FF/" kubemacpool.yaml
 kubectl apply -f ./kubemacpool.yaml
 ```
 

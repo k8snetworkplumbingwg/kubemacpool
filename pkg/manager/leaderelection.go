@@ -2,6 +2,7 @@ package manager
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
@@ -9,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
@@ -17,13 +19,16 @@ import (
 func (k *KubeMacPoolManager) waitToStartLeading(poolManger *poolmanager.PoolManager) error {
 	<-k.runtimeManager.Elected()
 	// If we reach here then we are in the elected pod.
+	logger := logf.Log.WithName("waitToStartLeading")
+
+	logger.Info("pod won election")
 
 	err := poolManger.Start()
 	if err != nil {
 		return errors.Wrap(err, "failed to start pool manager routines")
 	}
 
-	err = k.AddLeaderLabelToElectedPod()
+	err = k.UpdateLeaderLabel()
 	if err != nil {
 		return errors.Wrap(err, "failed marking pod as leader")
 	}
@@ -35,24 +40,42 @@ func (k *KubeMacPoolManager) waitToStartLeading(poolManger *poolmanager.PoolMana
 	return nil
 }
 
-func (k *KubeMacPoolManager) AddLeaderLabelToElectedPod() error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		pod, err := k.clientset.CoreV1().Pods(k.podNamespace).Get(context.TODO(), k.podName, metav1.GetOptions{})
-		if err != nil {
-			return errors.Wrap(err, "failed to get currently running kubemacpool manager pod")
-		}
-
-		pod.Labels[names.LEADER_LABEL] = "true"
-
-		_, err = k.clientset.CoreV1().Pods(k.podNamespace).Update(context.TODO(), pod, metav1.UpdateOptions{})
-		return err
-	})
-
+// Adds the leader label to elected pod and removes it from all the other pods, if exists
+func (k *KubeMacPoolManager) UpdateLeaderLabel() error {
+	logger := logf.Log.WithName("UpdateLeaderLabel")
+	podList := corev1.PodList{}
+	err := k.runtimeManager.GetClient().List(context.TODO(), &podList, &client.ListOptions{Namespace: k.podNamespace})
 	if err != nil {
-		return errors.Wrap(err, "failed to update leader label to elected kubemacpool manager pod")
+		return errors.Wrap(err, "failed to list kubemacpool manager pods")
 	}
 
-	log.Info("marked this manager as leader for webhook", "podName", k.podName)
+	for _, pod := range podList.Items {
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			podKey := types.NamespacedName{Namespace: k.podNamespace, Name: pod.Name}
+			err := k.runtimeManager.GetClient().Get(context.TODO(), podKey, &pod)
+			if err != nil {
+				return errors.Wrap(err, "failed to get kubemacpool manager pod")
+			}
+
+			_, exist := pod.Labels[names.LEADER_LABEL]
+			if pod.Name == k.podName && !exist {
+				logger.V(1).Info("add the label to the elected leader", "Pod Name", pod.Name)
+				pod.Labels[names.LEADER_LABEL] = "true"
+			} else if exist {
+				logger.V(1).Info("deleting leader label from old leader", "Pod Name", pod.Name)
+				delete(pod.Labels, names.LEADER_LABEL)
+			} else {
+				return nil
+			}
+
+			return k.runtimeManager.GetClient().Status().Update(context.TODO(), &pod)
+		})
+
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to updating kubemacpool leader label in pod %s", pod.Name))
+		}
+	}
+
 	return nil
 }
 

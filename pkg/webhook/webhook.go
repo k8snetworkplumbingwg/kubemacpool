@@ -17,8 +17,8 @@ limitations under the License.
 package webhook
 
 import (
+	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
-	"github.com/qinqon/kube-admission-webhook/pkg/webhook/server/certificate"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"

@@ -403,7 +403,6 @@ var _ = Describe("Pool", func() {
 				By("checking the configmap is updated with mac allocated")
 				macAddressInConfigMapFormat := strings.Replace(allocatedMac, ":", "-", 5)
 				Expect(configMap.Data).To(HaveLen(1),"configmap should hold the mac address waiting for approval")
-				fmt.Printf("configMap Data %v\n", configMap.Data)
 				_, exist := configMap.Data[macAddressInConfigMapFormat]
 				Expect(exist).To(Equal(true), "should have an entry of the mac in the configmap")
 			})

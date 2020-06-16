@@ -1,13 +1,5 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: kubemacpool-mac-controller-manager
-  namespace: kubemacpool-system
-spec:
-  template:
-    spec:
-      containers:
-      - name: manager
-        args:
-          - "--v=debug"
-          - "--wait-time=10"
+[
+{"op": "replace",
+ "path": "/spec/template/spec/containers/0/args/0",
+ "value": "--v=debug"}
+]

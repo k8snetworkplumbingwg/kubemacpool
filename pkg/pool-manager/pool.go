@@ -50,6 +50,7 @@ type PoolManager struct {
 	poolMutex        sync.Mutex                   // mutex for allocation an release
 	isLeader         bool                         // leader boolean
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
+	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
 }
 
 type AllocationStatus string
@@ -85,18 +86,22 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		managerNamespace: managerNamespace,
 		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       map[string]AllocationStatus{},
-		poolMutex:        sync.Mutex{}}
-
-	err = poolManger.InitMaps()
-	if err != nil {
-		return nil, err
-	}
-
-	if kubevirtExist {
-		go poolManger.vmWaitingCleanupLook(waitTime)
-	}
+		poolMutex:        sync.Mutex{},
+		waitTime:         waitTime}
 
 	return poolManger, nil
+}
+
+func (p *PoolManager) Start() error {
+	err := p.InitMaps()
+	if err != nil {
+		return errors.Wrap(err, "failed Init pool manager maps")
+	}
+
+	if p.isKubevirt {
+		go p.vmWaitingCleanupLook()
+	}
+	return nil
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {

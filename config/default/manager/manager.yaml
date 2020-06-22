@@ -3,9 +3,9 @@ kind: Namespace
 metadata:
   labels:
     control-plane: mac-controller-manager
-    controller-tools.k8s.io: "1.0"
-    runlevel: "0"
-    openshift.io/run-level: "0"
+    # Make sure that KubeMacPool pods are never handled by the webhook to
+    # prevent dead-lock.
+    mutatepods.kubemacpool.io: ignore
   name: system
 ---
 apiVersion: v1

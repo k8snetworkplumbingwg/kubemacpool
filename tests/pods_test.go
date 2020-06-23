@@ -52,12 +52,12 @@ var _ = Describe("Pods", func() {
 			}
 
 			// Restore the default number of managers
-			err := changeManagerReplicas(defaultNumberOfReplicas)
+			err := changeDeploymentReplicas(names.MANAGER_DEPLOYMENT, defaultNumberOfReplicas)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		testCriticalNamespace := func(namespace string, namespaceLabelMap map[string]string, matcher types.GomegaMatcher) {
-			err := changeManagerReplicas(0)
+			err := changeDeploymentReplicas(names.MANAGER_DEPLOYMENT, 0)
 			Expect(err).ToNot(HaveOccurred())
 
 			err = addLabelsToNamespace(OtherTestNamespace, namespaceLabelMap)

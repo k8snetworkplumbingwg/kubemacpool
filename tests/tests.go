@@ -169,16 +169,25 @@ func findManagerNamespace() string {
 
 func restartKubemacpoolManagerPods() error {
 	// Remove all replicas
-	err := changeManagerReplicas(0)
+	err := changeDeploymentReplicas(names.MANAGER_DEPLOYMENT, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed stopping manager pods")
 	}
 
-	err = changeManagerReplicas(2)
+	err = changeDeploymentReplicas(names.CNAO_DEPLOYMENT, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed stopping CNAO pod")
+	}
+
+	err = changeDeploymentReplicas(names.MANAGER_DEPLOYMENT, 2)
 	if err != nil {
 		return errors.Wrap(err, "failed starting manager pods")
 	}
 
+	err = changeDeploymentReplicas(names.CNAO_DEPLOYMENT, 1)
+	if err != nil {
+		return errors.Wrap(err, "failed stopping manager pod")
+	}
 	return nil
 }
 
@@ -289,10 +298,10 @@ func ChangeManagerLeadership() {
 	}, 2*time.Minute, 3*time.Second).Should(Equal(corev1.ConditionTrue), "should have a leader manager pod with ready condition")
 }
 
-func changeManagerReplicas(numOfReplica int32) error {
-	By(fmt.Sprintf("updating deployment pod replicas to be %d", numOfReplica))
+func changeDeploymentReplicas(deploymentName string, numOfReplica int32) error {
+	By(fmt.Sprintf("updating %s deployment pod replicas to be %d", deploymentName, numOfReplica))
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -305,11 +314,11 @@ func changeManagerReplicas(numOfReplica int32) error {
 		}
 
 		return nil
-	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
+	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on deployment")
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
@@ -320,7 +329,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 
 		return true
 
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change deployment number of replicas")
 
 	return nil
 }

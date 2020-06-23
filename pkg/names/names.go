@@ -23,3 +23,5 @@ const WAITING_VMS_CONFIGMAP = "kubemacpool-vm-configmap"
 const WAIT_TIME_ARG = "wait-time"
 
 const LEADER_READY_CONDITION_TYPE = "kubemacpool.io/leader-ready"
+
+const CNAO_DEPLOYMENT = "cluster-network-addons-operator"

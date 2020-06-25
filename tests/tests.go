@@ -21,11 +21,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -242,16 +241,25 @@ func getVmFailCleanupWaitTime() time.Duration {
 	return 0
 }
 
-func ChangeManagerLeadership() {
+func getLeaderPod() (corev1.Pod, error) {
 	filterByLeaderLabel := client.MatchingLabels{
 		"kubemacpool-leader": "true",
 	}
 	leaderPods := corev1.PodList{}
 	err := testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
-	Expect(err).ToNot(HaveOccurred(), "should success listing leader manager pod")
-	Expect(leaderPods.Items).To(HaveLen(1), "should have just one leader manager pod")
+	if err != nil {
+		return corev1.Pod{}, errors.Wrap(err, "failed listing leader kubemacpool pods")
+	}
 
-	leaderPod := leaderPods.Items[0]
+	if len(leaderPods.Items) != 1 {
+		return corev1.Pod{}, fmt.Errorf("unexpected number of leader pods %d, there has to be only one", len(leaderPods.Items))
+	}
+	return leaderPods.Items[0], nil
+}
+
+func ChangeManagerLeadership() {
+	leaderPod, err := getLeaderPod()
+	ExpectWithOffset(1, err).To(Succeed(), "should succeed getting leader kubemacpool pod")
 	leaderPodKey := types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
 
 	By("Delete leader election pod")
@@ -267,13 +275,13 @@ func ChangeManagerLeadership() {
 	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "should fail with IsNotFound when kubemacpool leader pod is delete")
 
 	By("Wait for the other pod to take over leadership")
-	Eventually(func() []corev1.Pod {
-		leaderPods = corev1.PodList{}
-		testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
-		return leaderPods.Items
-	}, 2*time.Minute, 3*time.Second).Should(HaveLen(1), "should have just one leader manager pod after deleting previous leader")
+	leaderPod = corev1.Pod{}
+	Eventually(func() error {
+		var err error
+		leaderPod, err = getLeaderPod()
+		return err
+	}, 2*time.Minute, 3*time.Second).Should(Succeed(), "should have just one leader manager pod after deleting previous leader")
 
-	leaderPod = leaderPods.Items[0]
 	leaderPodKey = types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
 
 	By("Wait for leader pod to be ready")
@@ -287,6 +295,30 @@ func ChangeManagerLeadership() {
 		}
 		return corev1.ConditionUnknown
 	}, 2*time.Minute, 3*time.Second).Should(Equal(corev1.ConditionTrue), "should have a leader manager pod with ready condition")
+}
+
+func waitManagerDeploymentReady() {
+	By("Waiting for manager deployment to be ready")
+	Eventually(func() (corev1.ConditionStatus, error) {
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		if err != nil {
+			return corev1.ConditionUnknown, err
+		}
+		pods, err := getKubemacpoolPods()
+		if err != nil {
+			return corev1.ConditionUnknown, err
+		}
+		if int32(len(pods.Items)) != *managerDeployment.Spec.Replicas {
+			return corev1.ConditionUnknown, nil
+		}
+		for _, condition := range managerDeployment.Status.Conditions {
+			if condition.Type == v1.DeploymentAvailable {
+				return condition.Status, nil
+			}
+		}
+		return corev1.ConditionUnknown, nil
+	}, 2*time.Minute, 3*time.Second).Should(Equal(corev1.ConditionTrue), "should have available deployment after chaing numbe of replicas")
+
 }
 
 func changeManagerReplicas(numOfReplica int32) error {
@@ -307,21 +339,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 		return nil
 	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
 
-	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
-	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
-		if err != nil {
-			return false
-		}
-
-		if managerDeployment.Status.ReadyReplicas != numOfReplica {
-			return false
-		}
-
-		return true
-
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
-
+	waitManagerDeploymentReady()
 	return nil
 }
 

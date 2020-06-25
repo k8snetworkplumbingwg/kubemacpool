@@ -57,15 +57,12 @@ func (k *KubeMacPoolManager) UpdateLeaderLabel() error {
 				return errors.Wrap(err, "failed to get kubemacpool manager pod")
 			}
 
-			_, exist := pod.Labels[names.LEADER_LABEL]
-			if pod.Name == k.podName && !exist {
-				logger.V(1).Info("add the label to the elected leader", "Pod Name", pod.Name)
+			if pod.Name == k.podName {
+				logger.Info("add the label to the elected leader", "Pod Name", pod.Name)
 				pod.Labels[names.LEADER_LABEL] = "true"
-			} else if exist {
-				logger.V(1).Info("deleting leader label from old leader", "Pod Name", pod.Name)
-				delete(pod.Labels, names.LEADER_LABEL)
 			} else {
-				return nil
+				logger.Info("deleting leader label if exists", "Pod Name", pod.Name)
+				delete(pod.Labels, names.LEADER_LABEL)
 			}
 
 			return k.runtimeManager.GetClient().Status().Update(context.TODO(), &pod)

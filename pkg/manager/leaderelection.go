@@ -28,7 +28,7 @@ func (k *KubeMacPoolManager) waitToStartLeading(poolManger *poolmanager.PoolMana
 		return errors.Wrap(err, "failed to start pool manager routines")
 	}
 
-	err = k.UpdateLeaderLabel()
+	err = updateLeaderLabel(k.runtimeManager.GetClient(), k.podName, k.podNamespace)
 	if err != nil {
 		return errors.Wrap(err, "failed marking pod as leader")
 	}
@@ -37,42 +37,6 @@ func (k *KubeMacPoolManager) waitToStartLeading(poolManger *poolmanager.PoolMana
 	if err != nil {
 		return errors.Wrap(err, "failed changing leadership condition to true")
 	}
-	return nil
-}
-
-// Adds the leader label to elected pod and removes it from all the other pods, if exists
-func (k *KubeMacPoolManager) UpdateLeaderLabel() error {
-	logger := logf.Log.WithName("UpdateLeaderLabel")
-	podList := corev1.PodList{}
-	err := k.runtimeManager.GetClient().List(context.TODO(), &podList, &client.ListOptions{Namespace: k.podNamespace})
-	if err != nil {
-		return errors.Wrap(err, "failed to list kubemacpool manager pods")
-	}
-
-	for _, pod := range podList.Items {
-		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			podKey := types.NamespacedName{Namespace: k.podNamespace, Name: pod.Name}
-			err := k.runtimeManager.GetClient().Get(context.TODO(), podKey, &pod)
-			if err != nil {
-				return errors.Wrap(err, "failed to get kubemacpool manager pod")
-			}
-
-			if pod.Name == k.podName {
-				logger.Info("add the label to the elected leader", "Pod Name", pod.Name)
-				pod.Labels[names.LEADER_LABEL] = "true"
-			} else {
-				logger.Info("deleting leader label if exists", "Pod Name", pod.Name)
-				delete(pod.Labels, names.LEADER_LABEL)
-			}
-
-			return k.runtimeManager.GetClient().Status().Update(context.TODO(), &pod)
-		})
-
-		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("failed to updating kubemacpool leader label in pod %s", pod.Name))
-		}
-	}
-
 	return nil
 }
 
@@ -100,5 +64,44 @@ func (k *KubeMacPoolManager) setLeadershipConditions(status corev1.ConditionStat
 			return errors.Wrap(err, "failed to update Leadership readiness gate status to  kubemacpool manager pods")
 		}
 	}
+	return nil
+}
+
+// Adds the leader label to elected pod and removes it from all the other pods, if exists
+func updateLeaderLabel(kubeClient client.Client, leaderPodName, managerNamespace string) error {
+	logger := logf.Log.WithName("UpdateLeaderLabel")
+	podList := corev1.PodList{}
+	err := kubeClient.List(context.TODO(), &podList, &client.ListOptions{Namespace: managerNamespace})
+	if err != nil {
+		return errors.Wrap(err, "failed to list kubemacpool manager pods")
+	}
+
+	for _, pod := range podList.Items {
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			podKey := types.NamespacedName{Namespace: managerNamespace, Name: pod.Name}
+			err := kubeClient.Get(context.TODO(), podKey, &pod)
+			if err != nil {
+				return errors.Wrap(err, "failed to get kubemacpool manager pod")
+			}
+
+			if pod.Name == leaderPodName {
+				logger.Info("add the label to the elected leader", "Pod Name", pod.Name)
+				if len(pod.Labels) == 0 {
+					pod.Labels = make(map[string]string)
+				}
+				pod.Labels[names.LEADER_LABEL] = "true"
+			} else {
+				logger.Info("deleting leader label if exists", "Pod Name", pod.Name)
+				delete(pod.Labels, names.LEADER_LABEL)
+			}
+
+			return kubeClient.Status().Update(context.TODO(), &pod)
+		})
+
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to updating kubemacpool leader label in pod %s", pod.Name))
+		}
+	}
+
 	return nil
 }

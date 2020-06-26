@@ -52,7 +52,9 @@ var _ = Describe("leader election", func() {
 			table.DescribeTable("Should update the leader label in all pods", func(leaderPodFormerLabels, looserPodFormerLabels string) {
 				By("Adding the initial label state of the pods prior to winning the election")
 				initiatePodLabels(&leaderPod, leaderPodFormerLabels, leaderLabelValue)
+				initiatePodLabels(&leaderPod, "app", "kubemacpool")
 				initiatePodLabels(&looserPod, looserPodFormerLabels, leaderLabelValue)
+				initiatePodLabels(&looserPod, "app", "kubemacpool")
 
 				By("Initiating the Environment")
 				kubeClient := createEnvironment(&leaderPod, &looserPod)
@@ -65,14 +67,13 @@ var _ = Describe("leader election", func() {
 				checkLeaderPod := v1.Pod{}
 				err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: names.MANAGER_NAMESPACE, Name: leaderPodName}, &checkLeaderPod)
 				Expect(err).ToNot(HaveOccurred(), "should successfully get the kubemacpool leader pod")
-				Expect(checkLeaderPod.Labels).To(HaveLen(1), "leader pod should have only 1 label")
-				Expect(checkLeaderPod.Labels[names.LEADER_LABEL]).To(Equal(leaderLabelValue), "leader pod should have the leader label value")
+				Expect(checkLeaderPod.Labels).To(HaveKeyWithValue(names.LEADER_LABEL, leaderLabelValue), "leader pod should have the leader label value")
 
 				By("checking the non-leader pod has no leader label")
 				checkLooserPod := v1.Pod{}
 				err = kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: names.MANAGER_NAMESPACE, Name: loosingPodName}, &checkLooserPod)
 				Expect(err).ToNot(HaveOccurred(), "should successfully get the kubemacpool non-leader pod")
-				Expect(checkLooserPod.Labels).To(HaveLen(0), "non-leader pod should not have any labels")
+				Expect(checkLooserPod.Labels).ToNot(HaveKeyWithValue(names.LEADER_LABEL, leaderLabelValue), "non leader pod should not have the leader label value")
 			},
 				table.Entry("all pods don't have a former leader label", "", ""),
 				table.Entry("leader pod already has leader label from former election", names.LEADER_LABEL, ""),
@@ -85,7 +86,9 @@ var _ = Describe("leader election", func() {
 
 func initiatePodLabels(pod *v1.Pod, label string, labelValue string) {
 	if len(label) != 0 {
-		pod.Labels = make(map[string]string)
+		if len(pod.Labels) == 0 {
+			pod.Labels = make(map[string]string)
+		}
 		pod.Labels[label] = labelValue
 	}
 }

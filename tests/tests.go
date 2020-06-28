@@ -200,11 +200,8 @@ func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
 }
 
 func initKubemacpoolParams(rangeStart, rangeEnd string) error {
-	By("Restart kubemacpool to reset cache and mac range")
-	err := setRangeInRangeConfigMap(rangeStart, rangeEnd)
-	Expect(err).ToNot(HaveOccurred(), "Should succeed setting range in the range config map")
-
-	err = restartKubemacpoolManagerPods()
+	By("Restart Kubemacpool Pods")
+	err := restartKubemacpoolManagerPods()
 	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
 
 	return nil

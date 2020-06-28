@@ -11,3 +11,8 @@ patches:
       kind: Deployment
       name: kubemacpool-mac-controller-manager
       namespace: kubemacpool-system
+  - path: manager_range_patch.yaml
+    target:
+      kind: ConfigMap
+      name: mac-range-config
+      namespace: kubemacpool-system

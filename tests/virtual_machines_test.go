@@ -278,7 +278,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 		})
 		Context("When trying to create a VM after all MAC addresses in range have been occupied", func() {
-			PIt("[test_id:2162]should return an error because no MAC address is available", func() {
+			It("[test_id:2162]should return an error because no MAC address is available", func() {
 				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
 				//Expect(err).ToNot(HaveOccurred())
 
@@ -300,7 +300,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 		})
 		Context("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
-			PIt("[test_id:2165]should re-use the released MAC address for the creation of the new VM and not return an error", func() {
+			It("[test_id:2165]should re-use the released MAC address for the creation of the new VM and not return an error", func() {
 				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
 				//Expect(err).ToNot(HaveOccurred())
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
@@ -515,7 +515,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 		})
 		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
-			PIt("[test_id:2995]should successfully release the MAC and the new VM should be created with no errors", func() {
+			It("[test_id:2995]should successfully release the MAC and the new VM should be created with no errors", func() {
 				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
 				//Expect(err).ToNot(HaveOccurred())
 

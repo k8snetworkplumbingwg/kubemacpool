@@ -180,23 +180,6 @@ func restartKubemacpoolManagerPods() error {
 	return nil
 }
 
-func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	configMap.Data["RANGE_START"] = rangeStart
-	configMap.Data["RANGE_END"] = rangeEnd
-
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func initKubemacpoolParams() error {
 	By("Restart Kubemacpool Pods")
 	err := restartKubemacpoolManagerPods()

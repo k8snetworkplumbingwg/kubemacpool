@@ -18,6 +18,7 @@ package pool_manager
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -211,4 +212,17 @@ func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName
 	}
 
 	return false, nil
+}
+
+func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (uint64, error) {
+	err := checkRange(rangeStart, rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "mac Pool Size  is negative")
+	}
+
+	//making sure Uint64 receives an byte slice of size 8
+	startInt := binary.BigEndian.Uint64(append([]byte{0x0, 0x0}, rangeStart...))
+	endInt := binary.BigEndian.Uint64(append([]byte{0x0, 0x0}, rangeEnd...))
+
+	return endInt - startInt + 1, nil
 }

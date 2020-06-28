@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 
@@ -105,6 +106,30 @@ var _ = Describe("Pool", func() {
 			table.Entry("Valid address: 0E:00:00:00:00:00", "0E:00:00:00:00:00", false),
 			table.Entry("Invalid address: 01:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "01:FF:00:00:00:00", true),
 			table.Entry("Invalid address: FF:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "FF:FF:00:00:00:00", true),
+		)
+
+		table.DescribeTable("should check that a mac pool size is reported correctly", func(startMacAddr, endMacAddr string, expectedSize float64, needToSucceed bool) {
+			startMacAddrHW, err := net.ParseMAC(startMacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			endMacAddrHW, err := net.ParseMAC(endMacAddr)
+			Expect(err).ToNot(HaveOccurred())
+			poolSize, err := GetMacPoolSize(startMacAddrHW, endMacAddrHW)
+			if needToSucceed {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(float64(poolSize)).To(Equal(expectedSize))
+			} else {
+				Expect(err).To(HaveOccurred())
+			}
+		},
+			table.Entry("Start: 40:00:00:00:00:00  End: 50:00:00:00:00:00", "40:00:00:00:00:00", "50:00:00:00:00:00", math.Pow(2, 11*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00", "02:00:00:00:00:00", "03:00:00:00:00:00", math.Pow(2, 10*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:01:00:00:00:00", "02:00:00:00:00:00", "02:01:00:00:00:00", math.Pow(2, 8*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:10:00:00", "02:00:00:00:00:00", "02:00:00:10:00:00", math.Pow(2, 5*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:10  End: 02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:10", math.Pow(2, 1*4)+1, true),
+			table.Entry("Start: 00:00:00:00:00:01  End: 00:00:00:00:00:00", "00:00:00:00:00:01", "00:00:00:00:00:00", float64(0), false),
+			table.Entry("Start: 80:00:00:00:00:00  End: 00:00:00:00:00:00", "80:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
+			table.Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
+			table.Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
 		)
 	})
 

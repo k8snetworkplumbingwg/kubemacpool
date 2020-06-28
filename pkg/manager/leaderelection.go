@@ -71,7 +71,13 @@ func (k *KubeMacPoolManager) setLeadershipConditions(status corev1.ConditionStat
 func updateLeaderLabel(kubeClient client.Client, leaderPodName, managerNamespace string) error {
 	logger := logf.Log.WithName("UpdateLeaderLabel")
 	podList := corev1.PodList{}
-	err := kubeClient.List(context.TODO(), &podList, &client.ListOptions{Namespace: managerNamespace})
+
+	byNamespaceAndApp := &client.ListOptions{Namespace: managerNamespace}
+	client.MatchingLabels{
+		"app": "kubemacpool",
+	}.ApplyToList(byNamespaceAndApp)
+
+	err := kubeClient.List(context.TODO(), &podList, byNamespaceAndApp)
 	if err != nil {
 		return errors.Wrap(err, "failed to list kubemacpool manager pods")
 	}

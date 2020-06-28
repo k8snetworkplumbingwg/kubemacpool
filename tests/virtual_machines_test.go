@@ -60,6 +60,11 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 	})
 
 	Context("Check the client", func() {
+		BeforeEach(func() {
+			err := initKubemacpoolParams()
+			Expect(err).ToNot(HaveOccurred())
+
+		})
 		AfterEach(func() {
 			vmList := &kubevirtv1.VirtualMachineList{}
 			err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{})
@@ -87,12 +92,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 		Context("When the client wants to create a vm on an opted-out namespace", func() {
 			It("should create a vm object without a MAC assigned when no label is set to namespace", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				//remove namespace opt-in labels
 				By("removing the namespace opt-in label")
-				err = cleanNamespaceLabels(TestNamespace)
+				err := cleanNamespaceLabels(TestNamespace)
 				Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
@@ -106,12 +108,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 		Context("When kubemacpool is disabled on a namespace", func() {
 			It("should create a VM object without a MAC assigned", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				//change namespace opt-in label to disable
 				By("updating the namespace opt-in label to disabled")
-				err = cleanNamespaceLabels(TestNamespace)
+				err := cleanNamespaceLabels(TestNamespace)
 				Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 				err = addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "disabled"})
 				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
@@ -130,14 +129,11 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				vm *kubevirtv1.VirtualMachine
 			)
 			BeforeEach(func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred(), "should success restarting kubemacpool to reset mac range and cache")
-
 				vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 					[]kubevirtv1.Network{newNetwork("br")})
 
 				By("Create VM")
-				err = testClient.VirtClient.Create(context.TODO(), vm)
+				err := testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
 			})
 			It("should automatically assign the vm with static MAC address within range", func() {
@@ -176,11 +172,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		Context("When the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 			Context("When the MAC address is within range", func() {
 				It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {
-					err := initKubemacpoolParams(rangeStart, rangeEnd)
-					Expect(err).ToNot(HaveOccurred())
-
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
-					err = testClient.VirtClient.Create(context.TODO(), vm)
+					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
@@ -196,12 +189,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 			Context("When the MAC address is out of range", func() {
 				It("[test_id:2167]should reject a vm creation with an already allocated MAC address", func() {
-					err := initKubemacpoolParams(rangeStart, rangeEnd)
-					Expect(err).ToNot(HaveOccurred())
-
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "03:ff:ff:ff:ff:ff")},
 						[]kubevirtv1.Network{newNetwork("br")})
-					err = testClient.VirtClient.Create(context.TODO(), vm)
+					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred())
 					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
@@ -219,24 +209,18 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		Context("when the client tries to assign the same MAC address for two different interfaces in a single VM.", func() {
 			Context("When the MAC address is within range", func() {
 				It("[test_id:2199]should reject a VM creation with two interfaces that share the same MAC address", func() {
-					err := initKubemacpoolParams(rangeStart, rangeEnd)
-					Expect(err).ToNot(HaveOccurred())
-
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "02:00:00:00:ff:ff"),
 						newInterface("br2", "02:00:00:00:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
-					err = testClient.VirtClient.Create(context.TODO(), vm)
+					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).To(HaveOccurred())
 					Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
 				})
 			})
 			Context("When the MAC address is out of range", func() {
 				It("[test_id:2200]should reject a VM creation with two interfaces that share the same MAC address", func() {
-					err := initKubemacpoolParams(rangeStart, rangeEnd)
-					Expect(err).ToNot(HaveOccurred())
-
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "03:ff:ff:ff:ff:ff"),
 						newInterface("br2", "03:ff:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
-					err = testClient.VirtClient.Create(context.TODO(), vm)
+					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).To(HaveOccurred())
 					Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
 				})
@@ -244,12 +228,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("When two VM are deleted and we try to assign their MAC addresses for two newly created VM", func() {
 			It("[test_id:2164]should not return an error because the MAC addresses of the old VMs should have been released", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				//creating two VMs
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "")}, []kubevirtv1.Network{newNetwork("br1")})
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
@@ -298,13 +279,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("When trying to create a VM after all MAC addresses in range have been occupied", func() {
 			PIt("[test_id:2162]should return an error because no MAC address is available", func() {
-				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
-				Expect(err).ToNot(HaveOccurred())
+				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
+				//Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
 					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
-				err = testClient.VirtClient.Create(context.TODO(), vm)
+				err := testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
@@ -320,13 +301,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
 			PIt("[test_id:2165]should re-use the released MAC address for the creation of the new VM and not return an error", func() {
-				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
-				Expect(err).ToNot(HaveOccurred())
-
+				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:02")
+				//Expect(err).ToNot(HaveOccurred())
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
 					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).ToNot(HaveOccurred())
 				mac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
@@ -360,18 +340,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("When restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 			It("[test_id:2179]should return an error because the MAC address is taken by the older VM", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1")})
 
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())
 
 				//restart kubeMacPool
-				err = initKubemacpoolParams(rangeStart, rangeEnd)
+				err = initKubemacpoolParams()
 				Expect(err).ToNot(HaveOccurred())
 
 				vm2 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br2", "02:00:ff:ff:ff:ff")},
@@ -389,9 +366,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("When we re-apply a VM yaml", func() {
 			It("[test_id:2243]should assign to the VM the same MAC addresses as before the re-apply, and not return an error", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				intrefaces := make([]kubevirtv1.Interface, 5)
 				networks := make([]kubevirtv1.Network, 5)
 				for i := 0; i < 5; i++ {
@@ -402,7 +376,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				vm1 := CreateVmObject(TestNamespace, false, intrefaces, networks)
 				updateObject := vm1.DeepCopy()
 
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).ToNot(HaveOccurred())
 
 				updateObject.ObjectMeta = *vm1.ObjectMeta.DeepCopy()
@@ -436,16 +410,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				totalTimeout = timeout + vmFailCleanupWaitTime
 			})
 			It("[test_id:2633]should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				vm1 := CreateVmObject(TestNamespace, false,
 					[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
 					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
 				baseVM := vm1.DeepCopy()
 
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
@@ -460,9 +431,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 			})
 			It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred())
-
 				vm1 := CreateVmObject(TestNamespace, false,
 					[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
 					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
@@ -470,7 +438,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				baseVM := vm1.DeepCopy()
 				baseVM.Name = "new-vm"
 
-				err = testClient.VirtClient.Create(context.TODO(), vm1)
+				err := testClient.VirtClient.Create(context.TODO(), vm1)
 				Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
 				baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
@@ -489,12 +457,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		Context("testing finalizers", func() {
 			Context("When the VM is not being deleted", func() {
 				It("should have a finalizer and deletion timestamp should be zero ", func() {
-					err := initKubemacpoolParams(rangeStart, rangeEnd)
-					Expect(err).ToNot(HaveOccurred())
-
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 						[]kubevirtv1.Network{newNetwork("br")})
-					err = testClient.VirtClient.Create(context.TODO(), vm)
+					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred())
 
 					Eventually(func() bool {
@@ -518,14 +483,11 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				vm *kubevirtv1.VirtualMachine
 			)
 			BeforeEach(func() {
-				err := initKubemacpoolParams(rangeStart, rangeEnd)
-				Expect(err).ToNot(HaveOccurred(), "should success restarting kubemacpool to reset mac range and cache")
-
 				vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "02:00:ff:ff:ff:ff")},
 					[]kubevirtv1.Network{newNetwork("br")})
 
 				By("Create VM")
-				err = testClient.VirtClient.Create(context.TODO(), vm)
+				err := testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "should success parsing the vm's mac")
@@ -554,12 +516,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 		Context("When a VM's NIC is removed and a new VM is created with the same MAC", func() {
 			PIt("[test_id:2995]should successfully release the MAC and the new VM should be created with no errors", func() {
-				err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
-				Expect(err).ToNot(HaveOccurred())
+				//err := initKubemacpoolParams("02:00:00:00:00:00", "02:00:00:00:00:01")
+				//Expect(err).ToNot(HaveOccurred())
 
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""), newInterface("br2", "")},
 					[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
-				err = testClient.VirtClient.Create(context.TODO(), vm)
+				err := testClient.VirtClient.Create(context.TODO(), vm)
 				Expect(err).ToNot(HaveOccurred())
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred())

@@ -43,8 +43,6 @@ const (
 var (
 	managerNamespace         = ""
 	gracePeriodSeconds int64 = 3
-	rangeStart               = "02:00:00:00:00:00"
-	rangeEnd                 = "02:FF:FF:FF:FF:FF"
 	testClient         *TestClient
 )
 
@@ -199,7 +197,7 @@ func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
 	return nil
 }
 
-func initKubemacpoolParams(rangeStart, rangeEnd string) error {
+func initKubemacpoolParams() error {
 	By("Restart Kubemacpool Pods")
 	err := restartKubemacpoolManagerPods()
 	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")

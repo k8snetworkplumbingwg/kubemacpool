@@ -18,7 +18,6 @@ package pool_manager
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"sync"
@@ -28,6 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 const (
@@ -214,15 +215,21 @@ func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName
 	return false, nil
 }
 
-func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (uint64, error) {
+func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return 0, errors.Wrap(err, "mac Pool Size  is negative")
 	}
 
-	//making sure Uint64 receives an byte slice of size 8
-	startInt := binary.BigEndian.Uint64(append([]byte{0x0, 0x0}, rangeStart...))
-	endInt := binary.BigEndian.Uint64(append([]byte{0x0, 0x0}, rangeEnd...))
+	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeStart to int64")
+	}
+
+	endInt, err := utils.ConvertHwAddrToInt64(rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeEnd to int64")
+	}
 
 	return endInt - startInt + 1, nil
 }

@@ -190,7 +190,7 @@ func initKubemacpoolParams() error {
 	return nil
 }
 
-func getMacPoolSize() uint64 {
+func getMacPoolSize() int64 {
 	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should succeed getting kubemacpool range configmap")
 

@@ -289,7 +289,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
 
-				err = AllocateVmsUntilFull(2)
+				err = AllocateFillerVms(2)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
 
 				By("Trying to allocate a vm after there is no more macs to allocate")
@@ -320,7 +320,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm2's mac")
 
-				err = AllocateVmsUntilFull(3)
+				err = AllocateFillerVms(3)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
 
 				deleteVMI(vm1)
@@ -527,7 +527,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
 
-				err = AllocateVmsUntilFull(2)
+				err = AllocateFillerVms(2)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
 
 				By("checking that a new VM cannot be created when the range is full")
@@ -589,13 +589,13 @@ func newNetwork(name string) kubevirtv1.Network {
 	}
 }
 
-// This function allocates vms with 1 NIC each, in order to fill the mac pool to the brim.
-func AllocateVmsUntilFull(macsToLeaveFree uint64) error {
+// This function allocates vms with 1 NIC each, in order to fill the mac pool as much as needed.
+func AllocateFillerVms(macsToLeaveFree int64) error {
 	maxPoolSize := getMacPoolSize()
-	Expect(maxPoolSize > macsToLeaveFree).To(BeTrue(), "max pool size must be greater than the number of macs we want to leave free")
+	Expect(maxPoolSize).To(BeNumerically(">",macsToLeaveFree), "max pool size must be greater than the number of macs we want to leave free")
 
 	By(fmt.Sprintf("Allocating another %d vms until to allocate the entire mac range", maxPoolSize-macsToLeaveFree))
-	var i uint64
+	var i int64
 	for i = 0; i < maxPoolSize-macsToLeaveFree; i++ {
 		vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 			[]kubevirtv1.Network{newNetwork("br")})

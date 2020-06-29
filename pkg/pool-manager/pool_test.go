@@ -110,26 +110,26 @@ var _ = Describe("Pool", func() {
 
 		table.DescribeTable("should check that a mac pool size is reported correctly", func(startMacAddr, endMacAddr string, expectedSize float64, needToSucceed bool) {
 			startMacAddrHW, err := net.ParseMAC(startMacAddr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "Should succeed parsing startMacAddr")
 			endMacAddrHW, err := net.ParseMAC(endMacAddr)
-			Expect(err).ToNot(HaveOccurred())
+			Expect(err).ToNot(HaveOccurred(), "Should succeed parsing endMacAddr")
 			poolSize, err := GetMacPoolSize(startMacAddrHW, endMacAddrHW)
 			if needToSucceed {
-				Expect(err).ToNot(HaveOccurred())
-				Expect(float64(poolSize)).To(Equal(expectedSize))
+				Expect(err).ToNot(HaveOccurred(), "Should succeed getting Mac Pool size")
+				Expect(float64(poolSize)).To(Equal(expectedSize), "Should get the expected pool size value")
 			} else {
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(HaveOccurred(), "Should fail getting Mac Pool size duu to invalid params")
 			}
 		},
-			table.Entry("Start: 40:00:00:00:00:00  End: 50:00:00:00:00:00", "40:00:00:00:00:00", "50:00:00:00:00:00", math.Pow(2, 11*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00", "02:00:00:00:00:00", "03:00:00:00:00:00", math.Pow(2, 10*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:01:00:00:00:00", "02:00:00:00:00:00", "02:01:00:00:00:00", math.Pow(2, 8*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:10:00:00", "02:00:00:00:00:00", "02:00:00:10:00:00", math.Pow(2, 5*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:10  End: 02:00:00:00:00:00", "02:00:00:00:00:00", "02:00:00:00:00:10", math.Pow(2, 1*4)+1, true),
-			table.Entry("Start: 00:00:00:00:00:01  End: 00:00:00:00:00:00", "00:00:00:00:00:01", "00:00:00:00:00:00", float64(0), false),
-			table.Entry("Start: 80:00:00:00:00:00  End: 00:00:00:00:00:00", "80:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
-			table.Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
-			table.Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
+			table.Entry("Start: 40:00:00:00:00:00  End: 50:00:00:00:00:00 should succeed", "40:00:00:00:00:00", "50:00:00:00:00:00", math.Pow(2, 11*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "03:00:00:00:00:00", math.Pow(2, 10*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:01:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:01:00:00:00:00", math.Pow(2, 8*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:10:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:10:00:00", math.Pow(2, 5*4)+1, true),
+			table.Entry("Start: 02:00:00:00:00:10  End: 02:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:00:00:10", math.Pow(2, 1*4)+1, true),
+			table.Entry("Start: 00:00:00:00:00:01  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:01", "00:00:00:00:00:00", float64(0), false),
+			table.Entry("Start: 80:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "80:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
+			table.Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF should fail", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
+			table.Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
 		)
 	})
 

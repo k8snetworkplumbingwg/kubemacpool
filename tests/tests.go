@@ -302,11 +302,13 @@ func waitManagerDeploymentReady() {
 	Eventually(func() (corev1.ConditionStatus, error) {
 		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 		if err != nil {
-			return corev1.ConditionUnknown, err
+			By(fmt.Sprintf("Retrying on getting deployments error %v", err))
+			return corev1.ConditionUnknown, nil
 		}
 		pods, err := getKubemacpoolPods()
 		if err != nil {
-			return corev1.ConditionUnknown, err
+			By(fmt.Sprintf("Retrying on getting kubemacpool pods error %v", err))
+			return corev1.ConditionUnknown, nil
 		}
 		if int32(len(pods.Items)) != *managerDeployment.Spec.Replicas {
 			return corev1.ConditionUnknown, nil

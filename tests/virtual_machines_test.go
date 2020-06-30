@@ -277,8 +277,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		Context("When trying to create a VM after all MAC addresses in range have been occupied", func() {
-			It("[test_id:2162]should return an error because no MAC address is available", func() {
+		Context("When trying to create a VM and mac-pool is full", func() {
+			It("should return an error because no MAC address is available", func() {
 				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
 					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
@@ -300,7 +300,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
 			})
 		})
-		Context("when trying to create a VM after a MAC address has just been released duo to a VM deletion", func() {
+		Context("when trying to create a VM after a MAC address has just been released due to a VM deletion", func() {
 			It("[test_id:2165]should re-use the released MAC address for the creation of the new VM and not return an error", func() {
 				vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
 					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
@@ -320,16 +320,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm2's mac")
 
-				err = AllocateFillerVms(3)
-				Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
+				newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress),
+					newInterface("br2", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
 				deleteVMI(vm1)
 
-				newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
-					newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 				Eventually(func() error {
 					return testClient.VirtClient.Create(context.TODO(), newVM1)
-
 				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 				newMac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing newVM1's first mac")
@@ -338,6 +335,46 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 				Expect(newMac1.String()).To(Equal(mac1.String()), "Should be equal to the first mac that was released by vm1")
 				Expect(newMac2.String()).To(Equal(mac2.String()), "Should be equal to the second mac that was released by vm1")
+			})
+			Context("and mac-pool is full", func() {
+				It("should re-use the released MAC address for the creation of the new VM and not return an error, using automatic mac allocation of the mac left on the pool", func() {
+					vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
+						newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+
+					err := testClient.VirtClient.Create(context.TODO(), vm1)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating vm1")
+					mac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm1's first mac")
+					mac2, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm1's second mac")
+
+					vm2 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br3", "")},
+						[]kubevirtv1.Network{newNetwork("br3")})
+
+					err = testClient.VirtClient.Create(context.TODO(), vm2)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating vm2")
+					_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm2's mac")
+
+					err = AllocateFillerVms(3)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
+
+					deleteVMI(vm1)
+
+					newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
+						newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+					Eventually(func() error {
+						return testClient.VirtClient.Create(context.TODO(), newVM1)
+
+					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					newMac1, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing newVM1's first mac")
+					newMac2, err := net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing newVM1's second mac")
+
+					Expect(newMac1.String()).To(Equal(mac1.String()), "Should be equal to the first mac that was released by vm1")
+					Expect(newMac2.String()).To(Equal(mac2.String()), "Should be equal to the second mac that was released by vm1")
+				})
 			})
 		})
 		Context("When restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
@@ -527,15 +564,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
 				Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
 
-				err = AllocateFillerVms(2)
-				Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
-
+				reusedMacAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				By("checking that a new VM cannot be created when the range is full")
-				newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "")},
+				newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 					[]kubevirtv1.Network{newNetwork("br1")})
 				err = testClient.VirtClient.Create(context.TODO(), newVM)
-				Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
-				Expect(strings.Contains(err.Error(), "Failed to allocate mac to the vm object: the range is full")).To(Equal(true))
+				Expect(err).To(HaveOccurred(), "Should fail to allocate vm because the mac is already used")
 
 				By("checking that the VM's NIC can be removed")
 				err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -563,6 +597,55 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 
 				Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "new vm should be allocated with the now released mac address")
+			})
+			Context("and mac-pool is full", func() {
+				It("should successfully release the MAC and the new VM should be created with no errors with the only mac left allocated to it", func() {
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""), newInterface("br2", "")},
+						[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
+
+					err = AllocateFillerVms(2)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
+
+					By("checking that a new VM cannot be created when the range is full")
+					newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "")},
+						[]kubevirtv1.Network{newNetwork("br1")})
+					err = testClient.VirtClient.Create(context.TODO(), newVM)
+					Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
+					Expect(strings.Contains(err.Error(), "Failed to allocate mac to the vm object: the range is full")).To(Equal(true))
+
+					By("checking that the VM's NIC can be removed")
+					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
+
+						vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br2", "")}
+						vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br2")}
+
+						err = testClient.VirtClient.Update(context.TODO(), vm)
+						return err
+					})
+					Expect(err).ToNot(HaveOccurred(), "should succeed to remove NIC from vm")
+
+					Expect(len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "vm's total NICs should be 1")
+
+					By("checking that a new VM can be created after the VM's NIC had been removed ")
+					Eventually(func() error {
+						err = testClient.VirtClient.Create(context.TODO(), newVM)
+						if err != nil {
+							Expect(strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full")).To(Equal(true), "Should only get a range full error until cache get updated")
+						}
+						return err
+
+					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+
+					Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "new vm should be allocated with the now released mac address")
+				})
 			})
 		})
 	})

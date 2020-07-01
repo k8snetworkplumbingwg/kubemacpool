@@ -13,12 +13,11 @@ export GOROOT=$(BIN_DIR)/go/
 export GOBIN=$(GOROOT)/bin/
 export PATH := $(GOBIN):$(PATH)
 GOFMT := $(GOBIN)/gofmt
-GO := $(GOBIN)/go
+export GO := $(GOBIN)/go
 KUSTOMIZE := $(GOBIN)/kustomize
 CONTROLLER_GEN := $(GOBIN)/controller-gen
 DEEPCOPY_GEN := $(GOBIN)/deepcopy-gen
 GOVERALLS := $(GOBIN)/goveralls
-GINKGO := $(GOBIN)/ginkgo
 
 export KUBECTL ?= cluster/kubectl.sh
 
@@ -39,17 +38,14 @@ $(DEEPCOPY_GEN): go.mod
 $(GOVERALLS): go.mod
 	$(MAKE) tools
 
-$(GINKGO): go.mod
-	$(MAKE) tools
-
 $(GOFMT): $(GO)
 
 # Run tests
-test: $(GINKGO)
-	$(GINKGO) ./pkg/... ./cmd/... -coverprofile cover.out
+test: $(GO)
+	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
 
-functest: $(GINKGO)
-	GINKGO=$(GINKGO) ./hack/functest.sh
+functest: $(GO)
+	./hack/functest.sh
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy

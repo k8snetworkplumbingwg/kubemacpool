@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"time"
@@ -28,6 +29,7 @@ import (
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 const (
@@ -43,8 +45,6 @@ const (
 var (
 	managerNamespace         = ""
 	gracePeriodSeconds int64 = 3
-	rangeStart               = "02:00:00:00:00:00"
-	rangeEnd                 = "02:FF:FF:FF:FF:FF"
 	testClient         *TestClient
 )
 
@@ -182,32 +182,25 @@ func restartKubemacpoolManagerPods() error {
 	return nil
 }
 
-func setRangeInRangeConfigMap(rangeStart, rangeEnd string) error {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	configMap.Data["RANGE_START"] = rangeStart
-	configMap.Data["RANGE_END"] = rangeEnd
-
-	_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-	if err != nil {
-		return err
-	}
+func initKubemacpoolParams() error {
+	By("Restart Kubemacpool Pods")
+	err := restartKubemacpoolManagerPods()
+	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
 
 	return nil
 }
 
-func initKubemacpoolParams(rangeStart, rangeEnd string) error {
-	By("Restart kubemacpool to reset cache and mac range")
-	err := setRangeInRangeConfigMap(rangeStart, rangeEnd)
-	Expect(err).ToNot(HaveOccurred(), "Should succeed setting range in the range config map")
+func getMacPoolSize() int64 {
+	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
+	Expect(err).ToNot(HaveOccurred(), "Should succeed getting kubemacpool range configmap")
 
-	err = restartKubemacpoolManagerPods()
-	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
+	rangeStart, err := net.ParseMAC(configMap.Data["RANGE_START"])
+	rangeEnd, err := net.ParseMAC(configMap.Data["RANGE_END"])
 
-	return nil
+	pooSize, err := poolmanager.GetMacPoolSize(rangeStart, rangeEnd)
+	Expect(err).ToNot(HaveOccurred(), "Should succeed getting the mac pool size")
+
+	return pooSize
 }
 
 func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {

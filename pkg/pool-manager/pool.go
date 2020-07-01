@@ -27,6 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 const (
@@ -211,4 +213,23 @@ func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName
 	}
 
 	return false, nil
+}
+
+func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
+	err := checkRange(rangeStart, rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "mac Pool Size  is negative")
+	}
+
+	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeStart to int64")
+	}
+
+	endInt, err := utils.ConvertHwAddrToInt64(rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeEnd to int64")
+	}
+
+	return endInt - startInt + 1, nil
 }

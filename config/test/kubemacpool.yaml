@@ -190,7 +190,7 @@ subjects:
 ---
 apiVersion: v1
 data:
-  RANGE_END: 02:FF:FF:FF:FF:FF
+  RANGE_END: 02:00:00:00:00:0F
   RANGE_START: "02:00:00:00:00:00"
 kind: ConfigMap
 metadata:

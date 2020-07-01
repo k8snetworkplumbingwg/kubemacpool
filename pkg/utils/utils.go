@@ -16,6 +16,13 @@ limitations under the License.
 
 package utils
 
+import (
+	"fmt"
+	"net"
+	"strconv"
+	"strings"
+)
+
 func ContainsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
@@ -33,4 +40,18 @@ func RemoveString(slice []string, s string) (result []string) {
 		result = append(result, item)
 	}
 	return
+}
+
+func ConvertHwAddrToInt64(address net.HardwareAddr) (int64, error) {
+	var addressTokenList []string
+	for _, octet := range address {
+		addressTokenList = append(addressTokenList, fmt.Sprintf("%02x", octet))
+	}
+	addressString := strings.Join(addressTokenList, "")
+	addressValue, err := strconv.ParseInt(addressString, 16, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	return addressValue, nil
 }

@@ -24,6 +24,9 @@ var _ = Describe("Pods", func() {
 				err := addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocate"})
 				Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 			}
+
+			err := initKubemacpoolParams()
+			Expect(err).ToNot(HaveOccurred())
 		})
 
 		AfterEach(func() {
@@ -76,9 +79,6 @@ var _ = Describe("Pods", func() {
 		}
 
 		It("should create a pod when mac pool is running in a regular opted-in namespace", func() {
-			err := initKubemacpoolParams(rangeStart, rangeEnd)
-			Expect(err).ToNot(HaveOccurred())
-
 			podObject := createPodObject()
 
 			Eventually(func() bool {
@@ -92,11 +92,8 @@ var _ = Describe("Pods", func() {
 		})
 
 		It("should create a pod when mac pool is running in a regular opted-out namespace (disabled label)", func() {
-			err := initKubemacpoolParams(rangeStart, rangeEnd)
-			Expect(err).ToNot(HaveOccurred())
-
 			By("updating the namespace opt-in label to disabled")
-			err = cleanNamespaceLabels(TestNamespace)
+			err := cleanNamespaceLabels(TestNamespace)
 			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 			err = addLabelsToNamespace(TestNamespace, map[string]string{podNamespaceOptInLabel: "disable"})
 			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
@@ -114,11 +111,8 @@ var _ = Describe("Pods", func() {
 		})
 
 		It("should create a pod when mac pool is running in a regular opted-out namespace (no label)", func() {
-			err := initKubemacpoolParams(rangeStart, rangeEnd)
-			Expect(err).ToNot(HaveOccurred())
-
 			By("removing the namespace opt-in label")
-			err = cleanNamespaceLabels(TestNamespace)
+			err := cleanNamespaceLabels(TestNamespace)
 			Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 
 			podObject := createPodObject()

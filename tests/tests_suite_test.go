@@ -9,13 +9,24 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestTests(t *testing.T) {
 	RegisterFailHandler(KubemacPoolFailedFunction)
-	RunSpecs(t, "Tests Suite")
+
+	reporters := make([]Reporter, 0)
+	if ginkgo_reporters.Polarion.Run {
+		reporters = append(reporters, &ginkgo_reporters.Polarion)
+	}
+	if ginkgo_reporters.JunitOutput != "" {
+		reporters = append(reporters, ginkgo_reporters.NewJunitReporter())
+	}
+
+	RunSpecsWithDefaultAndCustomReporters(t, "E2E Test Suite", reporters)
 }
 
 var _ = BeforeSuite(func() {

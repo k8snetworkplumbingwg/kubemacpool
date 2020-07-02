@@ -19,11 +19,11 @@ import (
 var _ = Describe("kube-admission library", func() {
 	Context("Check objects recovery", func() {
 		var (
-			oldSecret v1.Secret
+			oldSecret   v1.Secret
 			oldCABundle []byte
 		)
 		BeforeEach(func() {
-			err := initKubemacpoolParams(rangeStart, rangeEnd)
+			err := initKubemacpoolParams()
 			Expect(err).ToNot(HaveOccurred(), "Should successfully initialize kubemacpool pods")
 
 			By("getting the secret prior to any certification change ")
@@ -32,8 +32,7 @@ var _ = Describe("kube-admission library", func() {
 
 			By("getting the caBundle prior to any certification change ")
 			oldCABundle = GetCurrentCABundle()
-			})
-
+		})
 
 		It("should be able to recover from service secret deletion", func() {
 			By("deleting the webhook service secret")
@@ -128,7 +127,7 @@ func checkCaBundleRecovery(oldCABundle []byte) {
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
 		for _, webhook := range mutatingWebhook.Webhooks {
-			By(fmt.Sprintf("comparing %s webhook caBundle to the old caBundle to make sure it was renewed",  webhook.Name))
+			By(fmt.Sprintf("comparing %s webhook caBundle to the old caBundle to make sure it was renewed", webhook.Name))
 			if bytes.Equal(webhook.ClientConfig.CABundle, oldCABundle) {
 				return false
 			}

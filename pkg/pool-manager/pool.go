@@ -195,7 +195,7 @@ func (p *PoolManager) isInstanceOptedIn(namespaceName, mutatingWebhookConfigName
 	namespaceLabelMap := ns.GetLabels()
 	log.V(3).Info("namespaceName Labels", "namespaceName", namespaceName, "Labels", namespaceLabelMap)
 
-	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
+	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
 	if err != nil {
 		return false, errors.Wrapf(err, "Failed to get mutatingWebhookConfig %s", mutatingWebhookConfigName)
 	}

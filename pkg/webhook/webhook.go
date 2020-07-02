@@ -17,6 +17,8 @@ limitations under the License.
 package webhook
 
 import (
+	"github.com/pkg/errors"
+
 	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -51,6 +53,9 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	s.Add(mgr)
+	err := s.Add(mgr)
+	if err != nil {
+		return errors.Wrap(err, "failed adding webhook server to manager")
+	}
 	return nil
 }

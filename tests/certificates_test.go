@@ -1,9 +1,7 @@
 package tests
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"k8s.io/api/admissionregistration/v1beta1"
 	"k8s.io/client-go/util/retry"
 
@@ -23,11 +21,8 @@ var _ = Describe("kube-admission library", func() {
 			oldCABundle []byte
 		)
 		BeforeEach(func() {
-			err := initKubemacpoolParams()
-			Expect(err).ToNot(HaveOccurred(), "Should successfully initialize kubemacpool pods")
-
 			By("getting the secret prior to any certification change ")
-			err = GetCurrentSecret(&oldSecret)
+			err := GetCurrentSecret(&oldSecret)
 			Expect(err).ToNot(HaveOccurred(), "Should successfully get pre test secret")
 
 			By("getting the caBundle prior to any certification change ")
@@ -44,8 +39,7 @@ var _ = Describe("kube-admission library", func() {
 		It("should be able to recover from mutatingWebhookConfiguration caBundle deletion", func() {
 
 			By("deleting the mutatingWebhookConfiguration caBundle")
-			err := deleteServiceCaBundle()
-			Expect(err).ToNot(HaveOccurred(), "Should successfully remove the caBundle object")
+			deleteServiceCaBundle()
 
 			checkCertLibraryRecovery(oldCABundle, &oldSecret)
 		})
@@ -61,23 +55,21 @@ func deleteServiceSecret() {
 	Expect(err).ToNot(HaveOccurred(), "Should successfully delete the new secret")
 }
 
-func deleteServiceCaBundle() error {
+func deleteServiceCaBundle() {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
 		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
-		for _, webhook := range mutatingWebhook.Webhooks {
-			webhook.ClientConfig.CABundle = make([]byte, 0)
+		for i, _ := range mutatingWebhook.Webhooks {
+			mutatingWebhook.Webhooks[i].ClientConfig.CABundle = make([]byte, 0)
 		}
 
 		err = testClient.VirtClient.Update(context.TODO(), &mutatingWebhook)
 		return err
 	})
 
-	Expect(err).ToNot(HaveOccurred(), "Should successfully update caBundle in MutatingWebhookConfiguration")
-
-	return err
+	Expect(err).ToNot(HaveOccurred(), "Should successfully remove caBundle from MutatingWebhookConfiguration")
 }
 
 func checkCertLibraryRecovery(oldCABundle []byte, oldSecret *v1.Secret) {
@@ -102,36 +94,30 @@ func GetCurrentCABundle() (caBundle []byte) {
 }
 
 func checkSecretRecovery(oldSecret *v1.Secret) {
-	Eventually(func() bool {
+	Eventually(func() (map[string][]byte, error) {
 		secret := v1.Secret{}
 		By("Getting the new secret if exists")
 		err := GetCurrentSecret(&secret)
 		if err != nil {
-			return false
+			return nil, err
 		}
+		return secret.Data, nil
 
-		By("comparing it to the old secret to make sure it was renewed")
-		if secret.String() == oldSecret.String() {
-			return false
-		}
-
-		return true
-	}, timeout, pollingInterval).Should(BeTrue(), "should successfully renew secret")
+	}, timeout, pollingInterval).ShouldNot(Equal(oldSecret.Data), "should successfully renew secret")
 }
 
 func checkCaBundleRecovery(oldCABundle []byte) {
-	Eventually(func() bool {
+	Eventually(func() ([][]byte, error) {
 		By("Getting the MutatingWebhookConfiguration")
 		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
 		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
-		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
-
-		for _, webhook := range mutatingWebhook.Webhooks {
-			By(fmt.Sprintf("comparing %s webhook caBundle to the old caBundle to make sure it was renewed", webhook.Name))
-			if bytes.Equal(webhook.ClientConfig.CABundle, oldCABundle) {
-				return false
-			}
+		if err != nil {
+			return nil, err
 		}
-		return true
-	}, timeout, pollingInterval).Should(BeTrue(), "should successfully renew all webhook's caBundles")
+		caBundles := [][]byte{}
+		for _, webhook := range mutatingWebhook.Webhooks {
+			caBundles = append(caBundles, webhook.ClientConfig.CABundle)
+		}
+		return caBundles, nil
+	}, timeout, pollingInterval).ShouldNot(ContainElement(oldCABundle), "should successfully renew all webhook's caBundles")
 }

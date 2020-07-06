@@ -14,11 +14,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -ex
+set -ex pipefail
+
+function getLatestPatchVersion {
+  local major_minors=$1
+  curl -s https://api.github.com/repos/kubevirt/kubevirt/releases | grep .tag_name | grep ${major_minors} | sort -V | tail -1 | awk -F':' '{print $2}' | sed 's/,//' | xargs
+}
 
 source ./cluster/kubevirtci.sh
 CNAO_VERSIOV=0.35.0
-KUBEVIRT_VERSION=v0.29.0
+#use kubevirt latest z stream release
+
+KUBEVIRT_VERSION=$(getLatestPatchVersion v0.30)
 kubevirtci::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

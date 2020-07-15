@@ -84,19 +84,7 @@ func updateLeaderLabel(kubeClient client.Client, leaderPodName, managerNamespace
 
 	for _, pod := range podList.Items {
 		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-			podKey := types.NamespacedName{Namespace: managerNamespace, Name: pod.Name}
-			err := kubeClient.Get(context.TODO(), podKey, &pod)
-			if err != nil {
-				return errors.Wrap(err, "failed to get kubemacpool manager pod")
-			}
-
-			if pod.Name == leaderPodName {
-				logger.Info("add the label to the elected leader", "Pod Name", pod.Name)
-				if len(pod.Labels) == 0 {
-					pod.Labels = make(map[string]string)
-				}
-				pod.Labels[names.LEADER_LABEL] = "true"
-			} else {
+			if pod.Name != leaderPodName {
 				logger.Info("deleting leader label if exists", "Pod Name", pod.Name)
 				delete(pod.Labels, names.LEADER_LABEL)
 			}
@@ -109,5 +97,24 @@ func updateLeaderLabel(kubeClient client.Client, leaderPodName, managerNamespace
 		}
 	}
 
+	logger.Info("add the label to the elected leader", "Pod Name", leaderPodName)
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		pod := corev1.Pod{}
+		err := kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: managerNamespace, Name: leaderPodName}, &pod)
+		if err != nil {
+			return errors.Wrap(err, "failed to get kubemacpool manager leader pod")
+		}
+
+		if len(pod.Labels) == 0 {
+			pod.Labels = make(map[string]string)
+		}
+		pod.Labels[names.LEADER_LABEL] = "true"
+
+		return kubeClient.Status().Update(context.TODO(), &pod)
+	})
+
+	if err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to updating kubemacpool leader label in pod %s", leaderPodName))
+	}
 	return nil
 }

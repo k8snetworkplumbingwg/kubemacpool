@@ -106,7 +106,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 		go k.waitForSignal()
 
-		go k.waitToStartLeading(poolManager)
+		go func() {
+			err := k.waitToStartLeading(poolManager)
+			if err != nil {
+				log.Error(err, "wait To Start Leading process failed, restarting pod")
+				close(k.restartChannel)
+			}
+		}()
 
 		log.Info("Setting up controllers")
 		err = controller.AddToManager(k.runtimeManager, poolManager)

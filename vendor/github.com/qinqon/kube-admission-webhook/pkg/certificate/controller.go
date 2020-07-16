@@ -2,6 +2,7 @@ package certificate
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
 
@@ -81,9 +82,20 @@ func (m *Manager) add(mgr manager.Manager, r reconcile.Reconciler) error {
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (m *Manager) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := m.log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.V(1).Info("Reconciling Certificates")
+	reqLogger.Info("Reconciling Certificates")
 
-	elapsedToRotate := m.nextElapsedToRotate()
+	elapsedToRotate := m.elapsedToRotateFromLastDeadline()
+
+	// Ensure that this Reconcile is not called after bad changes at
+	// the certificate chain
+	if elapsedToRotate > 0 {
+		err := m.verifyTLS()
+		if err != nil {
+			reqLogger.Info(fmt.Sprintf("TLS certificate chain failed verification, forcing rotation, err: %v", err))
+			// Force rotation
+			elapsedToRotate = 0
+		}
+	}
 
 	// We have pass expiration time or it was forced
 	if elapsedToRotate <= 0 {
@@ -97,10 +109,39 @@ func (m *Manager) Reconcile(request reconcile.Request) (reconcile.Result, error)
 
 		// Re-calculate elapsedToRotate since we have generated new
 		// certificates
-		elapsedToRotate = m.nextElapsedToRotate()
+		m.nextRotationDeadline()
+		elapsedToRotate = m.elapsedToRotateFromLastDeadline()
 
 	}
 
-	m.log.Info(fmt.Sprintf("Certificates will be Reconcile on %s", m.now().Add(elapsedToRotate)))
-	return reconcile.Result{RequeueAfter: elapsedToRotate}, nil
+	elapsedForCleanup, err := m.earliestElapsedForCleanup()
+	if err != nil {
+		return reconcile.Result{}, errors.Wrap(err, "failed getting cleanup deadline")
+	}
+
+	// We have pass cleanup deadline let's do the cleanup
+	if elapsedForCleanup <= 0 {
+		err = m.cleanUpCABundle()
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed cleaning up CABundle")
+		}
+
+		// Re-calculate cleanup deadline since we may have to remove some certs there
+		elapsedForCleanup, err = m.earliestElapsedForCleanup()
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed re-calculating cleanup deadline")
+		}
+	}
+
+	// Reconcile is needed if rotation or ca bundle cleanup is needed, so
+	// RequeueAfter return the one that is going to happen sooner.
+	requeueAfter := time.Duration(0)
+	if elapsedForCleanup < elapsedToRotate {
+		requeueAfter = elapsedForCleanup
+	} else {
+		requeueAfter = elapsedToRotate
+	}
+
+	m.log.Info(fmt.Sprintf("Certificates will be Reconcile on %s", m.now().Add(requeueAfter)))
+	return reconcile.Result{RequeueAfter: requeueAfter}, nil
 }

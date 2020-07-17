@@ -33,24 +33,28 @@ func (m *Manager) add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return errors.Wrap(err, "failed instanciating certificate controller")
 	}
 
-	isWebhookConfigOrAnnotatedResource := func(meta metav1.Object) bool {
+	isAnnotatedResource := func(meta metav1.Object) bool {
 		_, foundAnnotation := meta.GetAnnotations()[secretManagedAnnotatoinKey]
-		return meta.GetName() == m.webhookName || foundAnnotation
+		return foundAnnotation
+	}
+
+	isWebhookConfig := func(meta metav1.Object) bool {
+		return meta.GetName() == m.webhookName
 	}
 
 	// Watch only events for selected m.webhookName
 	onEventForThisWebhook := predicate.Funcs{
 		CreateFunc: func(createEvent event.CreateEvent) bool {
-			return isWebhookConfigOrAnnotatedResource(createEvent.Meta)
+			return isWebhookConfig(createEvent.Meta) || isAnnotatedResource(createEvent.Meta)
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			return isWebhookConfigOrAnnotatedResource(deleteEvent.Meta)
+			return isAnnotatedResource(deleteEvent.Meta)
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
-			return isWebhookConfigOrAnnotatedResource(updateEvent.MetaOld)
+			return isWebhookConfig(updateEvent.MetaOld) || isAnnotatedResource(updateEvent.MetaOld)
 		},
 		GenericFunc: func(genericEvent event.GenericEvent) bool {
-			return isWebhookConfigOrAnnotatedResource(genericEvent.Meta)
+			return isWebhookConfig(genericEvent.Meta) || isAnnotatedResource(genericEvent.Meta)
 		},
 	}
 

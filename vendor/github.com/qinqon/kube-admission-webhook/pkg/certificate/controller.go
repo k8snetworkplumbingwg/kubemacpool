@@ -1,6 +1,7 @@
 package certificate
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,7 +9,11 @@ import (
 
 	admissionregistrationv1beta1 "k8s.io/api/admissionregistration/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	unstructured "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -33,9 +38,38 @@ func (m *Manager) add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return errors.Wrap(err, "failed instanciating certificate controller")
 	}
 
-	isWebhookConfigOrAnnotatedResource := func(meta metav1.Object) bool {
+	isACascadeDelete := func(deleteEvent event.DeleteEvent) bool {
+		namespace := deleteEvent.Meta.GetNamespace()
+		for _, ownerRefernce := range deleteEvent.Meta.GetOwnerReferences() {
+			gv, err := schema.ParseGroupVersion(ownerRefernce.APIVersion)
+			if err != nil {
+				logger.Error(err, "failed parsing gv from owner")
+				continue
+			}
+			gvk := gv.WithKind(ownerRefernce.Kind)
+			object := unstructured.Unstructured{}
+			object.SetGroupVersionKind(gvk)
+			err = m.client.Get(context.TODO(), types.NamespacedName{Namespace: namespace, Name: ownerRefernce.Name}, &object)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					logger.Info("Cascade delete detected, at least one owner is not present")
+					return true
+				}
+				logger.Error(err, "failed detecting if this is a cascade delete")
+				continue
+			}
+		}
+		logger.Info("Cascade delete not-detected, all the owners are present")
+		return false
+	}
+
+	isAnnotatedResource := func(meta metav1.Object) bool {
 		_, foundAnnotation := meta.GetAnnotations()[secretManagedAnnotatoinKey]
-		return meta.GetName() == m.webhookName || foundAnnotation
+		return foundAnnotation
+	}
+
+	isWebhookConfigOrAnnotatedResource := func(meta metav1.Object) bool {
+		return meta.GetName() == m.webhookName || isAnnotatedResource(meta)
 	}
 
 	// Watch only events for selected m.webhookName
@@ -44,7 +78,8 @@ func (m *Manager) add(mgr manager.Manager, r reconcile.Reconciler) error {
 			return isWebhookConfigOrAnnotatedResource(createEvent.Meta)
 		},
 		DeleteFunc: func(deleteEvent event.DeleteEvent) bool {
-			return isWebhookConfigOrAnnotatedResource(deleteEvent.Meta)
+			_, isASecret := deleteEvent.Object.(*corev1.Secret)
+			return isASecret && isAnnotatedResource(deleteEvent.Meta) && !isACascadeDelete(deleteEvent)
 		},
 		UpdateFunc: func(updateEvent event.UpdateEvent) bool {
 			return isWebhookConfigOrAnnotatedResource(updateEvent.MetaOld)

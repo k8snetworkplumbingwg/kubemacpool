@@ -44,8 +44,17 @@ const (
 var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
-func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	s := webhookserver.New(mgr.GetClient(), names.MUTATE_WEBHOOK_CONFIG, certificate.MutatingWebhook, certificate.OneYearDuration, webhookserver.WithPort(WebhookServerPort))
+func AddToManager(namespace string, mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
+	certOptions := certificate.Options{
+		Namespace:        namespace,
+		WebhookName:      names.MUTATE_WEBHOOK_CONFIG,
+		WebhookType:      certificate.MutatingWebhook,
+		CARotateInterval: certificate.OneYearDuration,
+	}
+	s, err := webhookserver.New(mgr.GetClient(), certOptions, webhookserver.WithPort(WebhookServerPort))
+	if err != nil {
+		return errors.Wrap(err, "failed creating new webhook server")
+	}
 
 	for _, f := range AddToWebhookFuncs {
 		if err := f(s, poolManager); err != nil {
@@ -53,7 +62,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	err := s.Add(mgr)
+	err = s.Add(mgr)
 	if err != nil {
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}

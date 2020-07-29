@@ -21,12 +21,17 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
+
+	"github.com/pkg/errors"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+
+	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 )
 
 func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
@@ -83,11 +88,51 @@ func main() {
 		os.Exit(1)
 	}
 
-	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime)
+	caRotateInterval, err := lookupEnvAsDuration("CA_ROTATE_INTERVAL")
+	if err != nil {
+		log.Error(err, "Failed retrieving ca rotate interval")
+		os.Exit(1)
+	}
+
+	caOverlapInterval, err := lookupEnvAsDuration("CA_OVERLAP_INTERVAL")
+	if err != nil {
+		log.Error(err, "Failed retrieving ca overlap interval")
+		os.Exit(1)
+	}
+
+	certRotateInterval, err := lookupEnvAsDuration("CERT_ROTATE_INTERVAL")
+	if err != nil {
+		log.Error(err, "Failed retrieving cert rotate interval")
+		os.Exit(1)
+	}
+
+	certOptions := certificate.Options{
+		Namespace:          podNamespace,
+		WebhookName:        names.MUTATE_WEBHOOK_CONFIG,
+		WebhookType:        certificate.MutatingWebhook,
+		CARotateInterval:   caRotateInterval,
+		CAOverlapInterval:  caOverlapInterval,
+		CertRotateInterval: certRotateInterval,
+	}
+	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime, certOptions)
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {
 		log.Error(err, "Failed to run the kubemacpool manager")
 		os.Exit(1)
 	}
+}
+
+func lookupEnvAsDuration(varName string) (time.Duration, error) {
+	duration := time.Duration(0)
+	varValue, ok := os.LookupEnv(varName)
+	if !ok {
+		return duration, errors.Errorf("Failed to load %s from environment", varName)
+	}
+
+	duration, err := time.ParseDuration(varValue)
+	if err != nil {
+		return duration, errors.Wrapf(err, "Failed to convert %s value to time.Duration", varName)
+	}
+	return duration, nil
 }

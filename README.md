@@ -233,6 +233,22 @@ k8s.v1.cni.cncf.io/networks: [{"name":"ovs-conf","namespace":"default","mac":"02
 MAC address can be also set manually by the user using the MAC field in the annotation.
 If the mac is already in used the system will reject it even if the MAC address is outside of the range.
 
+### Modifing webhook certificate handling
+
+Part of the kubemacpool functionality is implemented as a
+[kubernetes mutating admission webhook](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#mutatingadmissionwebhook) to ensure that mac is assigned before vm is created.
+
+Using admission webhooks forces application to handle TLS ca and server
+certificates, at kubemacpool this task is delegated to [kube-admission-webook](https://github.com/qinqon/kube-admission-webhook)
+library, this library do a mix of controller-runtime webhook server and a
+small cert manager so certificates are rotated.
+
+To customaize how the this rotation works some knobs from the library has being
+exposed as environment variables at kubemacpool pod:
+
+- `CA_ROTATE_INTERVAL`:  Expiration time for CA certificate, default is one year
+- `CA_OVERLAP_INTERVAL`:  Duration the previous to rotate CA certificate live with the new one, defaults to one year
+- `CERT_ROTATE_INTERVAL`:  Expiration time for server certificates, defauilt is half a year
 
 ## Develop
 

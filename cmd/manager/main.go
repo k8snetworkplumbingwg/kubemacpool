@@ -24,14 +24,13 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-
-	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 )
 
 func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {

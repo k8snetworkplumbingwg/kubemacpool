@@ -240,15 +240,14 @@ Part of the kubemacpool functionality is implemented as a
 
 Using admission webhooks forces application to handle TLS ca and server
 certificates, at kubemacpool this task is delegated to [kube-admission-webook](https://github.com/qinqon/kube-admission-webhook)
-library, this library do a mix of controller-runtime webhook server and a
-small cert manager so certificates are rotated.
+library, this library manages certificates rotation using a controller-runtime webhook server and a small cert manager.
 
-To customaize how the this rotation works some knobs from the library has being
+To customize how this rotation works some knobs from the library has being
 exposed as environment variables at kubemacpool pod:
 
 - `CA_ROTATE_INTERVAL`:  Expiration time for CA certificate, default is one year
 - `CA_OVERLAP_INTERVAL`:  Duration the previous to rotate CA certificate live with the new one, defaults to one year
-- `CERT_ROTATE_INTERVAL`:  Expiration time for server certificates, defauilt is half a year
+- `CERT_ROTATE_INTERVAL`:  Expiration time for server certificates, default is half a year
 
 ## Develop
 

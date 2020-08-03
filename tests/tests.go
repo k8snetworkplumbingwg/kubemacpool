@@ -21,6 +21,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -39,6 +40,8 @@ const (
 	podNamespaceOptInLabel  = "mutatepods.kubemacpool.io"
 	vmNamespaceOptInLabel   = "mutatevirtualmachines.kubemacpool.io"
 	deploymentContainerName = "manager"
+	optInMode               = "opt-in"
+	optOutMode              = "opt-out"
 )
 
 var (
@@ -301,6 +304,47 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 
 	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
 	return err
+}
+
+func setWebhookOptMode(webhookName, optMode string) error {
+	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), "kubemacpool-mutator", metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+
+		for webhookIdx, webhook := range mutatingWebhook.Webhooks {
+			if webhook.Name == webhookName {
+				var expressions []metav1.LabelSelectorRequirement
+				for _, matchExpression := range webhook.NamespaceSelector.MatchExpressions {
+					if matchExpression.Key != webhookName {
+						expressions = append(expressions, matchExpression)
+					}
+				}
+
+				switch optMode {
+				case optInMode:
+					expressions = append(expressions, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}})
+				case optOutMode:
+					expressions = append(expressions, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}})
+				default:
+					return fmt.Errorf("undefined opt-in mode %s", optMode)
+				}
+
+				mutatingWebhook.Webhooks[webhookIdx].NamespaceSelector.MatchExpressions = expressions
+				_, err = testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
+
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to perform Retry on Conflict to set opt mode")
+	}
+	return nil
 }
 
 func BeforeAll(fn func()) {

@@ -1,0 +1,31 @@
+# mutatepods opt-out mode
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: mac-controller-manager
+    mutatepods.kubemacpool.io: ignore
+  name: system
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutator
+webhooks:
+  - name: mutatepods.kubemacpool.io
+    namespaceSelector:
+      matchExpressions:
+        - key: runlevel
+          operator: NotIn
+          values:
+            - "0"
+            - "1"
+        - key: openshift.io/run-level
+          operator: NotIn
+          values:
+            - "0"
+            - "1"
+        - key: mutatepods.kubemacpool.io
+          operator: NotIn
+          values:
+            - "ignore"

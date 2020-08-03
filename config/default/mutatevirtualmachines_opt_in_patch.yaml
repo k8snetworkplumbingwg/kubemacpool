@@ -1,0 +1,23 @@
+# mutatevirtualmachines opt-in mode
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutator
+webhooks:
+  - name: mutatevirtualmachines.kubemacpool.io
+    namespaceSelector:
+      matchExpressions:
+        - key: runlevel
+          operator: NotIn
+          values:
+            - "0"
+            - "1"
+        - key: openshift.io/run-level
+          operator: NotIn
+          values:
+            - "0"
+            - "1"
+        - key: mutatevirtualmachines.kubemacpool.io
+          operator: In
+          values:
+            - "allocate"

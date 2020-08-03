@@ -3,9 +3,9 @@ kind: Namespace
 metadata:
   labels:
     control-plane: mac-controller-manager
-    # Make sure that KubeMacPool pods are never handled by the webhook to
-    # prevent dead-lock.
-    mutatepods.kubemacpool.io: ignore
+    # in case mutatepods is set to opt-out mode,
+    # make sure that KubeMacPool pods are also opted-out
+    # to prevent dead-lock.
   name: system
 ---
 apiVersion: v1
@@ -162,8 +162,6 @@ webhooks:
         values:
           - "0"
           - "1"
-      matchLabels:
-        mutatepods.kubemacpool.io: allocate
     rules:
       - operations: ["CREATE"]
         apiGroups: [""]
@@ -189,8 +187,6 @@ webhooks:
         values:
           - "0"
           - "1"
-      matchLabels:
-        mutatevirtualmachines.kubemacpool.io: allocate
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["kubevirt.io"]

@@ -23,7 +23,6 @@ import (
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
@@ -44,13 +43,7 @@ const (
 var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
-func AddToManager(namespace string, mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	certOptions := certificate.Options{
-		Namespace:        namespace,
-		WebhookName:      names.MUTATE_WEBHOOK_CONFIG,
-		WebhookType:      certificate.MutatingWebhook,
-		CARotateInterval: certificate.OneYearDuration,
-	}
+func AddToManager(certOptions certificate.Options, mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 	s, err := webhookserver.New(mgr.GetClient(), certOptions, webhookserver.WithPort(WebhookServerPort))
 	if err != nil {
 		return errors.Wrap(err, "failed creating new webhook server")

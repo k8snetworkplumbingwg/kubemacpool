@@ -17,10 +17,10 @@ limitations under the License.
 package utils
 
 import (
-"testing"
+	"testing"
 
-. "github.com/onsi/ginkgo"
-. "github.com/onsi/gomega"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
 func TestUtils(t *testing.T) {

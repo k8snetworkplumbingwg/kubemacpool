@@ -675,7 +675,7 @@ func newNetwork(name string) kubevirtv1.Network {
 // This function allocates vms with 1 NIC each, in order to fill the mac pool as much as needed.
 func AllocateFillerVms(macsToLeaveFree int64) error {
 	maxPoolSize := getMacPoolSize()
-	Expect(maxPoolSize).To(BeNumerically(">",macsToLeaveFree), "max pool size must be greater than the number of macs we want to leave free")
+	Expect(maxPoolSize).To(BeNumerically(">", macsToLeaveFree), "max pool size must be greater than the number of macs we want to leave free")
 
 	By(fmt.Sprintf("Allocating another %d vms until to allocate the entire mac range", maxPoolSize-macsToLeaveFree))
 	var i int64

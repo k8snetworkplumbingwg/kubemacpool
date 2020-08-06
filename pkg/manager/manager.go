@@ -32,7 +32,6 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
@@ -106,8 +105,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 		go k.waitForSignal()
 
-		go k.waitToStartLeading(poolManager)
-
 		log.Info("Setting up controllers")
 		err = controller.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
@@ -118,6 +115,11 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		err = webhook.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
 			return errors.Wrap(err, "unable to register webhooks to the manager")
+		}
+
+		err = poolManager.Start()
+		if err != nil {
+			return errors.Wrap(err, "failed to start pool manager routines")
 		}
 
 		err = k.runtimeManager.Start(k.restartChannel)
@@ -146,10 +148,7 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 	log.Info("Setting up Manager")
 	var err error
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
-		MetricsBindAddress:      k.metricsAddr,
-		LeaderElection:          true,
-		LeaderElectionID:        names.LEADER_ID,
-		LeaderElectionNamespace: k.podNamespace,
+		MetricsBindAddress: k.metricsAddr,
 	})
 
 	return err
@@ -178,10 +177,6 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	// The container will not restart in this scenario
 	case <-k.kubevirtInstalledChannel:
 		log.Info("found kubevirt restarting the manager")
-	// This interrupt occurred if we load the leader election for the manager and we need to restart it
-	// This will wait to get the election lock again
-	case <-k.restartChannel:
-		log.Info("leader election lost")
 	}
 
 	close(k.restartChannel)

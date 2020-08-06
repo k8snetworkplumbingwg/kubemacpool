@@ -48,7 +48,6 @@ type PoolManager struct {
 	macPoolMap       map[string]AllocationStatus  // allocated mac map and status
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
 	poolMutex        sync.Mutex                   // mutex for allocation an release
-	isLeader         bool                         // leader boolean
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
 }
@@ -78,7 +77,6 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 	copy(currentMac, rangeStart)
 
 	poolManger := &PoolManager{kubeClient: kubeClient,
-		isLeader:         false,
 		isKubevirt:       kubevirtExist,
 		rangeEnd:         rangeEnd,
 		rangeStart:       rangeStart,

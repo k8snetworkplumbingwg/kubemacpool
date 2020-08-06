@@ -31,7 +31,7 @@ metadata:
 spec:
   strategy:
     type: Recreate
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       control-plane: mac-controller-manager
@@ -43,8 +43,6 @@ spec:
         control-plane: mac-controller-manager
         controller-tools.k8s.io: "1.0"
     spec:
-      readinessGates:
-        - conditionType: "kubemacpool.io/leader-ready"
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -135,7 +133,7 @@ spec:
     - port: 443
       targetPort: 8000
   selector:
-    kubemacpool-leader: "true"
+    app: kubemacpool
 ---
 apiVersion: admissionregistration.k8s.io/v1beta1
 kind: MutatingWebhookConfiguration

@@ -174,7 +174,7 @@ func restartKubemacpoolManagerPods() error {
 		return errors.Wrap(err, "failed stopping manager pods")
 	}
 
-	err = changeManagerReplicas(2)
+	err = changeManagerReplicas(1)
 	if err != nil {
 		return errors.Wrap(err, "failed starting manager pods")
 	}

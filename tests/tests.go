@@ -18,7 +18,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -233,53 +232,6 @@ func getVmFailCleanupWaitTime() time.Duration {
 
 	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment", deploymentContainerName, names.MANAGER_DEPLOYMENT))
 	return 0
-}
-
-func ChangeManagerLeadership() {
-	filterByLeaderLabel := client.MatchingLabels{
-		"kubemacpool-leader": "true",
-	}
-	leaderPods := corev1.PodList{}
-	err := testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
-	Expect(err).ToNot(HaveOccurred(), "should success listing leader manager pod")
-	Expect(leaderPods.Items).To(HaveLen(1), "should have just one leader manager pod")
-
-	leaderPod := leaderPods.Items[0]
-	leaderPodKey := types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
-
-	By("Delete leader election pod")
-	err = testClient.VirtClient.Delete(context.TODO(), &leaderPod)
-	Expect(err).ToNot(HaveOccurred(), "should success deleting leader manager pod")
-
-	Eventually(func() bool {
-		err = testClient.VirtClient.Get(context.TODO(), leaderPodKey, &corev1.Pod{})
-		if err != nil && !apierrors.IsNotFound(err) {
-			Fail(fmt.Sprintf("should fail with IsNotFound if pod does not exist but failed with: %v", err))
-		}
-		return apierrors.IsNotFound(err)
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "should fail with IsNotFound when kubemacpool leader pod is delete")
-
-	By("Wait for the other pod to take over leadership")
-	Eventually(func() []corev1.Pod {
-		leaderPods = corev1.PodList{}
-		testClient.VirtClient.List(context.TODO(), &leaderPods, filterByLeaderLabel)
-		return leaderPods.Items
-	}, 2*time.Minute, 3*time.Second).Should(HaveLen(1), "should have just one leader manager pod after deleting previous leader")
-
-	leaderPod = leaderPods.Items[0]
-	leaderPodKey = types.NamespacedName{Namespace: leaderPod.Namespace, Name: leaderPod.Name}
-
-	By("Wait for leader pod to be ready")
-	Eventually(func() corev1.ConditionStatus {
-		err = testClient.VirtClient.Get(context.TODO(), leaderPodKey, &leaderPod)
-		Expect(err).ToNot(HaveOccurred(), "should success getting new leader manager pod")
-		for _, condition := range leaderPod.Status.Conditions {
-			if condition.Type == corev1.PodReady {
-				return condition.Status
-			}
-		}
-		return corev1.ConditionUnknown
-	}, 2*time.Minute, 3*time.Second).Should(Equal(corev1.ConditionTrue), "should have a leader manager pod with ready condition")
 }
 
 func changeManagerReplicas(numOfReplica int32) error {

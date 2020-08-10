@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
@@ -14,7 +15,7 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
-const defaultNumberOfReplicas = 2
+const defaultNumberOfReplicas = 1
 
 var _ = Describe("Pods", func() {
 	Context("Check the pod mutating webhook", func() {

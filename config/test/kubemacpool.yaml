@@ -221,7 +221,7 @@ spec:
     targetPort: 8000
   publishNotReadyAddresses: true
   selector:
-    kubemacpool-leader: "true"
+    app: kubemacpool
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -232,7 +232,7 @@ metadata:
   name: kubemacpool-mac-controller-manager
   namespace: kubemacpool-system
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       control-plane: mac-controller-manager
@@ -317,8 +317,6 @@ spec:
         - mountPath: /etc/webhook/certs
           name: tls-key-pair
           readOnly: true
-      readinessGates:
-      - conditionType: kubemacpool.io/leader-ready
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
       volumes:

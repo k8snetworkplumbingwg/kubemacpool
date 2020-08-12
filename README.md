@@ -34,75 +34,69 @@ sed -i "s/02:FF:FF:FF:FF:FF/$mac_oui:FF:FF:FF/" kubemacpool.yaml
 kubectl apply -f ./kubemacpool.yaml
 ```
 
-### Opting-in to kubemacpool service
+### kubemacpool service
 
-Kubemacpool is set to allocate mac to [supported interfaces](#About) on pods/vms that reside only on opted-in namespaces. You can opt-in your namespace by adding the following labels:
-- `mutatepods.kubemacpool.io=allocate` - to opt in pods mac allocation in your namespace
-- `mutatevirtualmachines.kubemacpool.io=allocate` - to opt in vms mac allocation in your namespace
+Kubemacpool is set to allocate mac to [supported interfaces](#About) on Pods and VirtualMachines.
+The user can specify whether MAC address will be allocated to all VirtualMachines and Pods by default or not.
+This can be done by patching of the following snippets. Patched manifest will be on [testing manifests](config/test/kubemacpool.yaml):
 
-#### How to enable/disable kubemacpool for a namespace
-
-Kubemacpool is disabled by default on a new namespace.
-To enable kubemacpool on a specific namespace:
+To set kubemacpool to allocate all VirtualMachines and Pods by default (see [opt-out Mode](#How to opt-out kubemacpool MAC assignment for a namespace in Opt-out mode)):
 ```bash
-kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocate mutatevirtualmachines.kubemacpool.io=allocate
+cp config/default/mutatepods_opt_out_patch.yaml config/test/mutatepods_opt_mode_patch.yaml
+cp config/default/mutatevirtualmachines_opt_out_patch.yaml config/test/mutatevirtualmachines_opt_mode_patch.yaml
+make generate-test
+```
+
+To set kubemacpool to not allocate all VirtualMachines and Pods by default (see [opt-in Mode](#How to opt-in kubemacpool MAC assignment for a namespace in Opt-in mode))):
+```bash
+cp config/default/mutatepods_opt_in_patch.yaml config/test/mutatepods_opt_mode_patch.yaml
+cp config/default/mutatevirtualmachines_opt_in_patch.yaml config/test/mutatevirtualmachines_opt_mode_patch.yaml
+make generate-test
+```
+
+**note:** The User can of-course set Pods and VirtualMachines to separate opt-modes by sub-setting the above snippets. 
+
+**note:** The default opt-mode for [testing manifests](config/test/kubemacpool.yaml) is opt-out for VirtualMachines and Pods. 
+
+**note:** The default opt-mode for [release manifests](config/release/kubemacpool.yaml) is opt-out for VirtualMachines and opt-out for Pods. 
+
+#### How to opt-out kubemacpool MAC assignment for a namespace in Opt-out mode
+
+You can opt-out MAC assignment on your namespace by adding the following labels:
+- `mutatepods.kubemacpool.io=ignore` - to opt-out MAC assignment for Pods in your namespace
+- `mutatevirtualmachines.kubemacpool.io=ignore` - to opt-out MAC assignment for VMs in your namespace
+
+To disable kubemacpool MAC assignment on a specific namespace:
+```bash
+kubectl label namespace example-namespace mutatepods.kubemacpool.io=ignore mutatevirtualmachines.kubemacpool.io=ignore
 namespace/example-namespace labeled
 ```
 
-To disable kubemacpool in a namespace:
+To re-enable kubemacpool MAC assignment in a namespace:
 ```bash
 kubectl label namespace example-namespace mutatepods.kubemacpool.io- mutatevirtualmachines.kubemacpool.io-
 namespace/example-namespace labeled
 ```
 
-**note:** If a VMI is created directly and not through a VM, then it is handled in kubemacpool by the pod handler.
+#### How to opt-in kubemacpool MAC assignment for a namespace in Opt-in mode
 
-#### How to change the opt-in label value on kubemacpool
+You can opt-in kubemacpool MAC assignment on your namespace by adding the following labels:
+- `mutatepods.kubemacpool.io=allocate` - to opt-in MAC assignment for Pods in your namespace
+- `mutatevirtualmachines.kubemacpool.io=allocate` - to opt-in MAC assignment for VMs in your namespace
 
-The kubemacpool opt-in label and value is set in the mutatingwebhookconfiguration instance called `kubemacpool-mutator` by a `namespaceSelector`.
-In order to change the opt-in label value - you need to edit the mutatingwebhookconfiguration instance and change the label value accordingly. This can be done separately for vms and pods.
-```yaml
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
- ...
-  name: kubemacpool-mutator
- ...
-webhooks:
-- admissionReviewVersions:
- ...
-  name: mutatepods.kubemacpool.io
-  namespaceSelector:
- ...
-    matchLabels:
-      mutatepods.kubemacpool.io: allocate
-- admissionReviewVersions:
- ...
-  name: mutatevirtualmachines.kubemacpool.io
-  namespaceSelector:
- ...
-    matchLabels:
-      mutatevirtualmachines.kubemacpool.io: allocate
- ...
-```
-
-**note:** if the kubemacpool's mutatingwebhookconfiguration `kubemacpool-mutator` namespace-selector value per vm/pod is set to `allocate`, then you can also opt-out your namespace by setting the label value to `disable` in your namespace:
+To disable kubemacpool MAC assignment on a specific namespace:
 ```bash
-kubectl label namespace example-namespace --overwrite mutatepods.kubemacpool.io=disable mutatevirtualmachines.kubemacpool.io=disable
+kubectl label namespace example-namespace mutatepods.kubemacpool.io- mutatevirtualmachines.kubemacpool.io-
 namespace/example-namespace labeled
 ```
 
-#### Opt-in Example
-
+To re-enable kubemacpool MAC assignment in a namespace:
 ```bash
-# Add the opt-in labels to namespace using kubectl
 kubectl label namespace example-namespace mutatepods.kubemacpool.io=allocate mutatevirtualmachines.kubemacpool.io=allocate
 namespace/example-namespace labeled
-
-kubectl get namespaces example-namespace --show-labels
-NAME                              STATUS   AGE     LABELS
-example-namespace Active   22s     mutatepods.kubemacpool.io=allocate,mutatevirtualmachines.kubemacpool.io=allocate
 ```
+
+**note:** If a VMI is created directly and not through a VM, then it is handled in kubemacpool by the pod handler.
 
 ### Check deployment
 
@@ -168,16 +162,7 @@ This example used [ovs-cni](https://github.com/kubevirt/ovs-cni/).
 **note** the tuning plugin change the mac address after the main plugin was executed so
 network connectivity will not work if the main plugin configure mac filter on the interface.
 
-**note** make sure that the  pod's namespace is opted in for pods.
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    mutatepods.kubemacpool.io: allocate
-  name: default
-...
-```
+**note** if you're using [test manifests](config/test/kubemacpool.yaml), make sure that the  pod's namespace is not opted-out for pods.
 
 **note** the project supports only json configuration for `k8s.v1.cni.cncf.io/networks`, network list will be ignored
 

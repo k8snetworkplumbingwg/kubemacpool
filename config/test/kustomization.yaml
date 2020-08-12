@@ -16,3 +16,6 @@ patches:
       kind: ConfigMap
       name: mac-range-config
       namespace: kubemacpool-system
+patchesStrategicMerge:
+  - mutatevirtualmachines_opt_mode_patch.yaml
+  - mutatepods_opt_mode_patch.yaml

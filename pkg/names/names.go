@@ -1,7 +1,5 @@
 package names
 
-const MANAGER_NAMESPACE = "kubemacpool-system"
-
 const MANAGER_DEPLOYMENT = "kubemacpool-mac-controller-manager"
 
 const WEBHOOK_SERVICE = "kubemacpool-service"

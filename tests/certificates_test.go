@@ -48,7 +48,7 @@ var _ = Describe("kube-admission library", func() {
 
 func deleteServiceSecret() {
 	secret := v1.Secret{}
-	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.WEBHOOK_SERVICE}, &secret)
+	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.WEBHOOK_SERVICE}, &secret)
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get kubemacpool secret")
 
 	err = testClient.VirtClient.Delete(context.TODO(), &secret)
@@ -58,7 +58,7 @@ func deleteServiceSecret() {
 func deleteServiceCaBundle() {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
 		for i, _ := range mutatingWebhook.Webhooks {
@@ -81,12 +81,12 @@ func checkCertLibraryRecovery(oldCABundle []byte, oldSecret *v1.Secret) {
 }
 
 func GetCurrentSecret(secret *v1.Secret) error {
-	return testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.WEBHOOK_SERVICE}, secret)
+	return testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.WEBHOOK_SERVICE}, secret)
 }
 
 func GetCurrentCABundle() (caBundle []byte) {
 	mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
 	//get the first one
@@ -110,7 +110,7 @@ func checkCaBundleRecovery(oldCABundle []byte) {
 	Eventually(func() ([][]byte, error) {
 		By("Getting the MutatingWebhookConfiguration")
 		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: names.MANAGER_NAMESPACE, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 		if err != nil {
 			return nil, err
 		}

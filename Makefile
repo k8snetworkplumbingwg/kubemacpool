@@ -96,6 +96,8 @@ container: manager
 # Push the docker image
 docker-push:
 	docker push ${REGISTRY}/${IMG}:${IMAGE_TAG}
+	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:$(shell git describe --tags)
+	docker push ${REGISTRY}/${IMG}:$(shell git describe --tags)
 
 cluster-up:
 	./cluster/up.sh

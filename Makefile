@@ -2,6 +2,7 @@
 REGISTRY ?= quay.io
 REPO ?= kubevirt
 IMAGE_TAG ?= latest
+IMAGE_GIT_TAG ?= $(shell git describe --abbrev=8 --tags)
 IMG ?= $(REPO)/kubemacpool
 
 BIN_DIR = $(CURDIR)/build/_output/bin/
@@ -96,8 +97,8 @@ container: manager
 # Push the docker image
 docker-push:
 	docker push ${REGISTRY}/${IMG}:${IMAGE_TAG}
-	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:$(shell git describe --tags)
-	docker push ${REGISTRY}/${IMG}:$(shell git describe --tags)
+	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	docker push ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
 
 cluster-up:
 	./cluster/up.sh

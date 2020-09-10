@@ -40,14 +40,14 @@ Kubemacpool is set to allocate mac to [supported interfaces](#About) on Pods and
 The user can specify whether MAC address will be allocated to all VirtualMachines and Pods by default or not.
 This can be done by patching of the following snippets. Patched manifest will be on [testing manifests](config/test/kubemacpool.yaml):
 
-To set kubemacpool to allocate all VirtualMachines and Pods by default (see [opt-out Mode](#How to opt-out kubemacpool MAC assignment for a namespace in Opt-out mode)):
+To set kubemacpool to allocate all VirtualMachines and Pods by default (see [opt-out Mode](#How-to-opt-out-kubemacpool-MAC-assignment-for-a-namespace-in-Opt-out-mode)):
 ```bash
 cp config/default/mutatepods_opt_out_patch.yaml config/test/mutatepods_opt_mode_patch.yaml
 cp config/default/mutatevirtualmachines_opt_out_patch.yaml config/test/mutatevirtualmachines_opt_mode_patch.yaml
 make generate-test
 ```
 
-To set kubemacpool to not allocate all VirtualMachines and Pods by default (see [opt-in Mode](#How to opt-in kubemacpool MAC assignment for a namespace in Opt-in mode))):
+To set kubemacpool to not allocate all VirtualMachines and Pods by default (see [opt-in Mode](#How-to-opt-in-kubemacpool-MAC-assignment-for-a-namespace-in-Opt-in-mode))):
 ```bash
 cp config/default/mutatepods_opt_in_patch.yaml config/test/mutatepods_opt_mode_patch.yaml
 cp config/default/mutatevirtualmachines_opt_in_patch.yaml config/test/mutatevirtualmachines_opt_mode_patch.yaml

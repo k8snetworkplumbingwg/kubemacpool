@@ -3,7 +3,7 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 go 1.13
 
 require (
-	github.com/go-logr/logr v0.2.0
+	github.com/go-logr/logr v0.2.1-0.20200730175230-ee2de8da5be6
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
@@ -25,6 +25,7 @@ require (
 )
 
 replace (
+	github.com/go-logr/zapr => github.com/go-logr/zapr v0.2.0
 	golang.org/x/text => golang.org/x/text v0.3.3
 	// Pinned to kubernetes-1.19.1
 	k8s.io/api => k8s.io/api v0.19.1

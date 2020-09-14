@@ -8,8 +8,8 @@ require (
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
 	github.com/mattn/goveralls v0.0.7
-	github.com/onsi/ginkgo v1.11.0
-	github.com/onsi/gomega v1.8.1
+	github.com/onsi/ginkgo v1.14.1
+	github.com/onsi/gomega v1.10.2
 	github.com/pkg/errors v0.9.1
 	github.com/qinqon/kube-admission-webhook v0.12.0
 	k8s.io/api v0.19.1

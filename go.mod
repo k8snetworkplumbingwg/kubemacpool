@@ -5,7 +5,6 @@ go 1.13
 require (
 	github.com/go-logr/logr v0.2.1-0.20200730175230-ee2de8da5be6
 	github.com/go-logr/zapr v0.1.1 // indirect
-	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
 	github.com/mattn/goveralls v0.0.7
 	github.com/onsi/ginkgo v1.14.1
@@ -19,7 +18,7 @@ require (
 	kubevirt.io/client-go v0.29.0
 	kubevirt.io/kubevirt v0.29.0
 	kubevirt.io/qe-tools v0.1.6
-	sigs.k8s.io/controller-runtime v0.6.0
+	sigs.k8s.io/controller-runtime v0.6.2
 	sigs.k8s.io/controller-tools v0.3.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0
 )

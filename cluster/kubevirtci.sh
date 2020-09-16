@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-'k8s-1.17'}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-'k8s-1.19'}
 
-KUBEVIRTCI_VERSION='c7dccd19872a2e4f5f34932912ea7d79be0eecbb'
+KUBEVIRTCI_VERSION='6569e0e831bb23f4c67fa357a7c5f6479a31cc6d'
 KUBEVIRTCI_PATH="${PWD}/_kubevirtci"
 
 function kubevirtci::install() {

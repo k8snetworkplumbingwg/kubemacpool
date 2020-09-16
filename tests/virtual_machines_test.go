@@ -84,108 +84,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			}, timeout, pollingInterval).Should(Equal(0), "failed to remove all vm objects")
 		})
 
-		Context("When all the VMs are not serviced by default (opt-in mode)", func() {
-			BeforeEach(func() {
-				By("setting vm webhook to not accept all namespaces unless they include opt-in label")
-				err := setWebhookOptMode(vmNamespaceOptInLabel, optInMode)
-				Expect(err).ToNot(HaveOccurred(), "should set opt-mode to mutatingwebhookconfiguration")
-			})
-
-			It("should create a VM object without a MAC assigned", func() {
-				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-					[]kubevirtv1.Network{newNetwork("br")})
-
-				err := testClient.VirtClient.Create(context.TODO(), vm)
-				Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-				Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
-			})
-
-			Context("and kubemacpool is opted-in on a namespace", func() {
-				BeforeEach(func() {
-					By("opting out the namespace")
-					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
-				})
-				It("should create a VM object with a MAC assigned", func() {
-					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
-
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "should successfully parse assigned mac")
-				})
-			})
-		})
-
-		Context("When all the VMs are serviced by default (opt-out mode)", func() {
-			BeforeEach(func() {
-				By("setting vm webhook to accept all namespaces that don't include opt-out label")
-				err := setWebhookOptMode(vmNamespaceOptInLabel, optOutMode)
-				Expect(err).ToNot(HaveOccurred(), "should set opt-mode to mutatingwebhookconfiguration")
-			})
-
-			Context("and kubemacpool is opted-out on a namespace", func() {
-				BeforeEach(func() {
-					By("opting out the namespace")
-					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
-				})
-				It("should create a VM object without a MAC assigned", func() {
-					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
-
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
-				})
-			})
-
-			Context("and the client creates a vm on a non-opted-out namespace", func() {
-				var (
-					vm *kubevirtv1.VirtualMachine
-				)
-				BeforeEach(func() {
-					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
-
-					By("Create VM")
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
-				})
-				It("should automatically assign the vm with static MAC address within range", func() {
-					vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
-					By("Retrieve VM")
-					err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)
-					Expect(err).ToNot(HaveOccurred(), "should success getting the VM after creating it")
-
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "should success parsing mac address")
-				})
-				Context("and then when we opt-out the namespace", func() {
-					BeforeEach(func() {
-						By("Adding namespace opt-out label to mark it as opted-out")
-						err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
-						Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
-
-						By("Wait 5 seconds for namespace label clean-up to be propagated at server")
-						time.Sleep(5 * time.Second)
-					})
-					AfterEach(func() {
-						By("Removing namespace opt-out label to get kmp service again")
-						err := cleanNamespaceLabels(TestNamespace)
-						Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
-
-						By("Wait 5 seconds for opt-in label at namespace to be propagated at server")
-						time.Sleep(5 * time.Second)
-					})
-					It("should able to be deleted", func() {
-						By("Delete the VM after opt-out the namespace")
-						deleteVMI(vm)
-					})
-				})
-			})
-
+		Context("When Running with default opt-mode configuration", func() {
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
 					It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {
@@ -292,29 +191,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 					_, err = net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
 					Expect(err).ToNot(HaveOccurred())
-				})
-			})
-			Context("and trying to create a VM and mac-pool is full", func() {
-				It("should return an error because no MAC address is available", func() {
-					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
-						newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
-
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
-
-					err = AllocateFillerVms(2)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
-
-					By("Trying to allocate a vm after there is no more macs to allocate")
-					starvingVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
-
-					err = testClient.VirtClient.Create(context.TODO(), starvingVM)
-					Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
 				})
 			})
 			Context("and trying to create a VM after a MAC address has just been released due to a VM deletion", func() {
@@ -509,30 +385,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 				})
 			})
-
-			Context("and testing finalizers", func() {
-				Context("When the VM is not being deleted", func() {
-					It("should have a finalizer and deletion timestamp should be zero ", func() {
-						vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-							[]kubevirtv1.Network{newNetwork("br")})
-						err := testClient.VirtClient.Create(context.TODO(), vm)
-						Expect(err).ToNot(HaveOccurred())
-
-						Eventually(func() bool {
-							err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-							Expect(err).ToNot(HaveOccurred())
-							if vm.ObjectMeta.DeletionTimestamp.IsZero() {
-								if len(vm.ObjectMeta.Finalizers) == 1 {
-									if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
-										return true
-									}
-								}
-							}
-							return false
-						}, timeout, pollingInterval).Should(BeTrue())
-					})
-				})
-			})
 			Context("and a VM's NIC is removed and a new VM is created with the same MAC", func() {
 				It("[test_id:2995]should successfully release the MAC and the new VM should be created with no errors", func() {
 					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""), newInterface("br2", "")},
@@ -629,6 +481,156 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 		})
+
+		Context("When all the VMs are not serviced by default (opt-in mode)", func() {
+			BeforeEach(func() {
+				By("setting vm webhook to not accept all namespaces unless they include opt-in label")
+				err := setWebhookOptMode(vmNamespaceOptInLabel, optInMode)
+				Expect(err).ToNot(HaveOccurred(), "should set opt-mode to mutatingwebhookconfiguration")
+			})
+
+			It("should create a VM object without a MAC assigned", func() {
+				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+					[]kubevirtv1.Network{newNetwork("br")})
+
+				err := testClient.VirtClient.Create(context.TODO(), vm)
+				Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+				Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
+			})
+
+			Context("and kubemacpool is opted-in on a namespace", func() {
+				BeforeEach(func() {
+					By("opting out the namespace")
+					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
+					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+				})
+				It("should create a VM object with a MAC assigned", func() {
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
+
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "should successfully parse assigned mac")
+				})
+			})
+		})
+
+		Context("When all the VMs are serviced by default (opt-out mode)", func() {
+			BeforeEach(func() {
+				By("setting vm webhook to accept all namespaces that don't include opt-out label")
+				err := setWebhookOptMode(vmNamespaceOptInLabel, optOutMode)
+				Expect(err).ToNot(HaveOccurred(), "should set opt-mode to mutatingwebhookconfiguration")
+			})
+
+			Context("and kubemacpool is opted-out on a namespace", func() {
+				BeforeEach(func() {
+					By("opting out the namespace")
+					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
+					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+				})
+				It("should create a VM object without a MAC assigned", func() {
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
+
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
+				})
+			})
+
+			Context("and the client creates a vm on a non-opted-out namespace", func() {
+				var (
+					vm *kubevirtv1.VirtualMachine
+				)
+				BeforeEach(func() {
+					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
+
+					By("Create VM")
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
+				})
+				It("should automatically assign the vm with static MAC address within range", func() {
+					vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
+					By("Retrieve VM")
+					err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)
+					Expect(err).ToNot(HaveOccurred(), "should success getting the VM after creating it")
+
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "should success parsing mac address")
+				})
+				Context("and then when we opt-out the namespace", func() {
+					BeforeEach(func() {
+						By("Adding namespace opt-out label to mark it as opted-out")
+						err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
+						Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+
+						By("Wait 5 seconds for namespace label clean-up to be propagated at server")
+						time.Sleep(5 * time.Second)
+					})
+					AfterEach(func() {
+						By("Removing namespace opt-out label to get kmp service again")
+						err := cleanNamespaceLabels(TestNamespace)
+						Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+
+						By("Wait 5 seconds for opt-in label at namespace to be propagated at server")
+						time.Sleep(5 * time.Second)
+					})
+					It("should able to be deleted", func() {
+						By("Delete the VM after opt-out the namespace")
+						deleteVMI(vm)
+					})
+				})
+			})
+
+			Context("and trying to create a VM and mac-pool is full", func() {
+				It("should return an error because no MAC address is available", func() {
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", ""),
+						newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
+					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
+
+					err = AllocateFillerVms(2)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
+
+					By("Trying to allocate a vm after there is no more macs to allocate")
+					starvingVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
+
+					err = testClient.VirtClient.Create(context.TODO(), starvingVM)
+					Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
+				})
+			})
+			Context("and testing finalizers", func() {
+				Context("When the VM is not being deleted", func() {
+					It("should have a finalizer and deletion timestamp should be zero ", func() {
+						vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+							[]kubevirtv1.Network{newNetwork("br")})
+						err := testClient.VirtClient.Create(context.TODO(), vm)
+						Expect(err).ToNot(HaveOccurred())
+
+						Eventually(func() bool {
+							err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+							Expect(err).ToNot(HaveOccurred())
+							if vm.ObjectMeta.DeletionTimestamp.IsZero() {
+								if len(vm.ObjectMeta.Finalizers) == 1 {
+									if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
+										return true
+									}
+								}
+							}
+							return false
+						}, timeout, pollingInterval).Should(BeTrue())
+					})
+				})
+			})
+		})
 	})
 })
 
@@ -656,7 +658,7 @@ func newNetwork(name string) kubevirtv1.Network {
 // This function allocates vms with 1 NIC each, in order to fill the mac pool as much as needed.
 func AllocateFillerVms(macsToLeaveFree int64) error {
 	maxPoolSize := getMacPoolSize()
-	Expect(maxPoolSize).To(BeNumerically(">",macsToLeaveFree), "max pool size must be greater than the number of macs we want to leave free")
+	Expect(maxPoolSize).To(BeNumerically(">", macsToLeaveFree), "max pool size must be greater than the number of macs we want to leave free")
 
 	By(fmt.Sprintf("Allocating another %d vms until to allocate the entire mac range", maxPoolSize-macsToLeaveFree))
 	var i int64

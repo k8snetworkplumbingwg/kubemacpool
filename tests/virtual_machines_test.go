@@ -489,13 +489,20 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).ToNot(HaveOccurred(), "should set opt-mode to mutatingwebhookconfiguration")
 			})
 
-			It("should create a VM object without a MAC assigned", func() {
-				vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-					[]kubevirtv1.Network{newNetwork("br")})
+			Context("and kubemacpool is not opted-in on a namespace", func() {
+				BeforeEach(func() {
+					By("Removing any namespace labels to make sure that kubemacpool is not opted in on the namespace")
+					err := cleanNamespaceLabels(TestNamespace)
+					Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
+				})
+				It("should create a VM object without a MAC assigned", func() {
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						[]kubevirtv1.Network{newNetwork("br")})
 
-				err := testClient.VirtClient.Create(context.TODO(), vm)
-				Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-				Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
+				})
 			})
 
 			Context("and kubemacpool is opted-in on a namespace", func() {

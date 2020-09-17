@@ -7,7 +7,7 @@ require (
 	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
-	github.com/mattn/goveralls v0.0.5
+	github.com/mattn/goveralls v0.0.7
 	github.com/onsi/ginkgo v1.11.0
 	github.com/onsi/gomega v1.8.1
 	github.com/pkg/errors v0.9.1

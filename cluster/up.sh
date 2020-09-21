@@ -22,10 +22,10 @@ function getLatestPatchVersion {
 }
 
 source ./cluster/kubevirtci.sh
-CNAO_VERSIOV=0.35.0
+CNAO_VERSION=v0.42.1
 #use kubevirt latest z stream release
 
-KUBEVIRT_VERSION=$(getLatestPatchVersion v0.31)
+KUBEVIRT_VERSION=$(getLatestPatchVersion v0.33)
 kubevirtci::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
@@ -33,9 +33,9 @@ if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
 fi
 
 # Deploy CNA
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/namespace.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/network-addons-config.crd.yaml
-./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSIOV}/operator.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSION}/namespace.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSION}/network-addons-config.crd.yaml
+./cluster/kubectl.sh create -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/${CNAO_VERSION}/operator.yaml
 ./cluster/kubectl.sh create -f ./hack/cna/cna-cr.yaml
 
 # wait for cluster operator

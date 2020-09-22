@@ -85,6 +85,18 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 
 		Context("When Running with default opt-mode configuration", func() {
+			BeforeEach(func() {
+				By("Getting the current VM Opt-mode")
+				vmWebhookOptMode, err := getOptMode(vmNamespaceOptInLabel)
+				Expect(err).ToNot(HaveOccurred(), "Should succeed getting the mutating webhook opt-mode")
+
+				if vmWebhookOptMode == optInMode {
+					By("opting in the namespace")
+					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
+					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+				}
+			})
+
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
 					It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {

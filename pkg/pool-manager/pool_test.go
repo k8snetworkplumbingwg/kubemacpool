@@ -40,6 +40,7 @@ import (
 )
 
 const testManagerNamespace = "kubemacpool-system"
+
 var _ = Describe("Pool", func() {
 	beforeAllocationAnnotation := map[string]string{networksAnnotation: `[{ "name": "ovs-conf"}]`}
 	afterAllocationAnnotation := map[string]string{networksAnnotation: `[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:00"}]`}

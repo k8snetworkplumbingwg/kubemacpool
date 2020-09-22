@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"strconv"
 	"time"
@@ -33,15 +34,16 @@ import (
 )
 
 const (
-	TestNamespace           = "kubemacpool-test"
-	OtherTestNamespace      = "kubemacpool-test-alternative"
-	nadPostUrl              = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD      = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
-	podNamespaceOptInLabel  = "mutatepods.kubemacpool.io"
-	vmNamespaceOptInLabel   = "mutatevirtualmachines.kubemacpool.io"
-	deploymentContainerName = "manager"
-	optInMode               = "opt-in"
-	optOutMode              = "opt-out"
+	TestNamespace                = "kubemacpool-test"
+	OtherTestNamespace           = "kubemacpool-test-alternative"
+	nadPostUrl                   = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD           = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	podNamespaceOptInLabel       = "mutatepods.kubemacpool.io"
+	vmNamespaceOptInLabel        = "mutatevirtualmachines.kubemacpool.io"
+	deploymentContainerName      = "manager"
+	optInMode                    = "opt-in"
+	optOutMode                   = "opt-out"
+	mutatingWebhookConfiguration = "kubemacpool-mutator"
 )
 
 var (
@@ -306,10 +308,43 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 	return err
 }
 
+func getOptInLabel(webhookName string) metav1.LabelSelectorRequirement {
+	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}}
+}
+
+func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
+	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
+}
+
+// function checks what is the currently configured opt-mode configured in a specific webhook
+func getOptMode(webhookName string) (string, error) {
+	mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	for _, webhook := range mutatingWebhook.Webhooks {
+		if webhook.Name == webhookName {
+			for _, matchExpression := range webhook.NamespaceSelector.MatchExpressions {
+				if matchExpression.Key == webhookName {
+					if reflect.DeepEqual(matchExpression, getOptInLabel(webhookName)) {
+						return optInMode, nil
+					} else if reflect.DeepEqual(matchExpression, getOptOutLabel(webhookName)) {
+						return optOutMode, nil
+					} else {
+						return "", fmt.Errorf("webhook %s opt-in label expression selector does not match any opt-mode", webhookName)
+					}
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("webhook %s not found in mutatingWebhookConfiguration", webhookName)
+}
+
 func setWebhookOptMode(webhookName, optMode string) error {
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), "kubemacpool-mutator", metav1.GetOptions{})
+		mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -325,9 +360,9 @@ func setWebhookOptMode(webhookName, optMode string) error {
 
 				switch optMode {
 				case optInMode:
-					expressions = append(expressions, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}})
+					expressions = append(expressions, getOptInLabel(webhookName))
 				case optOutMode:
-					expressions = append(expressions, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}})
+					expressions = append(expressions, getOptOutLabel(webhookName))
 				default:
 					return fmt.Errorf("undefined opt-in mode %s", optMode)
 				}

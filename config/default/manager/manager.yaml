@@ -135,7 +135,7 @@ spec:
   selector:
     app: kubemacpool
 ---
-apiVersion: admissionregistration.k8s.io/v1beta1
+apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   # metadata.name will be kubemacpool-mutator (prefix added by kustomize)
@@ -150,6 +150,8 @@ webhooks:
         namespace: kubemacpool-system
         path: "/mutate-pods"
     failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
     namespaceSelector:
       matchExpressions:
       - key: runlevel
@@ -175,6 +177,8 @@ webhooks:
         namespace: kubemacpool-system
         path: "/mutate-virtualmachines"
     failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
     namespaceSelector:
       matchExpressions:
       - key: runlevel

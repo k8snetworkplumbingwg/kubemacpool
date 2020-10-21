@@ -5,13 +5,15 @@ metadata:
     control-plane: mac-controller-manager
   name: kubemacpool-system
 ---
-apiVersion: admissionregistration.k8s.io/v1beta1
+apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
   labels: null
   name: kubemacpool-mutator
 webhooks:
-- clientConfig:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
     service:
       name: kubemacpool-service
       namespace: kubemacpool-system
@@ -43,7 +45,10 @@ webhooks:
     - CREATE
     resources:
     - pods
-- clientConfig:
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
     service:
       name: kubemacpool-service
       namespace: kubemacpool-system
@@ -76,6 +81,7 @@ webhooks:
     - UPDATE
     resources:
     - virtualmachines
+  sideEffects: None
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

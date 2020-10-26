@@ -42,6 +42,8 @@ spec:
         app: kubemacpool
         control-plane: mac-controller-manager
         controller-tools.k8s.io: "1.0"
+      annotations:
+        description: KubeMacPool manages MAC allocation to Pods and VMs
     spec:
       affinity:
         podAntiAffinity:

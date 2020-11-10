@@ -11,7 +11,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"k8s.io/apimachinery/pkg/api/errors"
+	"github.com/pkg/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -434,7 +435,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						err = testClient.VirtClient.Create(context.TODO(), newVM)
 						if err != nil {
-							Expect(strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full")).To(Equal(true), "Should only get a range full error until cache get updated")
+							Expect(err).Should(MatchError(errors.New("Failed to create virtual machine allocation error: the range is full")), "Should only get a range full error until cache get updated")
 						}
 						return err
 
@@ -482,7 +483,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() error {
 							err = testClient.VirtClient.Create(context.TODO(), newVM)
 							if err != nil {
-								Expect(strings.Contains(err.Error(), "Failed to create virtual machine allocation error: the range is full")).To(Equal(true), "Should only get a range full error until cache get updated")
+								Expect(err).Should(MatchError(errors.New("Failed to create virtual machine allocation error: the range is full")), "Should only get a range full error until cache get updated")
 							}
 							return err
 
@@ -697,7 +698,7 @@ func AllocateFillerVms(macsToLeaveFree int64) error {
 func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 	By(fmt.Sprintf("Delete vm %s/%s", vm.Namespace, vm.Name))
 	err := testClient.VirtClient.Delete(context.TODO(), vm)
-	if errors.IsNotFound(err) {
+	if apierrors.IsNotFound(err) {
 		return
 	}
 	Expect(err).ToNot(HaveOccurred(), "should success deleting VM")
@@ -705,7 +706,7 @@ func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 	By(fmt.Sprintf("Wait for vm %s/%s to be deleted", vm.Namespace, vm.Name))
 	Eventually(func() bool {
 		err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-		if err != nil && errors.IsNotFound(err) {
+		if err != nil && apierrors.IsNotFound(err) {
 			return true
 		}
 		Expect(err).ToNot(HaveOccurred(), "should success getting vm if is still there")

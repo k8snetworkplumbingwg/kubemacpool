@@ -261,6 +261,27 @@ var _ = Describe("Pool", func() {
 			Expect(exist).To(BeFalse())
 		})
 		Describe("Update vm object", func() {
+			It("should preserve disk.io configuration on update", func() {
+				addDiskIO := func(vm *kubevirt.VirtualMachine, ioName kubevirt.DriverIO) {
+					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)
+					vm.Spec.Template.Spec.Domain.Devices.Disks[0].IO = ioName
+				}
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				newVM := multipleInterfacesVM.DeepCopy()
+				newVM.Name = "newVM"
+
+				addDiskIO(newVM, "native-new")
+				err := poolManager.AllocateVirtualMachineMac(newVM)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(newVM.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-new")), "disk.io configuration must be preserved after mac allocation")
+
+				updateVm := multipleInterfacesVM.DeepCopy()
+				updateVm.Name = "newVM"
+				addDiskIO(updateVm, "native-update")
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
+			})
 			It("should preserve mac addresses on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
 				newVM := multipleInterfacesVM.DeepCopy()

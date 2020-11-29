@@ -435,7 +435,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						err = testClient.VirtClient.Create(context.TODO(), newVM)
 						if err != nil {
-							Expect(err).Should(MatchError(errors.New("Failed to create virtual machine allocation error: the range is full")), "Should only get a range full error until cache get updated")
+							Expect(err).Should(MatchError(errors.New("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address")), "Should only get a mac-allocation denial error until cache get updated")
 						}
 						return err
 

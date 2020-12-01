@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/go-logr/logr v0.2.1-0.20200730175230-ee2de8da5be6
-	github.com/go-logr/zapr v0.1.1 // indirect
 	github.com/intel/multus-cni v0.0.0-20200316125841-bfaf22964b51
 	github.com/mattn/goveralls v0.0.7
 	github.com/onsi/ginkgo v1.14.1
@@ -15,8 +14,8 @@ require (
 	k8s.io/apimachinery v0.19.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.19.1
-	kubevirt.io/client-go v0.33.0
-	kubevirt.io/kubevirt v0.33.0
+	kubevirt.io/client-go v0.34.0
+	kubevirt.io/kubevirt v0.34.0
 	kubevirt.io/qe-tools v0.1.6
 	sigs.k8s.io/controller-runtime v0.6.2
 	sigs.k8s.io/controller-tools v0.4.0
@@ -24,7 +23,10 @@ require (
 )
 
 replace (
+	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 	github.com/go-logr/zapr => github.com/go-logr/zapr v0.2.0
+	github.com/openshift/api => github.com/openshift/api v3.9.0+incompatible
+	github.com/openshift/client-go => github.com/openshift/client-go v3.9.0+incompatible
 	golang.org/x/text => golang.org/x/text v0.3.3
 	// Pinned to kubernetes-1.19.1
 	k8s.io/api => k8s.io/api v0.19.1
@@ -46,5 +48,6 @@ replace (
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.19.1
 	k8s.io/metrics => k8s.io/metrics v0.19.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.19.1
-	kubevirt.io/client-go => github.com/kubevirt/client-go v0.33.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v0.34.0
+	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v1.0.2
 )

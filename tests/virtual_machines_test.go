@@ -11,7 +11,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -414,7 +413,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1")})
 					err = testClient.VirtClient.Create(context.TODO(), newVM)
-					Expect(err).To(HaveOccurred(), "Should fail to allocate vm because the mac is already used")
+					Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should fail to allocate vm because the mac is already used")
 
 					By("checking that the VM's NIC can be removed")
 					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -435,7 +434,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						err = testClient.VirtClient.Create(context.TODO(), newVM)
 						if err != nil {
-							Expect(err).Should(MatchError(errors.New("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address")), "Should only get a mac-allocation denial error until cache get updated")
+							Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only get a mac-allocation denial error until cache get updated")
 						}
 						return err
 
@@ -483,7 +482,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() error {
 							err = testClient.VirtClient.Create(context.TODO(), newVM)
 							if err != nil {
-								Expect(err).Should(MatchError(errors.New("Failed to create virtual machine allocation error: the range is full")), "Should only get a range full error until cache get updated")
+								Expect(err).Should(MatchError("Failed to create virtual machine allocation error: the range is full"), "Should only get a range full error until cache get updated")
 							}
 							return err
 

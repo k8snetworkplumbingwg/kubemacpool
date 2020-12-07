@@ -28,6 +28,7 @@ import (
 	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
+	"gomodules.xyz/jsonpatch/v2"
 	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/client-go/api/v1"
@@ -62,6 +63,7 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
+	originalVirtualMachine := virtualMachine.DeepCopy()
 
 	handleRequestId := rand.Int()
 	logger := log.WithName("Handle").WithValues("RequestId", handleRequestId, "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
@@ -88,13 +90,50 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 		}
 	}
 
-	marshaledVirtualMachine, _ := json.Marshal(virtualMachine)
+	// admission.PatchResponse generates a Response containing patches.
+	return patchVMChanges(originalVirtualMachine, virtualMachine)
+}
+
+// create jsonpatches only to changed caused by the kubemacpool webhook changes
+func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine) admission.Response {
+	var kubemapcoolJsonPatches []jsonpatch.Operation
+
+	for ifaceIdx, _ := range currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
+		interfacePatches, err := patchChange(fmt.Sprintf("/spec/template/spec/domain/devices/interfaces/%d/macAddress", ifaceIdx), originalVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress, currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError, err)
+		}
+		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, interfacePatches...)
+	}
+
+	finalizerPatches, err := patchChange("/metadata/finalizers", originalVirtualMachine.ObjectMeta.Finalizers, currentVirtualMachine.ObjectMeta.Finalizers)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
+	kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, finalizerPatches...)
 
-	// admission.PatchResponse generates a Response containing patches.
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledVirtualMachine)
+	log.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	return admission.Response{
+		Patches: kubemapcoolJsonPatches,
+		AdmissionResponse: admissionv1beta1.AdmissionResponse{
+			Allowed:   true,
+			PatchType: func() *admissionv1beta1.PatchType { pt := admissionv1beta1.PatchTypeJSONPatch; return &pt }(),
+		},
+	}
+}
+
+func patchChange(pathChange string, original, current interface{}) ([]jsonpatch.Operation, error) {
+	marshaledOriginal, _ := json.Marshal(original)
+	marshaledCurrent, _ := json.Marshal(current)
+	patches, err := jsonpatch.CreatePatch(marshaledOriginal, marshaledCurrent)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to patch change")
+	}
+	for idx, _ := range patches {
+		patches[idx].Path = pathChange
+	}
+
+	return patches, nil
 }
 
 // mutateCreateVirtualMachinesFn calls the create allocation function

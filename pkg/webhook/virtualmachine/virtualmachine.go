@@ -20,9 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"reflect"
 
+	"github.com/go-logr/logr"
 	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
@@ -61,6 +63,9 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
+	handleRequestId := rand.Int()
+	logger := log.WithName("Handle").WithValues("RequestId", handleRequestId, "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+
 	if virtualMachine.Annotations == nil {
 		virtualMachine.Annotations = map[string]string{}
 	}
@@ -68,15 +73,15 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 		virtualMachine.Namespace = req.AdmissionRequest.Namespace
 	}
 
-	log.V(1).Info("got a create virtual machine event", "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+	logger.V(1).Info("got a virtual machine event")
 	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		err = a.mutateCreateVirtualMachinesFn(ctx, virtualMachine)
+		err = a.mutateCreateVirtualMachinesFn(ctx, virtualMachine, logger)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
 		}
 	} else if req.AdmissionRequest.Operation == admissionv1beta1.Update {
-		err = a.mutateUpdateVirtualMachinesFn(ctx, virtualMachine)
+		err = a.mutateUpdateVirtualMachinesFn(ctx, virtualMachine, logger)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
@@ -93,9 +98,9 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 }
 
 // mutateCreateVirtualMachinesFn calls the create allocation function
-func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
-	logger := log.WithName("mutateCreateVirtualMachinesFn").WithValues("virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
-	logger.V(1).Info("got a create mutate virtual machine event")
+func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("mutateCreateVirtualMachinesFn")
+	logger.Info("got a create mutate virtual machine event")
 
 	existingVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, existingVirtualMachine)
@@ -105,12 +110,12 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 			if virtualMachine.ObjectMeta.DeletionTimestamp.IsZero() {
 				logger.V(1).Info("The VM is not being deleted.")
 				// If the object is not being deleted, then lets allocate macs and add the finalizer
-				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine)
+				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, logger)
 				if err != nil {
 					return errors.Wrap(err, "Failed to allocate mac to the vm object")
 				}
 
-				return addFinalizer(virtualMachine)
+				return addFinalizer(virtualMachine, logger)
 			}
 		}
 
@@ -124,10 +129,9 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 }
 
 // mutateUpdateVirtualMachinesFn calls the update allocation function
-func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine) error {
-	log.Info("got a update mutate virtual machine event",
-		"virtualMachineName", virtualMachine.Name,
-		"virtualMachineNamespace", virtualMachine.Namespace)
+func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
+	logger.Info("got an update mutate virtual machine event")
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
 	if err != nil {
@@ -137,7 +141,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 		return err
 	}
 	if !reflect.DeepEqual(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) {
-		return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine)
+		return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, logger)
 	}
 	return nil
 }
@@ -154,15 +158,15 @@ func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
 	return nil
 }
 
-func addFinalizer(virtualMachine *kubevirt.VirtualMachine) error {
-	logger := log.WithName("addFinalizer").WithValues("virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+func addFinalizer(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("addFinalizer")
 
 	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
 		return nil
 	}
 
 	virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
-	logger.V(1).Info("Finalizer was added to the VM instance")
+	logger.Info("Finalizer was added to the VM instance")
 
 	return nil
 }

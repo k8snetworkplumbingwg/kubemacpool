@@ -178,6 +178,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager Functions For VM", func() {
 
+		logger := logf.Log.WithName("pool Test")
 		bridgeInterface := kubevirt.Interface{
 			Name: "pod",
 			InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{
@@ -231,7 +232,7 @@ var _ = Describe("Pool", func() {
 			newVM := masqueradeVM
 			newVM.Name = "newVM"
 
-			err := poolManager.AllocateVirtualMachineMac(&newVM)
+			err := poolManager.AllocateVirtualMachineMac(&newVM, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(len(poolManager.macPoolMap)).To(Equal(2))
@@ -242,7 +243,7 @@ var _ = Describe("Pool", func() {
 
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-			err = poolManager.ReleaseVirtualMachineMac(&newVM, logf.Log.WithName("pool Test"))
+			err = poolManager.ReleaseVirtualMachineMac(&newVM, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(1))
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]
@@ -255,7 +256,7 @@ var _ = Describe("Pool", func() {
 			newVM := sampleVM
 			newVM.Name = "newVM"
 
-			err := poolManager.AllocateVirtualMachineMac(&newVM)
+			err := poolManager.AllocateVirtualMachineMac(&newVM, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(0))
 		})
@@ -264,7 +265,7 @@ var _ = Describe("Pool", func() {
 			newVM := multipleInterfacesVM.DeepCopy()
 			newVM.Name = "newVM"
 
-			err := poolManager.AllocateVirtualMachineMac(newVM)
+			err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(len(poolManager.macPoolMap)).To(Equal(3))
@@ -299,14 +300,14 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				addDiskIO(newVM, "native-new")
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-new")), "disk.io configuration must be preserved after mac allocation")
 
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
 				addDiskIO(updateVm, "native-update")
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
 			})
@@ -314,13 +315,13 @@ var _ = Describe("Pool", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -330,7 +331,7 @@ var _ = Describe("Pool", func() {
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -338,7 +339,7 @@ var _ = Describe("Pool", func() {
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
 				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress = "01:00:00:00:00:02"
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("01:00:00:00:00:02"))
@@ -351,7 +352,7 @@ var _ = Describe("Pool", func() {
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -364,7 +365,7 @@ var _ = Describe("Pool", func() {
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
 				updatedVM.Spec.Template.Spec.Networks = append(updatedVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
 
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -384,7 +385,7 @@ var _ = Describe("Pool", func() {
 				newVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(newVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
 				newVM.Spec.Template.Spec.Networks = append(newVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
 
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -393,7 +394,7 @@ var _ = Describe("Pool", func() {
 				updatedVM := multipleInterfacesVM.DeepCopy()
 				updatedVM.Name = "newVM"
 
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -406,7 +407,7 @@ var _ = Describe("Pool", func() {
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -416,7 +417,7 @@ var _ = Describe("Pool", func() {
 
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
 				updatedVM.Spec.Template.Spec.Networks = append(updatedVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
@@ -438,7 +439,7 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				By("Create a VM")
-				err := poolManager.AllocateVirtualMachineMac(newVM)
+				err := poolManager.AllocateVirtualMachineMac(newVM, logger)
 				Expect(err).ToNot(HaveOccurred(), "should successfully  allocated macs")
 
 				allocatedMac = newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress

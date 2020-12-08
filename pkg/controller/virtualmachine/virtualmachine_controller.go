@@ -86,7 +86,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	//used for multi thread log separation
 	reconcileRequestId := rand.Int()
 	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
-	logger.V(1).Info("got a virtual machine event in the controller")
+	logger.Info("got a virtual machine event in the controller")
 
 	instance := &kubevirt.VirtualMachine{}
 	err := r.Get(context.TODO(), request.NamespacedName, instance)
@@ -106,7 +106,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		}
 
 		if !instanceOptedIn {
-			logger.V(1).Info("vm is opted-out from kubemacpool")
+			logger.Info("vm is opted-out from kubemacpool")
 			return reconcile.Result{}, nil
 		}
 
@@ -146,7 +146,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 		}
 
 		// our finalizer is present, so lets handle our external dependency
-		logger.V(1).Info("The VM contains the finalizer. Releasing mac")
+		logger.Info("The VM contains the finalizer. Releasing mac")
 		err = r.poolManager.ReleaseVirtualMachineMac(virtualMachine, parentLogger)
 		if err != nil {
 			return errors.Wrap(err, "failed to release mac")
@@ -165,7 +165,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 		return errors.Wrap(err, "Failed to updated VM instance with finalizer removal")
 	}
 
-	logger.V(1).Info("Successfully updated VM instance with finalizer removal")
+	logger.Info("Successfully updated VM instance with finalizer removal")
 
 	return nil
 }

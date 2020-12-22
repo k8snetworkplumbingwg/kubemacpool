@@ -22,6 +22,8 @@ import (
 	"net/http"
 
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
+	"gomodules.xyz/jsonpatch/v2"
+	admissionv1beta1 "k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
@@ -54,6 +56,7 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 	if err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
 	}
+	originalPod := pod.DeepCopy()
 
 	if pod.Annotations == nil {
 		pod.Annotations = map[string]string{}
@@ -65,13 +68,34 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
-	marshaledPod, _ := json.Marshal(pod)
+	// admission.PatchResponse generates a Response containing patches.
+	return patchPodChanges(originalPod, pod)
+}
+
+// create jsonpatches only to changed caused by the kubemacpool webhook changes
+func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
+	var kubemapcoolJsonPatches []jsonpatch.Operation
+
+	marshaledOriginal, _ := json.Marshal(originalPod.GetAnnotations())
+	marshaledCurrent, _ := json.Marshal(currentPod.GetAnnotations())
+	patches, err := jsonpatch.CreatePatch(marshaledOriginal, marshaledCurrent)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
 	}
+	for idx, _ := range patches {
+		patches[idx].Path = "/metadata/annotations"
+	}
 
-	// admission.PatchResponse generates a Response containing patches.
-	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledPod)
+	kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, patches...)
+
+	log.Info("patchPodChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	return admission.Response{
+		Patches: kubemapcoolJsonPatches,
+		AdmissionResponse: admissionv1beta1.AdmissionResponse{
+			Allowed:   true,
+			PatchType: func() *admissionv1beta1.PatchType { pt := admissionv1beta1.PatchTypeJSONPatch; return &pt }(),
+		},
+	}
 }
 
 // InjectClient injects the client into the podAnnotator

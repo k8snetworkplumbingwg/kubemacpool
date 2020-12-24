@@ -91,12 +91,13 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	}
 
 	// admission.PatchResponse generates a Response containing patches.
-	return patchVMChanges(originalVirtualMachine, virtualMachine)
+	return patchVMChanges(originalVirtualMachine, virtualMachine, logger)
 }
 
 // create jsonpatches only to changed caused by the kubemacpool webhook changes
-func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine) admission.Response {
+func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) admission.Response {
 	var kubemapcoolJsonPatches []jsonpatch.Operation
+	logger := parentLogger.WithName("patchVMChanges")
 
 	for ifaceIdx, _ := range currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
 		interfacePatches, err := patchChange(fmt.Sprintf("/spec/template/spec/domain/devices/interfaces/%d/macAddress", ifaceIdx), originalVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress, currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress)
@@ -112,7 +113,7 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 	}
 	kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, finalizerPatches...)
 
-	log.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	logger.Info("Patching", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
 	return admission.Response{
 		Patches: kubemapcoolJsonPatches,
 		AdmissionResponse: admissionv1beta1.AdmissionResponse{

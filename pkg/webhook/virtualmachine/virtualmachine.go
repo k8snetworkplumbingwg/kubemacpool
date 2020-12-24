@@ -140,7 +140,7 @@ func patchChange(pathChange string, original, current interface{}) ([]jsonpatch.
 // mutateCreateVirtualMachinesFn calls the create allocation function
 func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateCreateVirtualMachinesFn")
-	logger.Info("got a create mutate virtual machine event")
+	logger.Info("got a create mutate virtual machine event", "resourceVersion", virtualMachine.GetResourceVersion())
 
 	existingVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, existingVirtualMachine)
@@ -171,7 +171,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 // mutateUpdateVirtualMachinesFn calls the update allocation function
 func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
-	logger.Info("got an update mutate virtual machine event")
+	logger.Info("got an update mutate virtual machine event", "resourceVersion", virtualMachine.GetResourceVersion())
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
 	if err != nil {

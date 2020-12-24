@@ -428,6 +428,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 					Expect(err).ToNot(HaveOccurred(), "should succeed to remove NIC from vm")
 
+					By("checking that the VM's NIC has been successfully removed")
+					err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
 					Expect(len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "vm's total NICs should be 1")
 
 					By("checking that a new VM can be created after the VM's NIC had been removed ")

@@ -38,7 +38,7 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("AllocateVirtualMachineMac")
-	logger.Info("data before allocation", "macmap", p.macPoolMap)
+	logger.Info("data before allocation", "macmap", p.macPoolMap, "VM interfaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 
 	if len(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
 		logger.Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", virtualMachine)
@@ -89,8 +89,8 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		return err
 	}
 
-	logger.Info("data after allocation", "macmap", p.macPoolMap)
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
+	logger.Info("data after allocation", "macmap", p.macPoolMap, "current VM interfaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 
 	return nil
 }
@@ -119,14 +119,14 @@ func (p *PoolManager) ReleaseVirtualMachineMac(vm *kubevirt.VirtualMachine, pare
 		}
 	}
 
-	logger.Info("released macs in virtua machine", "macmap", p.macPoolMap)
+	logger.Info("released macs in virtual machine", "macmap", p.macPoolMap)
 
 	return nil
 }
 
 func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("UpdateMacAddressesForVirtualMachine")
-	logger.Info("data before allocation", "macmap", p.macPoolMap)
+	logger.Info("data before allocation", "macmap", p.macPoolMap, "pre-request VM interfaces", previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, "request VM intefaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 	p.poolMutex.Lock()
 	if previousVirtualMachine == nil {
 		p.poolMutex.Unlock()
@@ -193,8 +193,8 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		"interfaces Map", releaseOldAllocations)
 	p.releaseMacAddressesFromInterfaceMap(releaseOldAllocations)
 
-	logger.Info("data after allocation", "macmap", p.macPoolMap)
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
+	logger.Info("data after allocation", "macmap", p.macPoolMap, "current VM interfaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 	return nil
 }
 

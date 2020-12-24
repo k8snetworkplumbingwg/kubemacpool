@@ -3,16 +3,19 @@ package tests
 import (
 	"context"
 	"fmt"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 func TestTests(t *testing.T) {
@@ -81,7 +84,21 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 		Fail(message, callerSkip...)
 	}
 
-	fmt.Printf("Endpoint: %v", endpoint)
+	fmt.Printf("Endpoint: %v \n", endpoint)
+
+	var testVms []*kubevirtv1.VirtualMachine
+	for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
+		vmList := &kubevirtv1.VirtualMachine{}
+		err := testClient.VirtClient.List(context.TODO(), vmList, &client.ListOptions{Namespace: namespace})
+		if err != nil {
+			fmt.Println(err)
+			Fail(message, callerSkip...)
+		}
+
+		testVms = append(testVms, vmList)
+	}
+
+	fmt.Printf("test virtualMachines: %v \n", testVms)
 
 	Fail(message, callerSkip...)
 }

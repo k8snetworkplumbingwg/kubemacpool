@@ -518,19 +518,35 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and kubemacpool is opted-in on a namespace", func() {
+				var (
+					vm *kubevirtv1.VirtualMachine
+				)
 				BeforeEach(func() {
-					By("opting out the namespace")
+					By("opting in the namespace")
 					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
 					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 				})
-				It("should create a VM object with a MAC assigned", func() {
-					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
+				Context("and a vm is created in the opt-in namespace", func() {
+					BeforeEach(func() {
+						vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+							[]kubevirtv1.Network{newNetwork("br")})
 
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "should successfully parse assigned mac")
+						By("Create VM")
+						err := testClient.VirtClient.Create(context.TODO(), vm)
+						Expect(err).ToNot(HaveOccurred(), "should succeed creating the vm")
+					})
+					It("should create a VM object with a MAC assigned", func() {
+						_, err := net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+						Expect(err).ToNot(HaveOccurred(), "should successfully parse assigned mac")
+					})
+					It("should remove the mac from vmWaitConfigMap after vm created successfully", func() {
+						By("Checking vmWaitConfigMap is cleared")
+						Eventually(func() map[string]string {
+							data, err := getVmWaitConfigMapData()
+							Expect(err).ToNot(HaveOccurred(), "Should succeed getting vmWaitConfigMap")
+							return data
+						}, timeout, pollingInterval).Should(BeEmpty(), "vmWaitConfigMap should be empty after successful vm creation")
+					})
 				})
 			})
 		})
@@ -569,6 +585,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					By("Create VM")
 					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
+				})
+				It("should remove the mac from vmWaitConfigMap after vm created successfully", func() {
+					By("Checking vmWaitConfigMap is cleared")
+					Eventually(func() map[string]string {
+						data, err := getVmWaitConfigMapData()
+						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vmWaitConfigMap")
+						return data
+					}, timeout, pollingInterval).Should(BeEmpty(), "vmWaitConfigMap should be empty after successful vm creation")
 				})
 				It("should automatically assign the vm with static MAC address within range", func() {
 					vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}

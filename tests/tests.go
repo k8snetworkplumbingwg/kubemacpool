@@ -316,6 +316,15 @@ func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
 	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
 }
 
+func getVmWaitConfigMapData() (map[string]string, error) {
+	vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to get %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
+	}
+
+	return vmWaitConfigMap.Data, nil
+}
+
 // function checks what is the currently configured opt-mode configured in a specific webhook
 func getOptMode(webhookName string) (string, error) {
 	mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})

@@ -100,20 +100,18 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
-		instanceOptedIn, err := r.poolManager.IsVmInstanceOptedIn(request.Namespace)
+		vmShouldBeManaged, err := r.poolManager.IsNamespaceManaged(instance.GetNamespace())
 		if err != nil {
-			return reconcile.Result{}, errors.Wrap(err, "failed to check opt-in selection for vm")
+			return reconcile.Result{}, errors.Wrap(err, "Failed to check if vm is managed")
 		}
-
-		if !instanceOptedIn {
-			logger.Info("vm is opted-out from kubemacpool")
+		if !vmShouldBeManaged {
+			logger.Info("vm is not managed by kubemacpool")
 			return reconcile.Result{}, nil
 		}
 
 		logger.V(1).Info("vm create/update event")
 		// The object is not being deleted, so we can set the macs to allocated
 		err = r.poolManager.MarkVMAsReady(instance, logger)
-
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to reconcile kubemacpool after virtual machine's creation event")
 		}

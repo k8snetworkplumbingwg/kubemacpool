@@ -515,9 +515,22 @@ func (p *PoolManager) vmWaitingCleanupLook() {
 	}
 }
 
-// Checks if the namespace of a vm instance is opted in for kubemacpool
-func (p *PoolManager) IsVmInstanceOptedIn(namespaceName string) (bool, error) {
-	return p.isInstanceOptedIn(namespaceName, "kubemacpool-mutator", "mutatevirtualmachines.kubemacpool.io")
+// Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode
+func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
+	mutatingWebhookConfigName := "kubemacpool-mutator"
+	webhookName := "mutatevirtualmachines.kubemacpool.io"
+	vmOptMode, err := p.getOptMode(mutatingWebhookConfigName, webhookName)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get opt-Mode")
+	}
+
+	isNamespaceManaged, err := p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName, vmOptMode)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if namespace is managed according to opt-mode")
+	}
+
+	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
+	return isNamespaceManaged, nil
 }
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {

@@ -50,6 +50,7 @@ type PoolManager struct {
 	currentMac       net.HardwareAddr     // last given mac
 	managerNamespace string
 	macPoolMap       map[string]AllocationStatus  // allocated mac map and status
+	vmToMacPoolMap   map[string]map[string]string // map allocated mac address by networkname and namespace/vmName: {"namespace/vmName: {"network name": "mac address"}}
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
 	poolMutex        sync.Mutex                   // mutex for allocation an release
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
@@ -69,6 +70,11 @@ const (
 	AllocationStatusAllocated     AllocationStatus = "Allocated"
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
+
+type macChanges struct {
+	allocations map[string]string
+	releases    map[string]string
+}
 
 func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
@@ -94,6 +100,7 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		currentMac:       currentMac,
 		managerNamespace: managerNamespace,
 		podToMacPoolMap:  map[string]map[string]string{},
+		vmToMacPoolMap:   map[string]map[string]string{},
 		macPoolMap:       map[string]AllocationStatus{},
 		poolMutex:        sync.Mutex{},
 		waitTime:         waitTime}

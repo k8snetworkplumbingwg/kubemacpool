@@ -809,4 +809,89 @@ var _ = Describe("Pool", func() {
 				}),
 		)
 	})
+
+	type updateVmToMacPoolMapParams struct {
+		initialMap  map[string]map[string]string
+		macChanges  macChanges
+		vmName      string
+		expectedMap map[string]map[string]string
+	}
+	Describe("updateVmToMacPoolMap API Tests", func() {
+		var poolManager *PoolManager
+		vmTestName1 := "testVM1"
+		vmTestName2 := "testVM2"
+		iface1 := "br5"
+		iface2 := "br6"
+		iface3 := "br7"
+		mac1 := "02:00:00:00:00:05"
+		mac2 := "02:00:00:00:00:06"
+		mac3 := "02:00:00:00:00:07"
+		BeforeEach(func() {
+			poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:FF")
+		})
+		table.DescribeTable("Should update vmToMacPoolMap with macChanges with no error",
+			func(u *updateVmToMacPoolMapParams) {
+				poolManager.vmToMacPoolMap = u.initialMap
+				err := poolManager.updateVmToMacPoolMap(u.macChanges, u.vmName)
+				Expect(err).To(Succeed(), "updateVmToMacPoolMap should not return error")
+				Expect(poolManager.vmToMacPoolMap).To(Equal(u.expectedMap), "updateVmToMacPoolMap should equal the expected map")
+			},
+			table.Entry("when map is empty and trying to remove mac",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{},
+					macChanges:  macChanges{releases: map[string]string{iface1: mac1}},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{},
+				}),
+			table.Entry("when map is empty and adding an interface",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{},
+					macChanges:  macChanges{allocations: map[string]string{iface1: mac1}},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}},
+				}),
+			table.Entry("when map is empty and adding an interface and removing the same interface",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{},
+					macChanges:  macChanges{allocations: map[string]string{iface1: mac1}, releases: map[string]string{iface1: mac1}},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{},
+				}),
+			table.Entry("when map not empty and no interface is added nor removed",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{vmTestName1: map[string]string{iface2: mac2}},
+					macChanges:  macChanges{},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface2: mac2}},
+				}),
+			table.Entry("when map not empty and adding an interface and removing the same interface",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{vmTestName1: map[string]string{iface2: mac2}},
+					macChanges:  macChanges{allocations: map[string]string{iface1: mac1}, releases: map[string]string{iface1: mac1}},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface2: mac2}},
+				}),
+			table.Entry("when map not empty and an interface is added to a new vm",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}},
+					macChanges:  macChanges{allocations: map[string]string{iface2: mac2}},
+					vmName:      vmTestName2,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}, vmTestName2: map[string]string{iface2: mac2}},
+				}),
+			table.Entry("when map not empty and an interface is removed from one of the vms",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}, vmTestName2: map[string]string{iface2: mac2, iface3: mac3}},
+					macChanges:  macChanges{releases: map[string]string{iface2: mac2}},
+					vmName:      vmTestName2,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}, vmTestName2: map[string]string{iface3: mac3}},
+				}),
+			table.Entry("when map not empty and an interface is added to one of the vms",
+				&updateVmToMacPoolMapParams{
+					initialMap:  map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1}, vmTestName2: map[string]string{iface2: mac2}},
+					macChanges:  macChanges{allocations: map[string]string{iface3: mac3}},
+					vmName:      vmTestName1,
+					expectedMap: map[string]map[string]string{vmTestName1: map[string]string{iface1: mac1, iface3: mac3}, vmTestName2: map[string]string{iface2: mac2}},
+				}),
+		)
+	})
 })

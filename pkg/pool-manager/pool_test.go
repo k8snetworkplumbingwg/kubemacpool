@@ -134,6 +134,16 @@ var _ = Describe("Pool", func() {
 			table.Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF should fail", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
 			table.Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
 		)
+
+		table.DescribeTable("should mergeMaps correctly", func(map1, map2, expectedMergedMap map[string]string, failDescription string) {
+			mergedMap := mergeMaps([]map[string]string{map1, map2})
+			Expect(mergedMap).To(Equal(expectedMergedMap), failDescription)
+		},
+			table.Entry("when given 2 empty maps", map[string]string{}, map[string]string{}, map[string]string{}, "merged map of two empty maps should be empty as well"),
+			table.Entry("when given empty map and non-empty map", map[string]string{"br1": "40:00:00:00:00:00"}, map[string]string{}, map[string]string{"br1": "40:00:00:00:00:00"}, "merged map of two empty maps should have same values as non-empty map"),
+			table.Entry("when given 2 non-empty maps", map[string]string{"br1": "40:00:00:00:00:00"}, map[string]string{"br2": "02:00:00:00:00:00"}, map[string]string{"br1": "40:00:00:00:00:00", "br2": "02:00:00:00:00:00"}, "merged map of two non-empty maps should include all values"),
+		)
+
 	})
 
 	Describe("Pool Manager General Functions ", func() {
@@ -244,7 +254,7 @@ var _ = Describe("Pool", func() {
 
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-			err = poolManager.ReleaseVirtualMachineMac(&newVM, logger)
+			err = poolManager.ReleaseVirtualMachineMacOnVmDelete(&newVM, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(1))
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]
@@ -280,7 +290,7 @@ var _ = Describe("Pool", func() {
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 			Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 
-			err = poolManager.ReleaseVirtualMachineMac(newVM, logf.Log.WithName("VirtualMachine Controller"))
+			err = poolManager.ReleaseVirtualMachineMacOnVmDelete(newVM, logf.Log.WithName("VirtualMachine Controller"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(poolManager.macPoolMap)).To(Equal(1))
 			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]

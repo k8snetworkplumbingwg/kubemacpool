@@ -67,8 +67,10 @@ const (
 type AllocationStatus string
 
 const (
-	AllocationStatusAllocated     AllocationStatus = "Allocated"
-	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
+	AllocationStatusAllocated          AllocationStatus = "Allocated"
+	AllocationStatusWaitingForPod      AllocationStatus = "WaitingForPod"
+	AllocationStatusWaitingForDeletion AllocationStatus = "WaitingForDeletion"
+	AllocationStatusRestored           AllocationStatus = "Restored"
 )
 
 type macChanges struct {

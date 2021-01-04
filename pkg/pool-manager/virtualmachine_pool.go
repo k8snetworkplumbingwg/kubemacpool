@@ -123,35 +123,27 @@ func (p *PoolManager) updateVmToMacPoolMap(macChanges macChanges, vmNameNamespac
 	return nil
 }
 
-func (p *PoolManager) ReleaseVirtualMachineMac(vm *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
-	logger := parentLogger.WithName("ReleaseVirtualMachineMac")
+// ReleaseVirtualMachineMacOnVmDelete release all macs from virtual machine due to vm deletion
+func (p *PoolManager) ReleaseVirtualMachineMacOnVmDelete(vm *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("ReleaseVirtualMachineMacOnVmDelete")
+
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger.V(1).Info("data",
 		"macmap", p.macPoolMap,
-		"podmap", p.podToMacPoolMap,
-		"currentMac", p.currentMac.String())
+		"vmToMacPoolMap", p.vmToMacPoolMap[vmNamespaced(vm)])
+
+	for _, macAddress := range p.vmToMacPoolMap[vmNamespaced(vm)] {
+		logger.V(1).Info("released mac from macPoolMap", "macAddress", macAddress)
+		delete(p.macPoolMap, macAddress)
+	}
 
 	err := p.updateVmToMacPoolMap(macChanges{releases: p.vmToMacPoolMap[vmNamespaced(vm)]}, vmNamespaced(vm))
 	if err != nil {
 		return err
 	}
 
-	if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
-		logger.Info("no interfaces found for virtual machine, skipping mac release")
-		return nil
-	}
-
-	logger.V(1).Info("virtual machine data", "interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
-	for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-		if iface.MacAddress != "" {
-			delete(p.macPoolMap, iface.MacAddress)
-			logger.Info("released mac from virtual machine",
-				"mac", iface.MacAddress)
-		}
-	}
-
-	logger.Info("released macs in virtua machine", "macmap", p.macPoolMap)
+	logger.Info("released macs in virtual machine", "macmap", p.macPoolMap, "vmToMacPoolMap", p.vmToMacPoolMap[vmNamespaced(vm)])
 
 	return nil
 }
@@ -215,21 +207,20 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		}
 	}
 
-	// Release delta interfaces
-
-	logger.V(1).Info("delta interfaces to release",
-		"interfaces Map", deltaInterfacesMap)
-	p.releaseMacAddressesFromInterfaceMap(deltaInterfacesMap)
-
-	// Release old allocations
-	logger.V(1).Info("old interfaces to release",
-		"interfaces Map", releaseOldAllocations)
-	p.releaseMacAddressesFromInterfaceMap(releaseOldAllocations)
-
 	// Update only new macs in VmToMacPoolMap. we must do this in the webhook context to avoid allocation races.
 	err := p.updateVmToMacPoolMap(macChanges{allocations: newAllocations}, vmNamespaced(copyVM))
 	if err != nil {
 		return err
+	}
+
+	// released macs are marked here for deletion in macmap, and will be deleted in the controller should the webhook chain is persisted.
+	// Until then, the to-be released macs are kept in the VmToMacPoolMap.
+	newReleases := mergeMaps([]map[string]string{deltaInterfacesMap, releaseOldAllocations})
+	if len(newReleases) != 0 {
+		// Mark macs for deletion, will be released in the controller reconcile
+		logger.V(1).Info("macs marked for release",
+			"delta interfaces", deltaInterfacesMap, "old interfaces", releaseOldAllocations)
+		p.markMacAddressesForDeletion(newReleases)
 	}
 
 	logger.Info("data after allocation", "macmap", p.macPoolMap, "vmToMacPoolMap", p.vmToMacPoolMap)
@@ -384,16 +375,20 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 	return false
 }
 
-func (p *PoolManager) releaseMacAddressesFromInterfaceMap(allocations map[string]string) {
-	for _, value := range allocations {
-		delete(p.macPoolMap, value)
+func (p *PoolManager) markMacAddressesForDeletion(releases map[string]string) {
+	for _, macAddress := range releases {
+		if _, exist := p.macPoolMap[macAddress]; exist {
+			p.macPoolMap[macAddress] = AllocationStatusWaitingForDeletion
+		}
 	}
 }
 
 // Revert allocation if one of the requested mac addresses fails to be allocated
 func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string]string) {
-	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
-	p.releaseMacAddressesFromInterfaceMap(allocations)
+	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations to revert", allocations)
+	for _, macAddress := range allocations {
+		delete(p.macPoolMap, macAddress)
+	}
 }
 
 // This function return or creates a config map that contains mac address and the allocation time.
@@ -456,37 +451,50 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	logger.Info("updating macpoolMap according to vmToMacPoolMap", "macmap", p.macPoolMap, "vm's vmToMacPoolMap", p.vmToMacPoolMap[vmNamespaced(vm)])
+	releases := map[string]string{}
+	var macsUpdated []string
+	for iface, macAddress := range p.vmToMacPoolMap[vmNamespaced(vm)] {
+		switch p.macPoolMap[macAddress] {
+		case AllocationStatusWaitingForPod:
+			{
+				logger.V(1).Info("set vm's mac to status allocated", "macAddress", macAddress)
+				p.macPoolMap[macAddress] = AllocationStatusAllocated
+			}
+		case AllocationStatusWaitingForDeletion:
+			{
+				logger.V(1).Info("removing mac from macPoolMap", "macAddress", macAddress)
+				delete(p.macPoolMap, macAddress)
+				releases[iface] = macAddress
+			}
+		default:
+			continue
+		}
+
+		// remember for later update of configMap
+		macsUpdated = append(macsUpdated, macAddress)
+	}
+
+	//update released macs after macPoolMap was updated in the controller context
+	err := p.updateVmToMacPoolMap(macChanges{releases: releases}, vmNamespaced(vm))
+	if err != nil {
+		return err
+	}
+
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// refresh ConfigMaps instance
 		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 		if err != nil {
 			return errors.Wrap(err, "Failed to refresh manager's configmap instance")
 		}
 
-		if configMap.Data == nil {
-			logger.Info("the configMap is empty")
-			return nil
+		logger.V(1).Info("updating configMap according to updated macs", "configMap.Data", configMap.Data, "macsUpdated", macsUpdated)
+		for _, macAddress := range macsUpdated {
+			macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
+			delete(configMap.Data, macAddressDashes)
 		}
-
-		if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
-			logger.Info("interface list is empty")
-			return nil
-		}
-
-		logger.V(1).Info("set vm's mac to status allocated", "vm interfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
-		for _, vmInterface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-			if vmInterface.MacAddress != "" {
-				if _, exist := p.macPoolMap[vmInterface.MacAddress]; exist {
-					p.macPoolMap[vmInterface.MacAddress] = AllocationStatusAllocated
-				}
-				macAddress := strings.Replace(vmInterface.MacAddress, ":", "-", 5)
-				delete(configMap.Data, macAddress)
-			}
-		}
-		logger.V(1).Info("set virtual machine's macs as ready")
 
 		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-
 		return err
 	})
 
@@ -494,7 +502,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, parentLogger lo
 		return errors.Wrap(err, "Failed to update manager's configmap with approved allocated macs")
 	}
 
-	logger.Info("marked virtual machine as ready", "macPoolMap", p.macPoolMap)
+	logger.Info("marked virtual machine as ready", "macmap", p.macPoolMap, "vm's vmToMacPoolMap", p.vmToMacPoolMap[vmNamespaced(vm)])
 
 	return nil
 }
@@ -577,4 +585,19 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("%s/%s", machine.Namespace, machine.Name)
+}
+
+// mergeMaps merges between map[string]string maps.
+// Note that this does a simple merge, assuming there are no conflicting
+// key values in the input maps.
+func mergeMaps(maps []map[string]string) map[string]string {
+	mergedMap := map[string]string{}
+
+	for _, mapObj := range maps {
+		for key, value := range mapObj {
+			mergedMap[key] = value
+		}
+	}
+
+	return mergedMap
 }

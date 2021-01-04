@@ -145,7 +145,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 
 		// our finalizer is present, so lets handle our external dependency
 		logger.Info("The VM contains the finalizer. Releasing mac")
-		err = r.poolManager.ReleaseVirtualMachineMac(virtualMachine, parentLogger)
+		err = r.poolManager.ReleaseVirtualMachineMacOnVmDelete(virtualMachine, parentLogger)
 		if err != nil {
 			return errors.Wrap(err, "failed to release mac")
 		}

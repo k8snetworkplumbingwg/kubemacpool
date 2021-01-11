@@ -103,16 +103,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
 						err := testClient.VirtClient.Create(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred())
-						_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 						vmOverlap := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("brOverlap", "")}, []kubevirtv1.Network{newNetwork("brOverlap")})
 						// Allocated the same MAC address that was registered to the first vm
 						vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 						err = testClient.VirtClient.Create(context.TODO(), vmOverlap)
 						Expect(err).To(HaveOccurred())
-						_, err = net.ParseMAC(vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(net.ParseMAC(vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 					})
 				})
 				Context("and the MAC address is out of range", func() {
@@ -121,8 +119,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							[]kubevirtv1.Network{newNetwork("br")})
 						err := testClient.VirtClient.Create(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred())
-						_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 						// Allocated the same mac address that was registered to the first vm
 						vmOverlap := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("brOverlap", "03:ff:ff:ff:ff:ff")},
@@ -160,14 +157,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", "")}, []kubevirtv1.Network{newNetwork("br1")})
 					err := testClient.VirtClient.Create(context.TODO(), vm1)
 					Expect(err).ToNot(HaveOccurred())
-					_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 					vm2 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br2")})
 					err = testClient.VirtClient.Create(context.TODO(), vm2)
 					Expect(err).ToNot(HaveOccurred())
-					_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 					vm1MacAddress := vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					vm2MacAddress := vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
@@ -187,8 +182,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						return err
 
 					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
-					_, err = net.ParseMAC(newVM1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(newVM1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 					newVM2 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br2", vm2MacAddress)},
 						[]kubevirtv1.Network{newNetwork("br2")})
@@ -201,8 +195,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						return err
 
 					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
-					_, err = net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 				})
 			})
 			Context("and trying to create a VM after a MAC address has just been released due to a VM deletion", func() {
@@ -222,8 +215,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					err = testClient.VirtClient.Create(context.TODO(), vm2)
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating vm2")
-					_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm2's mac")
+					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm2's mac address")
 
 					newVM1 := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress),
 						newInterface("br2", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
@@ -258,8 +250,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						err = testClient.VirtClient.Create(context.TODO(), vm2)
 						Expect(err).ToNot(HaveOccurred(), "Should succeed creating vm2")
-						_, err = net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vm2's mac")
+						Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm2s's mac address")
 
 						err = AllocateFillerVms(3)
 						Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
@@ -288,8 +279,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					err := testClient.VirtClient.Create(context.TODO(), vm1)
 					Expect(err).ToNot(HaveOccurred())
-					_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
 					//restart kubeMacPool
 					err = initKubemacpoolParams()
@@ -326,8 +316,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					updateObject.ObjectMeta = *vm1.ObjectMeta.DeepCopy()
 
 					for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
-						_, err = net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress)
-						Expect(err).ToNot(HaveOccurred())
+						Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 					}
 
 					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -403,10 +392,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
+
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's first mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's second mac address")
 
 					reusedMacAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					By("checking that a new VM cannot be created when the range is full")
@@ -448,10 +436,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 						err := testClient.VirtClient.Create(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-						_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
-						_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
-						Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's first mac address")
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's second mac address")
 
 						err = AllocateFillerVms(2)
 						Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
@@ -536,8 +522,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(err).ToNot(HaveOccurred(), "should succeed creating the vm")
 					})
 					It("should create a VM object with a MAC assigned", func() {
-						_, err := net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-						Expect(err).ToNot(HaveOccurred(), "should successfully parse assigned mac")
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 					})
 					It("should remove the mac from vmWaitConfigMap after vm created successfully", func() {
 						By("Checking vmWaitConfigMap is cleared")
@@ -600,8 +585,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)
 					Expect(err).ToNot(HaveOccurred(), "should success getting the VM after creating it")
 
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "should success parsing mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 				})
 				Context("and then when we opt-out the namespace", func() {
 					BeforeEach(func() {
@@ -634,10 +618,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm first mac")
-					_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's first mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's second mac address")
 
 					err = AllocateFillerVms(2)
 					Expect(err).ToNot(HaveOccurred(), "Should succeed allocating all the mac pool")
@@ -711,8 +693,7 @@ func AllocateFillerVms(macsToLeaveFree int64) error {
 		vm.Name = fmt.Sprintf("vm-filler-%d", i)
 		err := testClient.VirtClient.Create(context.TODO(), vm)
 		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully create filler vm %s", vm.Name))
-		_, err = net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-		Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the filler vm mac")
+		Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's filler mac address")
 	}
 
 	return nil

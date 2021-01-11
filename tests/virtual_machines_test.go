@@ -504,9 +504,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and kubemacpool is opted-in on a namespace", func() {
-				var (
-					vm *kubevirtv1.VirtualMachine
-				)
+				var vm *kubevirtv1.VirtualMachine
 				BeforeEach(func() {
 					By("opting in the namespace")
 					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
@@ -560,9 +558,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and the client creates a vm on a non-opted-out namespace", func() {
-				var (
-					vm *kubevirtv1.VirtualMachine
-				)
+				var vm *kubevirtv1.VirtualMachine
 				BeforeEach(func() {
 					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 						[]kubevirtv1.Network{newNetwork("br")})

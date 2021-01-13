@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -27,6 +28,7 @@ const pollingInterval = 5 * time.Second
 
 //TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", func() {
+	extendedTimeout := time.Duration(0)
 	BeforeAll(func() {
 		result := testClient.KubeClient.ExtensionsV1beta1().RESTClient().
 			Post().
@@ -34,6 +36,10 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
 			Do(context.TODO())
 		Expect(result.Error()).NotTo(HaveOccurred(), "KubeCient should successfully respond to post request")
+		vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
+		// since some tests check vmWaitingCleanupLook routine, we need to adjust the total timeout with the wait-time argument.
+		// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
+		extendedTimeout = timeout + vmFailCleanupWaitTime
 	})
 
 	BeforeEach(func() {
@@ -330,14 +336,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(err).ToNot(HaveOccurred())
 					}
 
-					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-
-						err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: updateObject.Namespace, Name: updateObject.Name}, updateObject)
-						Expect(err).ToNot(HaveOccurred())
-
-						err = testClient.VirtClient.Update(context.TODO(), updateObject)
-						return err
-					})
+					err = retryOnConflictAndWaitForRestoreCache(updateObject, extendedTimeout, func(vm *kubevirtv1.VirtualMachine) {})
 					Expect(err).ToNot(HaveOccurred())
 
 					for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
@@ -346,13 +345,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 			Context("and we re-apply a failed VM yaml", func() {
-				totalTimeout := time.Duration(0)
-				BeforeAll(func() {
-					vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
-					// since this test checks vmWaitingCleanupLook routine, we nned to adjust the total timeout with the wait-time argument.
-					// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
-					totalTimeout = timeout + vmFailCleanupWaitTime
-				})
 				It("[test_id:2633]should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 					vm1 := CreateVmObject(TestNamespace, false,
 						[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
@@ -372,7 +364,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 						return err
 
-					}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					}, extendedTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 				})
 				It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 					vm1 := CreateVmObject(TestNamespace, false,
@@ -394,7 +386,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 						return err
 
-					}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					}, extendedTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 				})
 			})
 			Context("and a VM's NIC is removed and a new VM is created with the same MAC", func() {
@@ -409,22 +401,16 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm second mac")
 
 					reusedMacAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
-					By("checking that a new VM cannot be created when the range is full")
+					By("checking that a new VM cannot be created when the mac is already occupied")
 					newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1")})
 					err = testClient.VirtClient.Create(context.TODO(), newVM)
 					Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should fail to allocate vm because the mac is already used")
 
 					By("checking that the VM's NIC can be removed")
-					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
-
+					err = retryOnConflictAndWaitForRestoreCache(vm, extendedTimeout, func(vm *kubevirtv1.VirtualMachine) {
 						vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br2", "")}
 						vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br2")}
-
-						err = testClient.VirtClient.Update(context.TODO(), vm)
-						return err
 					})
 					Expect(err).ToNot(HaveOccurred(), "should succeed to remove NIC from vm")
 
@@ -464,15 +450,9 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(strings.Contains(err.Error(), "Failed to allocate mac to the vm object: the range is full")).To(Equal(true))
 
 						By("checking that the VM's NIC can be removed")
-						err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-							err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-							Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
-
+						err = retryOnConflictAndWaitForRestoreCache(vm, extendedTimeout, func(vm *kubevirtv1.VirtualMachine) {
 							vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br2", "")}
 							vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br2")}
-
-							err = testClient.VirtClient.Update(context.TODO(), vm)
-							return err
 						})
 						Expect(err).ToNot(HaveOccurred(), "should succeed to remove NIC from vm")
 
@@ -482,7 +462,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() error {
 							err = testClient.VirtClient.Create(context.TODO(), newVM)
 							if err != nil {
-								Expect(err).Should(MatchError("Failed to create virtual machine allocation error: the range is full"), "Should only get a range full error until cache get updated")
+								Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: the range is full"), "Should only get a range full error until cache get updated")
 							}
 							return err
 
@@ -743,4 +723,28 @@ func clearMap(inputMap map[string]string) {
 			delete(inputMap, key)
 		}
 	}
+}
+
+// retryOnConflictAndWaitForRestoreCache tries to update a vm, but if a conflict occurs it allows a restoreDuration
+// sleep before retrying in order for the KMP cache to get restored.
+func retryOnConflictAndWaitForRestoreCache(vm *kubevirtv1.VirtualMachine, restoreDuration time.Duration, updateVm func(vm *kubevirtv1.VirtualMachine)) error {
+	postRestoreRetry := wait.Backoff{
+		Steps:    2,
+		Duration: restoreDuration,
+		Factor:   0,
+		Jitter:   0,
+	}
+
+	return retry.RetryOnConflict(postRestoreRetry, func() error {
+		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+		Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
+
+		updateVm(vm)
+
+		err = testClient.VirtClient.Update(context.TODO(), vm)
+		if apierrors.IsConflict(err) {
+			By(fmt.Sprintf("conflict occured, allowing self restore of cache after %s", restoreDuration))
+		}
+		return err
+	})
 }

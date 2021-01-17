@@ -170,7 +170,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 // mutateUpdateVirtualMachinesFn calls the update allocation function
 func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
-	logger.Info("got an update mutate virtual machine event")
+	logger.Info("got an update mutate virtual machine event", "req rv", virtualMachine.GetResourceVersion(), "req ifaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, "req Annotations", virtualMachine.GetAnnotations())
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
 	if err != nil {
@@ -179,6 +179,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 		}
 		return err
 	}
+	logger.Info("fetching previous VirtualMachine instance", "prev rv", previousVirtualMachine.GetResourceVersion(), "prev ifaces", previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, "prev Annotations", previousVirtualMachine.GetAnnotations())
 	if !reflect.DeepEqual(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) {
 		return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, logger)
 	}

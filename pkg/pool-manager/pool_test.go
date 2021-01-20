@@ -23,6 +23,7 @@ import (
 	"math"
 	"net"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -47,6 +48,7 @@ var _ = Describe("Pool", func() {
 	afterAllocationAnnotation := map[string]string{networksAnnotation: `[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:00"}]`}
 	samplePod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: "default", Annotations: afterAllocationAnnotation}}
 	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
+	waitTime := 10
 
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
@@ -54,7 +56,7 @@ var _ = Describe("Pool", func() {
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
+		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTime)
 		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
 		err = poolManager.Start()
 		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
@@ -301,6 +303,29 @@ var _ = Describe("Pool", func() {
 			Expect(exist).To(BeFalse())
 		})
 		Describe("Update vm object", func() {
+			checkMacStatusInMacPool := func(macPoolMap map[string]AllocationStatus, expectedPendingAllocation, expectedPendingDeletion []string) []error {
+				errs := []error{}
+				for _, macAddress := range expectedPendingAllocation {
+					macStatus, exist := macPoolMap[macAddress]
+					if !exist {
+						errs = append(errs, fmt.Errorf("Expected mac Status %s to exist in the macPool", macStatus))
+					}
+					if macStatus != AllocationStatusWaitingForPod {
+						errs = append(errs, fmt.Errorf("Expected mac %s status %s to have the expected status %s", macAddress, macStatus, AllocationStatusWaitingForPod))
+					}
+				}
+
+				for _, macAddress := range expectedPendingDeletion {
+					macStatus, exist := macPoolMap[macAddress]
+					if !exist {
+						errs = append(errs, fmt.Errorf("Expected mac Status %s to exist in the macPool", macStatus))
+					}
+					if macStatus != AllocationStatusWaitingForDeletion {
+						errs = append(errs, fmt.Errorf("Expected mac %s status %s to have the expected status %s", macAddress, macStatus, AllocationStatusWaitingForPod))
+					}
+				}
+				return errs
+			}
 			It("should preserve disk.io configuration on update", func() {
 				addDiskIO := func(vm *kubevirt.VirtualMachine, ioName kubevirt.DriverIO) {
 					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)
@@ -355,8 +380,9 @@ var _ = Describe("Pool", func() {
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("01:00:00:00:00:02"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
-				Expect(exist).To(BeFalse())
+				expectedPendingAllocation := []string{"02:00:00:00:00:00", "01:00:00:00:00:02"}
+				expectedPendingDeletion := []string{"02:00:00:00:00:01"}
+				Expect(checkMacStatusInMacPool(poolManager.macPoolMap, expectedPendingAllocation, expectedPendingDeletion)).To(BeEmpty(), fmt.Sprintf("macs should be correctly presented in the macPool: %v", poolManager.macPoolMap))
 			})
 			It("should allow to add a new interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
@@ -382,12 +408,9 @@ var _ = Describe("Pool", func() {
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[2].MacAddress).To(Equal("02:00:00:00:00:02"))
 
-				_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]
-				Expect(exist).To(BeTrue())
-				_, exist = poolManager.macPoolMap["02:00:00:00:00:01"]
-				Expect(exist).To(BeTrue())
-				_, exist = poolManager.macPoolMap["02:00:00:00:00:02"]
-				Expect(exist).To(BeTrue())
+				expectedPendingAllocation := []string{"02:00:00:00:00:00", "02:00:00:00:00:01", "02:00:00:00:00:02"}
+				expectedPendingDeletion := []string{}
+				Expect(checkMacStatusInMacPool(poolManager.macPoolMap, expectedPendingAllocation, expectedPendingDeletion)).To(BeEmpty(), fmt.Sprintf("macs should be correctly presented in the macPool: %v", poolManager.macPoolMap))
 			})
 			It("should allow to remove an interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
@@ -410,8 +433,9 @@ var _ = Describe("Pool", func() {
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:02"]
-				Expect(exist).To(BeFalse())
+				expectedPendingAllocation := []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}
+				expectedPendingDeletion := []string{"02:00:00:00:00:02"}
+				Expect(checkMacStatusInMacPool(poolManager.macPoolMap, expectedPendingAllocation, expectedPendingDeletion)).To(BeEmpty(), fmt.Sprintf("macs should be correctly presented in the macPool: %v", poolManager.macPoolMap))
 			})
 			It("should allow to remove and add an interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
@@ -434,8 +458,9 @@ var _ = Describe("Pool", func() {
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].Name).To(Equal("another-multus"))
 
-				_, exist := poolManager.macPoolMap["02:00:00:00:00:01"]
-				Expect(exist).To(BeFalse())
+				expectedPendingAllocation := []string{"02:00:00:00:00:00", "02:00:00:00:00:02"}
+				expectedPendingDeletion := []string{"02:00:00:00:00:01"}
+				Expect(checkMacStatusInMacPool(poolManager.macPoolMap, expectedPendingAllocation, expectedPendingDeletion)).To(BeEmpty(), fmt.Sprintf("macs should be correctly presented in the macPool: %v", poolManager.macPoolMap))
 			})
 		})
 		Context("check create a vm with mac address allocation", func() {
@@ -503,6 +528,127 @@ var _ = Describe("Pool", func() {
 				})
 			})
 		})
+
+		type updateVmWaitingConfigMapParams struct {
+			initialConfigMapData           map[string]string
+			timePassed                     time.Duration
+			expectedConfigMapData          map[string]string
+			expectedRestoredMacPoolMap     map[string]AllocationStatus  // refers only to restored macs
+			expectedRestoredVmToMacPoolMap map[string]map[string]string // refers only to restored macs
+		}
+
+		Context("Check configMap restoration machinery", func() {
+			poolManager := &PoolManager{}
+			iface1 := "br1"
+			mac1 := "02:00:00:00:00:10"
+			mac2 := "02:00:00:00:00:11"
+			macDashes1 := strings.Replace(mac1, ":", "-", 5)
+			macDashes2 := strings.Replace(mac2, ":", "-", 5)
+			vmName := "testVM"
+			var now time.Time
+			// Freeze time
+			now = time.Now()
+			poolManager.now = func() time.Time { return now }
+			getMarshaledOldEntryFormat := func() string {
+				return poolManager.now().Format(time.RFC3339)
+			}
+			getMarshaledConfigMapEntry := func(cmEntry configMapEntry) string {
+				marshaled, _ := poolManager.createConfigMapEntry(cmEntry.NamespacedVmName, cmEntry.Iface, cmEntry.MacStatus)
+				return marshaled
+			}
+			BeforeEach(func() {
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
+			})
+			table.DescribeTable("Should update vmToMacPoolMap with macChanges with no error",
+				func(u *updateVmWaitingConfigMapParams) {
+					By("populating the configMap Data with initial params")
+					configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
+					configMap.Data = u.initialConfigMapData
+					_, err = poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+					Expect(err).ToNot(HaveOccurred(), "should successfully update configmap")
+
+					By("running one iteration of vmWaitingCleanupLook routine after mocked time passed")
+					poolManager.now = func() time.Time { return now.Add(u.timePassed * time.Second) }
+					poolManager.updateVmWaitingConfigMap(logger)
+
+					By("Checking configMap Data was updated according to expected")
+					configMap, err = poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
+					Expect(configMap.Data).To(Equal(u.expectedConfigMapData))
+
+					By("Checking macpool cache restored as expected")
+					Expect(poolManager.macPoolMap).To(Equal(u.expectedRestoredMacPoolMap), "macPoolMap should be as expected")
+					Expect(poolManager.vmToMacPoolMap).To(Equal(u.expectedRestoredVmToMacPoolMap), "vmToMacPoolMap should be as expected")
+				},
+				table.Entry("when vm configMap is empty, should remain empty",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{},
+						timePassed:                     time.Duration(0),
+						expectedConfigMapData:          map[string]string{},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has legacy entry format with time less than waitTime, entry should remain, nothing should be restored",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledOldEntryFormat()},
+						timePassed:                     time.Duration(waitTime / 2),
+						expectedConfigMapData:          map[string]string{macDashes1: getMarshaledOldEntryFormat()},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has legacy entry format with time pass than waitTime, entry should be removed from configMap and poolMap and removed from cache",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledOldEntryFormat()},
+						timePassed:                     time.Duration(waitTime),
+						expectedConfigMapData:          map[string]string{},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has allocation entry with time less than waitTime, entry should remain, nothing should be restored",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForPod})},
+						timePassed:                     time.Duration(waitTime / 2),
+						expectedConfigMapData:          map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForPod})},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has allocation entry with time pass than waitTime, entry should be removed from configMap and poolMap and removed from cache",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForPod, TimeStamp: now.Format(time.RFC3339)})},
+						timePassed:                     time.Duration(waitTime),
+						expectedConfigMapData:          map[string]string{},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has deletion entry with time less than waitTime, entry should remain, nothing should be restored",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForDeletion})},
+						timePassed:                     time.Duration(waitTime / 2),
+						expectedConfigMapData:          map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForDeletion})},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{},
+					}),
+				table.Entry("when vm configMap has deletion entry with time pass than waitTime, entry should be restored to cache",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForDeletion, TimeStamp: now.Format(time.RFC3339)})},
+						timePassed:                     time.Duration(waitTime),
+						expectedConfigMapData:          map[string]string{},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{mac1: AllocationStatusRestored},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{vmName: map[string]string{iface1: mac1}},
+					}),
+				table.Entry("when vm configMap has both legacy and new entry format with time pass than waitTime, new entries should be restored to cache",
+					&updateVmWaitingConfigMapParams{
+						initialConfigMapData:           map[string]string{macDashes2: getMarshaledOldEntryFormat(), macDashes1: getMarshaledConfigMapEntry(configMapEntry{NamespacedVmName: vmName, Iface: iface1, MacStatus: AllocationStatusWaitingForDeletion})},
+						timePassed:                     time.Duration(waitTime),
+						expectedConfigMapData:          map[string]string{},
+						expectedRestoredMacPoolMap:     map[string]AllocationStatus{mac1: AllocationStatusRestored},
+						expectedRestoredVmToMacPoolMap: map[string]map[string]string{vmName: map[string]string{iface1: mac1}},
+					}),
+			)
+		})
+
 	})
 
 	Describe("Pool Manager Functions For pod", func() {

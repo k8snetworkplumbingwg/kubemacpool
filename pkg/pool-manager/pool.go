@@ -22,6 +22,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -55,6 +56,7 @@ type PoolManager struct {
 	poolMutex        sync.Mutex                   // mutex for allocation an release
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
+	now              func() time.Time             // now is an artifact to do some unit testing without waiting for expiration time.
 }
 
 type OptMode string
@@ -76,6 +78,13 @@ const (
 type macChanges struct {
 	allocations map[string]string
 	releases    map[string]string
+}
+
+type configMapEntry struct {
+	NamespacedVmName string
+	Iface            string
+	TimeStamp        string
+	MacStatus        AllocationStatus
 }
 
 func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
@@ -105,7 +114,9 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		vmToMacPoolMap:   map[string]map[string]string{},
 		macPoolMap:       map[string]AllocationStatus{},
 		poolMutex:        sync.Mutex{},
-		waitTime:         waitTime}
+		waitTime:         waitTime,
+		now:              func() time.Time { return time.Now() },
+	}
 
 	return poolManger, nil
 }

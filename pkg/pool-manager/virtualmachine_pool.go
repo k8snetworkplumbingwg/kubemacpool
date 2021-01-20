@@ -249,10 +249,12 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(virtualMachine
 	}
 
 	if _, exist := p.macPoolMap[requestedMac]; exist {
-		err := fmt.Errorf("failed to allocate requested mac address")
-		logger.Error(err, "mac address already allocated")
-
-		return err
+		// check if mac already belongs to the vm
+		if macFromVmMap, _ := p.vmToMacPoolMap[vmNamespaced(virtualMachine)][iface.Name]; macFromVmMap != requestedMac {
+			err := fmt.Errorf("failed to allocate requested mac address")
+			logger.Error(err, "mac address already allocated to another vm")
+			return err
+		}
 	}
 
 	p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod

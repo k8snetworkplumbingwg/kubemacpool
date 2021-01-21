@@ -92,6 +92,8 @@ spec:
             value: "8760h0m0s" # One Year
           - name: CERT_ROTATE_INTERVAL
             value: "4380h0m0s" # Half Year
+          - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
+            value: "v1"
         resources:
           limits:
             cpu: 300m
@@ -192,7 +194,7 @@ webhooks:
     rules:
       - operations: ["CREATE", "UPDATE"]
         apiGroups: ["kubevirt.io"]
-        apiVersions: ["v1alpha3"]
+        apiVersions: ["v1"]
         resources: ["virtualmachines"]
 ---
 apiVersion: v1

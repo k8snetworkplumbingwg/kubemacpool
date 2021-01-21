@@ -71,7 +71,7 @@ webhooks:
   - apiGroups:
     - kubevirt.io
     apiVersions:
-    - v1alpha3
+    - v1
     operations:
     - CREATE
     - UPDATE
@@ -295,6 +295,8 @@ spec:
           value: 8760h0m0s
         - name: CERT_ROTATE_INTERVAL
           value: 4380h0m0s
+        - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
+          value: v1
         image: registry:5000/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager

@@ -238,7 +238,7 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
-	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1alpha3/virtualmachines").Do(context.TODO())
+	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1/virtualmachines").Do(context.TODO())
 	if result.Error() != nil {
 		return result.Error()
 	}
@@ -324,7 +324,7 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
-			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1alpha3/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
+			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
 			log.V(1).Info("test", "requestURI", requestUrl)
 			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
 

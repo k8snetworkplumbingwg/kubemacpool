@@ -32,11 +32,6 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
-	log.V(1).Info("AllocatePodMac: Data",
-		"macmap", p.macPoolMap,
-		"podmap", p.podToMacPoolMap,
-		"currentMac", p.currentMac.String())
-
 	networkValue, ok := pod.Annotations[networksAnnotation]
 	if !ok {
 		return nil
@@ -68,19 +63,31 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 		return nil
 	}
 
+	podNamespacedName := podNamespaced(pod)
+	if pod.Name == "" {
+		// The pod name could temporarily be empty, this will be fixed by the
+		// time the pod creation is complete.
+		// To avoid collision between two macs inserted in this webhook request,
+		// we give the pod a temporary name
+		podNamespacedName = fmt.Sprintf("pod/%s/tempName", pod.Namespace)
+	}
+
+	macMap, err := p.getClusterMacs()
+	if err != nil {
+		return err
+	}
+
 	allocations := []string{}
 	networkList := []*multus.NetworkSelectionElement{}
 	for _, network := range networks {
 		if network.MacRequest != "" {
-			if err := p.allocatePodRequestedMac(network, pod); err != nil {
-				p.revertAllocationOnPod(podNamespaced(pod), allocations)
+			if err := p.allocatePodRequestedMac(macMap, podNamespacedName, network); err != nil {
 				return err
 			}
 			allocations = append(allocations, network.MacRequest)
 		} else {
-			macAddr, err := p.allocatePodFromPool(network, pod)
+			macAddr, err := p.allocatePodFromPool(macMap, podNamespacedName, network)
 			if err != nil {
-				p.revertAllocationOnPod(podNamespaced(pod), allocations)
 				return err
 			}
 
@@ -100,107 +107,58 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 }
 
 func (p *PoolManager) ReleasePodMac(podName string) error {
-	p.poolMutex.Lock()
-	defer p.poolMutex.Unlock()
-
-	log.V(1).Info("ReleasePodMac: Data",
-		"macmap", p.macPoolMap,
-		"podmap", p.podToMacPoolMap,
-		"currentMac", p.currentMac.String())
-
-	macList, ok := p.podToMacPoolMap[podName]
-
-	if !ok {
-		log.Error(fmt.Errorf("not found"), "pod not found in the map",
-			"podName", podName)
-		return nil
-	}
-
-	if macList == nil {
-		log.Error(fmt.Errorf("list empty"), "failed to get mac address list")
-		return nil
-	}
-
-	for _, macAddr := range macList {
-		delete(p.macPoolMap, macAddr)
-		log.Info("released mac from pod", "mac", macAddr, "pod", podName)
-	}
-
-	delete(p.podToMacPoolMap, podName)
-	log.V(1).Info("removed pod from podToMacPoolMap", "pod", podName)
 	return nil
 }
 
-func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionElement, pod *corev1.Pod) error {
+func (p *PoolManager) allocatePodRequestedMac(macMap map[string]string, podNamespacedName string, network *multus.NetworkSelectionElement) error {
 	requestedMac := network.MacRequest
 	if _, err := net.ParseMAC(requestedMac); err != nil {
 		return err
 	}
 
-	if macAllocationStatus, exist := p.macPoolMap[requestedMac]; exist &&
-		macAllocationStatus == AllocationStatusAllocated &&
-		!p.allocatedToCurrentPod(podNamespaced(pod), network) {
-
+	occupied, err := p.isMacOccupiedInConfigMap(requestedMac)
+	if err != nil {
+		return err
+	}
+	if occupied {
 		err := fmt.Errorf("failed to allocate requested mac address")
-		log.Error(err, "mac address already allocated")
-
+		log.Error(err, "mac address already taken in configmap")
 		return err
 	}
 
-	if pod.Name == "" {
-		// we are going to create the podToMacPoolMap in the controller call
-		// because we don't have the pod name in the webhook
-		p.macPoolMap[requestedMac] = AllocationStatusWaitingForPod
-		return nil
+	if instanceName, exist := macMap[requestedMac]; exist {
+		if namedInterface(podNamespacedName, network.Name) != instanceName {
+			err := fmt.Errorf("failed to allocate requested mac address")
+			log.Error(err, "mac address already allocated to %s", instanceName)
+
+			return err
+		}
 	}
 
-	p.macPoolMap[requestedMac] = AllocationStatusAllocated
-	if p.podToMacPoolMap[podNamespaced(pod)] == nil {
-		p.podToMacPoolMap[podNamespaced(pod)] = map[string]string{}
-	}
-	p.podToMacPoolMap[podNamespaced(pod)][network.Name] = requestedMac
-	log.Info("requested mac was allocated for pod",
-		"requestedMap", requestedMac,
-		"podName", pod.Name,
-		"podNamespace", pod.Namespace)
+	macMap[requestedMac] = namedInterface(podNamespacedName, network.Name)
 
 	return nil
 }
 
-func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElement, pod *corev1.Pod) (string, error) {
-	macAddr, err := p.getFreeMac()
+func (p *PoolManager) allocatePodFromPool(macMap map[string]string, podNamespacedName string, network *multus.NetworkSelectionElement) (string, error) {
+	macAddr, err := p.getFreeMac(macMap)
 	if err != nil {
 		return "", err
 	}
 
-	if pod.Name == "" {
-		// we are going to create the podToMacPoolMap in the controller call
-		// because we don't have the pod name in the webhook
-		p.macPoolMap[macAddr.String()] = AllocationStatusWaitingForPod
-		return macAddr.String(), nil
-	}
-
-	p.macPoolMap[macAddr.String()] = AllocationStatusAllocated
-	if p.podToMacPoolMap[podNamespaced(pod)] == nil {
-		p.podToMacPoolMap[podNamespaced(pod)] = map[string]string{}
-	}
-	p.podToMacPoolMap[podNamespaced(pod)][network.Name] = macAddr.String()
+	macMap[macAddr.String()] = namedInterface(podNamespacedName, network.Name)
 	log.Info("mac from pool was allocated to the pod",
 		"allocatedMac", macAddr.String(),
-		"podName", pod.Name,
-		"podNamespace", pod.Namespace)
+		podNamespacedName)
 	return macAddr.String(), nil
 }
 
-func (p *PoolManager) initPodMap() error {
-	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
+func (p *PoolManager) updatePodsMacsToMap(macMap map[string]string) error {
 	pods, err := p.kubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
-
 	for _, pod := range pods.Items {
-		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
 		if pod.Annotations == nil {
 			continue
 		}
@@ -215,7 +173,6 @@ func (p *PoolManager) initPodMap() error {
 			continue
 		}
 
-		log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
 		if len(networks) == 0 {
 			continue
 		}
@@ -223,7 +180,6 @@ func (p *PoolManager) initPodMap() error {
 		// validate if the pod is related to kubevirt
 		if p.isRelatedToKubevirt(&pod) {
 			// nothing to do here. the mac is already by allocated by the virtual machine webhook
-			log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
 			continue
 		}
 
@@ -232,48 +188,35 @@ func (p *PoolManager) initPodMap() error {
 				continue
 			}
 
-			if err := p.allocatePodRequestedMac(network, &pod); err != nil {
-				// Dont return an error here if we can't allocate a mac for a running pod
-				log.Error(fmt.Errorf("failed to parse mac address for pod"),
-					"Invalid mac address for pod",
-					"namespace", pod.Namespace,
-					"name", pod.Name,
-					"mac", network.MacRequest)
-				continue
-			}
+			macMap[network.MacRequest] = namedInterface(podNamespaced(&pod), network.Name)
 		}
 	}
 
 	return nil
 }
 
-func (p *PoolManager) allocatedToCurrentPod(podname string, network *multus.NetworkSelectionElement) bool {
-	networks, exist := p.podToMacPoolMap[podname]
-	if !exist {
-		return false
-	}
-
-	allocatedMac, exist := networks[network.Name]
-
-	if !exist {
-		return false
-	}
-
-	if allocatedMac == network.MacRequest {
-		return true
-	}
-
-	return false
+func (p *PoolManager) initPodMap() error {
+	return nil
 }
 
-// Revert allocation if one of the requested mac addresses fails to be allocated
-func (p *PoolManager) revertAllocationOnPod(podName string, allocations []string) {
-	log.V(1).Info("Rever vm allocation", "podName", podName, "allocations", allocations)
-	for _, value := range allocations {
-		delete(p.macPoolMap, value)
-	}
-	delete(p.podToMacPoolMap, podName)
-}
+//func (p *PoolManager) allocatedToCurrentPod(macMap map[string]string, podNamespacedName string, network *multus.NetworkSelectionElement) bool {
+//	networks, exist := macMap[podNamespacedName]
+//	if !exist {
+//		return false
+//	}
+//
+//	allocatedMac, exist := networks[network.Name]
+//
+//	if !exist {
+//		return false
+//	}
+//
+//	if allocatedMac == network.MacRequest {
+//		return true
+//	}
+//
+//	return false
+//}
 
 // Checks if the namespace of a pod instance is opted in for kubemacpool
 func (p *PoolManager) IsPodInstanceOptedIn(namespaceName string) (bool, error) {
@@ -281,7 +224,7 @@ func (p *PoolManager) IsPodInstanceOptedIn(namespaceName string) (bool, error) {
 }
 
 func podNamespaced(pod *corev1.Pod) string {
-	return fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+	return fmt.Sprintf("pod/%s/%s", pod.Namespace, pod.Name)
 }
 
 func parsePodNetworkAnnotation(podNetworks, defaultNamespace string) ([]*multus.NetworkSelectionElement, error) {

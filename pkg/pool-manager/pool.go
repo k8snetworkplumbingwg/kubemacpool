@@ -22,6 +22,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -93,8 +94,6 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		rangeStart:       rangeStart,
 		currentMac:       currentMac,
 		managerNamespace: managerNamespace,
-		podToMacPoolMap:  map[string]map[string]string{},
-		macPoolMap:       map[string]AllocationStatus{},
 		poolMutex:        sync.Mutex{},
 		waitTime:         waitTime}
 
@@ -113,7 +112,7 @@ func (p *PoolManager) Start() error {
 	return nil
 }
 
-func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
+func (p *PoolManager) getFreeMac(macMap map[string]string) (net.HardwareAddr, error) {
 	// this look will ensure that we check all the range
 	// first iteration from current mac to last mac in the range
 	// second iteration from first mac in the range to the latest one
@@ -121,7 +120,7 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 
 		// This loop runs from the current mac to the last one in the range
 		for {
-			if _, ok := p.macPoolMap[p.currentMac.String()]; !ok {
+			if _, ok := macMap[p.currentMac.String()]; !ok {
 				log.V(1).Info("found unused mac", "mac", p.currentMac)
 				freeMac := make(net.HardwareAddr, len(p.currentMac))
 				copy(freeMac, p.currentMac)
@@ -308,4 +307,32 @@ func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
 	}
 
 	return endInt - startInt + 1, nil
+}
+
+func (p *PoolManager) getClusterMacs() (map[string]string, error) {
+	macMap := make(map[string]string)
+
+	vmStartTime := time.Now()
+	err := p.updateVMMacsToMap(macMap)
+	if err != nil {
+		return map[string]string{}, err
+	}
+
+	podStartTime := time.Now()
+	err = p.updatePodsMacsToMap(macMap)
+	if err != nil {
+		return map[string]string{}, err
+	}
+
+	endTime := time.Now()
+
+	vmRetrieveDuration := podStartTime.Sub(vmStartTime)
+	podRetrieveDuration := endTime.Sub(podStartTime)
+	totalDuration := endTime.Sub(vmStartTime)
+	log.V(1).Info("getClusterMacs", "macMap", macMap, "vm duration", vmRetrieveDuration, "pod duration", podRetrieveDuration, "total duration", totalDuration)
+	return macMap, nil
+}
+
+func namedInterface(NamespacedName, interfaceName string) string {
+	return fmt.Sprintf("%s/%s", NamespacedName, interfaceName)
 }

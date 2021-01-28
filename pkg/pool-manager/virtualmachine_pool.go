@@ -18,6 +18,7 @@ package pool_manager
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -86,7 +87,7 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		}
 	}
 
-	err = p.AddMacToWaitingConfig(allocations, logger)
+	err = p.AddMacToWaitingConfig(allocations, vmNamespaced(virtualMachine), logger)
 	if err != nil {
 		return err
 	}
@@ -152,7 +153,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		}
 	}
 
-	err = p.AddMacToWaitingConfig(newAllocations, logger)
+	err = p.AddMacToWaitingConfig(newAllocations, vmNamespacedName, logger)
 	if err != nil {
 		return err
 	}
@@ -183,7 +184,8 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(macMap map[str
 		return err
 	}
 
-	occupied, err := p.isMacOccupiedInConfigMap(requestedMac)
+	namedInterfaceName := namedInterface(vmNamespacedName, iface.Name)
+	occupied, err := p.isMacOccupiedInConfigMap(requestedMac, namedInterfaceName)
 	if err != nil {
 		return err
 	}
@@ -194,7 +196,7 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(macMap map[str
 		return err
 	}
 	if instanceName, exist := macMap[requestedMac]; exist {
-		if namedInterface(vmNamespacedName, iface.Name) != instanceName {
+		if namedInterfaceName != instanceName {
 			err := fmt.Errorf("failed to allocate requested mac address")
 			logger.Error(err, "mac address already allocated to instance", "instance", instanceName)
 
@@ -202,7 +204,7 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(macMap map[str
 		}
 	}
 
-	macMap[requestedMac] = namedInterface(vmNamespacedName, iface.Name)
+	macMap[requestedMac] = namedInterfaceName
 	logger.V(1).Info("mac from pool was allocated for virtual machine",
 		"allocatedMac", requestedMac)
 
@@ -319,7 +321,7 @@ func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
 }
 
 // Add all the allocated mac addresses to the waiting config map with the current time.
-func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, parentLogger logr.Logger) error {
+func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, vmNamespacedName string, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("AddMacToWaitingConfig")
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -333,10 +335,10 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, paren
 			configMap.Data = map[string]string{}
 		}
 
-		for _, macAddress := range allocations {
+		for ifaceName, macAddress := range allocations {
 			logger.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
 			macAddress = strings.Replace(macAddress, ":", "-", 5)
-			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
+			configMap.Data[macAddress], err = createConfigMapEntry(vmNamespacedName, ifaceName)
 		}
 
 		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
@@ -353,8 +355,20 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, paren
 	return err
 }
 
+func createConfigMapEntry(vmNamespacedName, IfaceName string) (string, error) {
+	cmEntry := configMapEntry{
+		VmNamespacedName: vmNamespacedName,
+		IfaceName:        IfaceName,
+		TimeStamp:        time.Now().Format(time.RFC3339),
+	}
+
+	cmEntryMarshaled, err := json.Marshal(cmEntry)
+
+	return string(cmEntryMarshaled), err
+}
+
 // Add all the allocated mac addresses to the waiting config map with the current time.
-func (p *PoolManager) isMacOccupiedInConfigMap(macAddress string) (bool, error) {
+func (p *PoolManager) isMacOccupiedInConfigMap(macAddress, namedInterfaceName string) (bool, error) {
 	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return false, err
@@ -366,7 +380,12 @@ func (p *PoolManager) isMacOccupiedInConfigMap(macAddress string) (bool, error) 
 
 	macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
 	if _, exist := configMap.Data[macAddressDashes]; exist {
-		return true, nil
+		var dataEntry configMapEntry
+		if err := json.Unmarshal([]byte(configMap.Data[macAddressDashes]), &dataEntry); err == nil {
+			if namedInterface(dataEntry.VmNamespacedName, dataEntry.IfaceName) != namedInterfaceName {
+				return true, nil
+			}
+		}
 	}
 
 	return false, nil
@@ -444,20 +463,22 @@ func (p *PoolManager) vmWaitingCleanupLook() {
 			continue
 		}
 
-		for macAddressDashes, allocationTime := range configMap.Data {
-			t, err := time.Parse(time.RFC3339, allocationTime)
-			if err != nil {
+		for macAddressDashes, cmEntry := range configMap.Data {
+			var dataEntry configMapEntry
+			var timeStamp time.Time
+			if err := json.Unmarshal([]byte(cmEntry), &dataEntry); err == nil {
+				err = p.handleConfigMapEntry(macAddressDashes, dataEntry, configMap.Data, &configMapUpdateNeeded, logger)
+				if err != nil {
+					logger.Error(err, "failed to handle new configmap Entry")
+				}
+			} else if timeStamp, err = time.Parse(time.RFC3339, cmEntry); err == nil {
+				err = p.handleConfigMapEntryLegacy(macAddressDashes, timeStamp, configMap.Data, &configMapUpdateNeeded, logger)
+				if err != nil {
+					logger.Error(err, "failed to handle legacy configmap Entry")
+				}
+			} else {
 				// TODO: remove the mac from the wait map??
-				logger.Error(err, "failed to parse allocation time")
-				continue
-			}
-
-			logger.Info("data:", "configMapName", names.WAITING_VMS_CONFIGMAP, "configMap.Data", configMap.Data)
-
-			if time.Now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
-				configMapUpdateNeeded = true
-				delete(configMap.Data, macAddressDashes)
-				logger.Info("released mac address in waiting loop", "macAddress", macAddressDashes)
+				logger.Error(err, "failed to parse configmap Entry")
 			}
 		}
 
@@ -473,6 +494,36 @@ func (p *PoolManager) vmWaitingCleanupLook() {
 
 		p.poolMutex.Unlock()
 	}
+}
+
+// handleConfigMapEntryLegacy handles removal of mac addresses to macs added to cache but not properly handled in the controller reconcile,
+// suggesting that their webhook chain got rejected. Removal occurs if entry is not handled by reconciler after waitTime.
+func (p *PoolManager) handleConfigMapEntryLegacy(macAddressDashes string, timeStamp time.Time, configMapData map[string]string, configMapUpdateNeeded *bool, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("handleConfigMapEntryLegacy")
+	if time.Now().After(timeStamp.Add(time.Duration(p.waitTime) * time.Second)) {
+		*configMapUpdateNeeded = true
+		delete(configMapData, macAddressDashes)
+		logger.Info("removing mac from configMap", "macAddress", macAddressDashes)
+	}
+	return nil
+}
+
+// handleConfigMapEntry handles restoration of mac addresses to macs added to cache but not properly handled in the controller reconcile,
+// suggesting that their webhook chain got rejected. restoration occurs if entry is not handled by reconciler after waitTime.
+func (p *PoolManager) handleConfigMapEntry(macAddressDashes string, dataEntry configMapEntry, configMapData map[string]string, configMapUpdateNeeded *bool, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("handleConfigMapEntry")
+	t, err := time.Parse(time.RFC3339, dataEntry.TimeStamp)
+	if err != nil {
+		// TODO: remove the mac from the wait map??
+		return errors.Wrap(err, "failed to parse allocation time")
+	}
+
+	if time.Now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
+		*configMapUpdateNeeded = true
+		delete(configMapData, macAddressDashes)
+		logger.Info("removing mac from configMap", "macAddress", macAddressDashes)
+	}
+	return nil
 }
 
 // Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode

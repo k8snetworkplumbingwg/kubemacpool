@@ -71,6 +71,12 @@ const (
 	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
 )
 
+type configMapEntry struct {
+	VmNamespacedName string
+	IfaceName        string
+	TimeStamp        string
+}
+
 func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {

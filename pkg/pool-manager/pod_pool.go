@@ -116,7 +116,8 @@ func (p *PoolManager) allocatePodRequestedMac(macMap map[string]string, podNames
 		return err
 	}
 
-	occupied, err := p.isMacOccupiedInConfigMap(requestedMac)
+	namedInterfaceName := namedInterface(podNamespacedName, network.Name)
+	occupied, err := p.isMacOccupiedInConfigMap(requestedMac, namedInterfaceName)
 	if err != nil {
 		return err
 	}
@@ -127,7 +128,7 @@ func (p *PoolManager) allocatePodRequestedMac(macMap map[string]string, podNames
 	}
 
 	if instanceName, exist := macMap[requestedMac]; exist {
-		if namedInterface(podNamespacedName, network.Name) != instanceName {
+		if namedInterfaceName != instanceName {
 			err := fmt.Errorf("failed to allocate requested mac address")
 			log.Error(err, "mac address already allocated to %s", instanceName)
 
@@ -135,7 +136,7 @@ func (p *PoolManager) allocatePodRequestedMac(macMap map[string]string, podNames
 		}
 	}
 
-	macMap[requestedMac] = namedInterface(podNamespacedName, network.Name)
+	macMap[requestedMac] = namedInterfaceName
 
 	return nil
 }

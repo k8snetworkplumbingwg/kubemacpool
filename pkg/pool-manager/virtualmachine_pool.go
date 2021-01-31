@@ -127,6 +127,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		if ifaceExist {
 			if iface.MacAddress == "" {
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = allocatedMacAddress
+				newAllocations[iface.Name] = allocatedMacAddress
 			} else if iface.MacAddress != allocatedMacAddress {
 				// Specific mac address was requested
 				err := p.allocateRequestedVirtualMachineInterfaceMac(macMap, vmNamespacedName, iface, logger)
@@ -148,7 +149,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 					return err
 				}
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
-				newAllocations[iface.Name] = iface.MacAddress
+				newAllocations[iface.Name] = macAddr
 			}
 		}
 	}
@@ -337,10 +338,11 @@ func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, vmNam
 
 		for ifaceName, macAddress := range allocations {
 			logger.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
-			macAddress = strings.Replace(macAddress, ":", "-", 5)
-			configMap.Data[macAddress], err = createConfigMapEntry(vmNamespacedName, ifaceName)
+			macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
+			configMap.Data[macAddressDashes], err = createConfigMapEntry(vmNamespacedName, ifaceName)
 		}
 
+		logger.V(1).Info("trying to set cm", "configMap.Data", configMap.Data)
 		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 
 		return err

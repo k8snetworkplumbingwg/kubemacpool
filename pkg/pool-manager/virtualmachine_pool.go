@@ -152,6 +152,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		if ifaceExist {
 			if iface.MacAddress == "" {
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = allocatedMacAddress
+				newAllocations[iface.Name] = allocatedMacAddress
 			} else if iface.MacAddress != allocatedMacAddress {
 				// Specific mac address was requested
 				err := p.allocateRequestedVirtualMachineInterfaceMac(copyVM, iface, logger)
@@ -178,7 +179,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 					return err
 				}
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
-				newAllocations[iface.Name] = iface.MacAddress
+				newAllocations[iface.Name] = macAddr
 			}
 		}
 	}

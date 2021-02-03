@@ -19,6 +19,8 @@ kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacp
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/multus/multus.yaml
 ```
 
+### Prerequisites
+* [Kubevirt v0.37.1 or above](https://github.com/kubevirt/kubevirt/releases/tag/v0.37.1) must be installed on the cluster.
 * [CNI plugins](https://github.com/containernetworking/plugins) must be installed in the cluster, for example
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/kubemacpool/master/hack/cni-plugins/cni-plugins.yaml

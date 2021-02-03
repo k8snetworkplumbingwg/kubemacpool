@@ -10,12 +10,13 @@ require (
 	github.com/onsi/gomega v1.10.2
 	github.com/pkg/errors v0.9.1
 	github.com/qinqon/kube-admission-webhook v0.12.0
+	gomodules.xyz/jsonpatch/v2 v2.0.1
 	k8s.io/api v0.19.1
 	k8s.io/apimachinery v0.19.1
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.19.1
-	kubevirt.io/client-go v0.34.0
-	kubevirt.io/kubevirt v0.34.0
+	kubevirt.io/client-go v0.37.1
+	kubevirt.io/kubevirt v0.37.1
 	kubevirt.io/qe-tools v0.1.6
 	sigs.k8s.io/controller-runtime v0.6.2
 	sigs.k8s.io/controller-tools v0.4.0
@@ -48,6 +49,6 @@ replace (
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.19.1
 	k8s.io/metrics => k8s.io/metrics v0.19.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.19.1
-	kubevirt.io/client-go => github.com/kubevirt/client-go v0.34.0
+	kubevirt.io/client-go => github.com/kubevirt/client-go v0.37.1
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v1.0.2
 )

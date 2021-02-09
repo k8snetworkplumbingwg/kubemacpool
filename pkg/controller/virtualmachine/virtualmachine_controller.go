@@ -99,7 +99,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, errors.Wrap(err, "Failed to read the request object")
 	}
 
-	if instance.ObjectMeta.DeletionTimestamp.IsZero() {
+	if pool_manager.IsVirtualMachineNotMarkedForDeletion(instance) {
 		vmShouldBeManaged, err := r.poolManager.IsNamespaceManaged(instance.GetNamespace())
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to check if vm is managed")
@@ -111,7 +111,8 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 
 		logger.V(1).Info("vm create/update event")
 		// The object is not being deleted, so we can set the macs to allocated
-		err = r.poolManager.MarkVMAsReady(instance, logger)
+		latestPersistedTransactionTimeStamp := pool_manager.GetTransactionTimestampAnnotationFromVm(instance)
+		err = r.poolManager.MarkVMAsReady(instance, latestPersistedTransactionTimeStamp, logger)
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to reconcile kubemacpool after virtual machine's creation event")
 		}
@@ -135,6 +136,9 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 		virtualMachine := &kubevirt.VirtualMachine{}
 		err := r.Get(context.TODO(), request.NamespacedName, virtualMachine)
 		if err != nil {
+			if isVmDeletionAlreadyPersistedByFormerUpdates(err, logger) {
+				return nil
+			}
 			// Error reading the object - requeue the request.
 			return errors.Wrap(err, "Failed to refresh the vm object")
 		}
@@ -145,7 +149,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 
 		// our finalizer is present, so lets handle our external dependency
 		logger.Info("The VM contains the finalizer. Releasing mac")
-		err = r.poolManager.ReleaseVirtualMachineMac(virtualMachine, parentLogger)
+		err = r.poolManager.ReleaseAllMacsOnVirtualMachineDelete(virtualMachine, parentLogger)
 		if err != nil {
 			return errors.Wrap(err, "failed to release mac")
 		}
@@ -166,4 +170,12 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 	logger.Info("Successfully updated VM instance with finalizer removal")
 
 	return nil
+}
+
+func isVmDeletionAlreadyPersistedByFormerUpdates(err error, parentLogger logr.Logger) bool {
+	if apierrors.IsNotFound(err) {
+		parentLogger.V(1).Info("vm not found")
+		return true
+	}
+	return false
 }

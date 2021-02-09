@@ -159,7 +159,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *
 			if pool_manager.IsVirtualMachineNotMarkedForDeletion(virtualMachine) {
 				logger.V(1).Info("The VM is not being deleted.")
 				// If the object is not being deleted, then lets allocate macs and add the finalizer
-				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, logger)
+				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, transactionTimestamp, logger)
 				if err != nil {
 					return errors.Wrap(err, "Failed to allocate mac to the vm object")
 				}
@@ -194,7 +194,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *
 		pool_manager.SetTransactionTimestampAnnotationToVm(virtualMachine, transactionTimestamp)
 
 		if !reflect.DeepEqual(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) {
-			return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, logger)
+			return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, transactionTimestamp, logger)
 		}
 	}
 

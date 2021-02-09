@@ -65,8 +65,8 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	}
 	originalVirtualMachine := virtualMachine.DeepCopy()
 
-	handleRequestId := rand.Int()
-	logger := log.WithName("Handle").WithValues("RequestId", handleRequestId, "virtualMachineName", virtualMachine.Name, "virtualMachineNamespace", virtualMachine.Namespace)
+	handleRequestId := rand.Intn(100000)
+	logger := log.WithName("Handle").WithValues("RequestId", handleRequestId, "virtualMachineFullName", pool_manager.VmNamespaced(virtualMachine))
 
 	if virtualMachine.Annotations == nil {
 		virtualMachine.Annotations = map[string]string{}

@@ -18,6 +18,7 @@ package virtualmachine
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 
 	"github.com/go-logr/logr"
@@ -84,8 +85,8 @@ type ReconcilePolicy struct {
 // Reconcile reads that state of the cluster for a virtual machine object and makes changes based on the state
 func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	//used for multi thread log separation
-	reconcileRequestId := rand.Int()
-	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "virtualMachineName", request.Name, "virtualMachineNamespace", request.Namespace)
+	reconcileRequestId := rand.Intn(100000)
+	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "vmFullName", fmt.Sprintf("vm/%s/%s", request.Namespace, request.Name))
 	logger.Info("got a virtual machine event in the controller")
 
 	instance := &kubevirt.VirtualMachine{}

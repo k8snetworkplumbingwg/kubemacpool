@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -259,7 +258,7 @@ var _ = Describe("Pool", func() {
 			return time.Now().Add(secondsPassed * time.Second)
 		}
 		It("should not allocate a new mac for bridge interface on pod network", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			newVM := sampleVM
 			newVM.Name = "newVM"
 
@@ -271,7 +270,7 @@ var _ = Describe("Pool", func() {
 		Context("and there is a pre-existing pod with mac allocated to it", func() {
 			var poolManager *PoolManager
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &samplePod, &vmConfigMap)
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &samplePod)
 			})
 			It("should allocate a new mac and release it for masquerade", func() {
 				newVM := masqueradeVM
@@ -315,7 +314,7 @@ var _ = Describe("Pool", func() {
 					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)
 					vm.Spec.Template.Spec.Domain.Devices.Disks[0].IO = ioName
 				}
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -333,7 +332,7 @@ var _ = Describe("Pool", func() {
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
 			})
 			It("should preserve mac addresses on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				transactionTimestamp := updateTransactionTimestamp(0)
@@ -354,7 +353,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses and allocate a requested one on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -378,7 +377,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01", "01:00:00:00:00:02"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to add a new interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -403,7 +402,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, []string{"02:00:00:00:00:02"}, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove an interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				newVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(newVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
@@ -429,7 +428,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, []string{"02:00:00:00:00:02"}, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove and add an interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -468,7 +467,7 @@ var _ = Describe("Pool", func() {
 			vmFirstUpdateTimestamp := now.Add(time.Duration(1) * time.Second)
 			vmSecondUpdateTimestamp := now.Add(time.Duration(2) * time.Second)
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			})
 			var vm, vmFirstUpdate, vmSecondUpdate *kubevirt.VirtualMachine
 			var vmLastPersistedTransactionTimestampAnnotation *time.Time
@@ -603,16 +602,13 @@ var _ = Describe("Pool", func() {
 					macInstanceKey:       newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name,
 				}
 			})
-			It("should set a mac in configmap with new mac", func() {
+			It("should not set a mac in legacy configmap with new mac", func() {
 				By("get configmap")
 				configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
 
-				By("checking the configmap is updated with mac allocated")
-				macAddressInConfigMapFormat := strings.Replace(allocatedMac, ":", "-", 5)
-				Expect(configMap.Data).To(HaveLen(1), "configmap should hold the mac address waiting for approval")
-				_, exist := configMap.Data[macAddressInConfigMapFormat]
-				Expect(exist).To(Equal(true), "should have an entry of the mac in the configmap")
+				By("checking the configmap is not updated with mac allocated")
+				Expect(configMap.Data).To(BeEmpty(), "configmap should not hold the mac address waiting for approval")
 			})
 			It("should set a mac in pool cache with updated transaction timestamp", func() {
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
@@ -638,7 +634,7 @@ var _ = Describe("Pool", func() {
 					By("check mac allocated as expected")
 					Expect(allocatedMac).To(Equal("02:00:00:00:00:01"), "should successfully allocate the first mac in the range")
 				})
-				It("should properly update the configmap after vm creation", func() {
+				It("should make sure legacy configmap is empty after vm creation", func() {
 					By("check configmap is empty")
 					configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
@@ -665,7 +661,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager Functions For pod", func() {
 		It("should allocate a new mac and release it", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &samplePod, &vmConfigMap)
+			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &samplePod)
 			newPod := samplePod
 			newPod.Name = "newPod"
 			newPod.Annotations = beforeAllocationAnnotation
@@ -693,7 +689,7 @@ var _ = Describe("Pool", func() {
 			Expect(exist).To(BeFalse())
 		})
 		It("should allocate requested mac when empty", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			newPod := samplePod
 			newPod.Name = "newPod"
 
@@ -708,7 +704,7 @@ var _ = Describe("Pool", func() {
 			poolManager := &PoolManager{}
 
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &vmConfigMap)
+				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
 			})
 

@@ -2,6 +2,10 @@ package pool_manager
 
 import "time"
 
+func (m macEntry) isDummyEntry() bool {
+	return m.instanceName == tempVmName && m.macInstanceKey == tempVmInterface
+}
+
 func (m macEntry) hasPendingTransaction() bool {
 	return m.transactionTimestamp != nil
 }

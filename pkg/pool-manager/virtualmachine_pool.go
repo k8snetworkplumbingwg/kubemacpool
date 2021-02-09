@@ -27,11 +27,9 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/util/retry"
-	kubevirt "kubevirt.io/client-go/api/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	kubevirt "kubevirt.io/client-go/api/v1"
 )
 
 func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, parentLogger logr.Logger) error {
@@ -80,11 +78,6 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 			copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
 			newAllocations[iface.Name] = macAddr
 		}
-	}
-
-	err := p.AddMacToWaitingConfig(newAllocations, logger)
-	if err != nil {
-		return err
 	}
 
 	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
@@ -243,6 +236,36 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
+	err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
+		if !validateInterfaceSupported(iface, networks) {
+			return nil
+		}
+
+		if iface.MacAddress != "" {
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, logger); err != nil {
+				// Dont return an error here if we can't allocate a mac for a configured vm
+				logger.Error(err, "Invalid/Duplicate mac address for virtual machine",
+					"virtualMachineFullName", vmFullName,
+					"virtualMachineInterfaceMac", iface.MacAddress)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to iterate the cluster vm interfaces to recreate the macPoolMap")
+	}
+
+	err = p.initMacMapFromLegacyConfigMap()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// forEachMacInClusterRunFunction gets all the macs from all the supported interfaces in all the cluster vms, and runs
+// a function f on it
+func (p *PoolManager) forEachVmInterfaceInClusterRunFunction(f func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
+	logger := log.WithName("forEachVmInterfaceInClusterRunFunction")
 	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1/virtualmachines").Do(context.TODO())
 	if result.Error() != nil {
 		return result.Error()
@@ -255,15 +278,16 @@ func (p *PoolManager) initVirtualMachineMap() error {
 	}
 
 	for _, vm := range vms.Items {
-		logger.V(1).Info("InitMaps for virtual machine",
-			"virtualMachineName", vm.Name,
-			"virtualMachineNamespace", vm.Namespace)
-		if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
+		vmFullName := VmNamespaced(&vm)
+		vmInterfaces := getVirtualMachineInterfaces(&vm)
+		vmNetworks := getVirtualMachineNetworks(&vm)
+		logger.V(1).Info("InitMaps for virtual machine")
+		if len(vmInterfaces) == 0 {
 			logger.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
 			continue
 		}
 
-		if len(vm.Spec.Template.Spec.Networks) == 0 {
+		if len(vmNetworks) == 0 {
 			logger.V(1).Info("no networks found for virtual machine, skipping mac allocation",
 				"virtualMachineName", vm.Name,
 				"virtualMachineNamespace", vm.Namespace)
@@ -271,50 +295,21 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		}
 
 		networks := map[string]kubevirt.Network{}
-		for _, network := range vm.Spec.Template.Spec.Networks {
+		for _, network := range vmNetworks {
 			networks[network.Name] = network
 		}
 
 		logger.V(1).Info("virtual machine data",
-			"virtualMachineName", vm.Name,
-			"virtualMachineNamespace", vm.Namespace,
-			"virtualMachineInterfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
+			"vmFullName", vmFullName,
+			"virtualMachineInterfaces", vmInterfaces)
 
-		for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
-			if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
-				logger.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
-				continue
-			}
-
-			if iface.MacAddress != "" {
-				if err := p.allocateRequestedVirtualMachineInterfaceMac(&vm, iface, logger); err != nil {
-					// Dont return an error here if we can't allocate a mac for a configured vm
-					logger.Error(fmt.Errorf("failed to parse mac address for virtual machine"),
-						"Invalid mac address for virtual machine",
-						"virtualMachineNamespace", vm.Namespace,
-						"virtualMachineName", vm.Name,
-						"virtualMachineInterfaceMac", iface.MacAddress)
-					continue
-				}
-
-				p.macPoolMap[iface.MacAddress] = AllocationStatusAllocated
+		for _, iface := range vmInterfaces {
+			err := f(vmFullName, iface, networks)
+			if err != nil {
+				return errors.Wrapf(err, "failed vm interface loop on vm %s", vmFullName)
 			}
 		}
 	}
-
-	waitingMac, err := p.getOrCreateVmMacWaitMap()
-	if err != nil {
-		return err
-	}
-
-	for macAddress := range waitingMac {
-		macAddress = strings.Replace(macAddress, "-", ":", 5)
-
-		if _, exist := p.macPoolMap[macAddress]; !exist {
-			p.macPoolMap[macAddress] = AllocationStatusWaitingForPod
-		}
-	}
-
 	return nil
 }
 
@@ -355,59 +350,6 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 	}
 }
 
-// This function return or creates a config map that contains mac address and the allocation time.
-func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			_, err = p.kubeClient.CoreV1().
-				ConfigMaps(p.managerNamespace).
-				Create(context.TODO(), &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: names.WAITING_VMS_CONFIGMAP, Namespace: p.managerNamespace}}, metav1.CreateOptions{})
-
-			return map[string]string{}, nil
-		}
-
-		return nil, err
-	}
-
-	return configMap.Data, nil
-}
-
-// Add all the allocated mac addresses to the waiting config map with the current time.
-func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, parentLogger logr.Logger) error {
-	logger := parentLogger.WithName("AddMacToWaitingConfig")
-
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// refresh ConfigMaps instance
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		if configMap.Data == nil {
-			configMap.Data = map[string]string{}
-		}
-
-		for _, macAddress := range allocations {
-			logger.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
-			macAddress = strings.Replace(macAddress, ":", "-", 5)
-			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
-		}
-
-		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-
-		return err
-	})
-
-	if err != nil {
-		return errors.Wrap(err, "Failed to update manager's configmap with allocated macs waiting for approval")
-	}
-
-	logger.V(1).Info("Successfully updated manager's configmap with allocated macs waiting for approval")
-
-	return err
-}
-
 // Remove all the mac addresses from the waiting configmap this mean the vm was saved in the etcd and pass validations
 func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersistedTransactionTimeStamp *time.Time, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("MarkVMAsReady")
@@ -436,60 +378,113 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 
 // This function check if there are virtual machines that hits the create
 // mutating webhook but we didn't get the creation event in the controller loop
-// this mean the create was failed by some other mutating or validating webhook
-// so we release the virtual machine
 func (p *PoolManager) vmWaitingCleanupLook() {
 	logger := log.WithName("vmWaitingCleanupLook")
 	c := time.Tick(3 * time.Second)
 	logger.Info("starting cleanup loop for waiting mac addresses")
 	for _ = range c {
-		p.poolMutex.Lock()
-
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-		if err != nil {
-			logger.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
-			p.poolMutex.Unlock()
-			continue
-		}
-
-		configMapUpdateNeeded := false
-		if configMap.Data == nil {
-			logger.V(1).Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
-			p.poolMutex.Unlock()
-			continue
-		}
-
-		for macAddress, allocationTime := range configMap.Data {
-			t, err := time.Parse(time.RFC3339, allocationTime)
-			if err != nil {
-				// TODO: remove the mac from the wait map??
-				logger.Error(err, "failed to parse allocation time")
-				continue
-			}
-
-			logger.Info("data:", "configMapName", names.WAITING_VMS_CONFIGMAP, "configMap.Data", configMap.Data, "macPoolMap", p.macPoolMap)
-
-			if time.Now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
-				configMapUpdateNeeded = true
-				delete(configMap.Data, macAddress)
-				macAddress = strings.Replace(macAddress, "-", ":", 5)
-				delete(p.macPoolMap, macAddress)
-				logger.Info("released mac address in waiting loop", "macAddress", macAddress)
-			}
-		}
-
-		if configMapUpdateNeeded {
-			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-		}
-
-		if err == nil {
-			logger.Info("the configMap successfully updated", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
-		} else {
-			logger.Info("the configMap failed to update", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
-		}
-
-		p.poolMutex.Unlock()
+		p.healStaleMacEntries(logger)
 	}
+}
+
+// healStaleMacEntries looks for stale mac entries, and once find one, heals it by comparing to the real state in the
+// cluster: if the vm still there, and the mac attached to it) then it allocates it, otherwise removes from the macMap
+func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
+	p.poolMutex.Lock()
+	defer p.poolMutex.Unlock()
+	logger := parentLogger.WithName("healStaleMacEntries")
+	var macsToRemove []string
+	macsToAlign := map[string]*kubevirt.VirtualMachine{}
+	for macAddress, macEntry := range p.macPoolMap {
+		isEntryStale, err := macEntry.hasExpiredTransaction(p.waitTime)
+		if err == nil && isEntryStale {
+			logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", macEntry.instanceName, "interfaceName", macEntry.macInstanceKey, "stale TS", macEntry.transactionTimestamp)
+
+			var vm *kubevirt.VirtualMachine
+			var err error
+			if macEntry.isDummyEntry() {
+				vm, err = p.recoverVmFromCluster(macAddress)
+			} else {
+				vm, err = p.getvmInstance(macEntry.instanceName)
+			}
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
+					macsToRemove = append(macsToRemove, macAddress)
+					continue
+				} else {
+					return err
+				}
+			}
+			macsToAlign[macAddress] = vm
+		}
+	}
+
+	if len(macsToRemove) == 0 && len(macsToAlign) == 0 {
+		return nil
+	}
+	logger.Info("macMap is self healing", "macsToRemove", macsToRemove, "macsToAlign", macsToAlign)
+	for _, macAddress := range macsToRemove {
+		p.macPoolMap.removeMacEntry(macAddress)
+	}
+	for macAddress, vm := range macsToAlign {
+		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), getVirtualMachineInterfaces(vm))
+	}
+
+	logger.Info("macMap is updated", "macPoolMap", p.macPoolMap)
+	return nil
+}
+
+func (p *PoolManager) recoverVmFromCluster(macAddress string) (*kubevirt.VirtualMachine, error) {
+	log.V(1).Info("recoverVmFromCluster", "macAddress", macAddress)
+	foundVmName := ""
+	err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
+		if !validateInterfaceSupported(iface, networks) {
+			return nil
+		}
+
+		if iface.MacAddress != "" && iface.MacAddress == macAddress {
+			foundVmName = vmFullName
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to search for vm that holds the mac address in cluster")
+	}
+	if foundVmName != "" {
+		return p.getvmInstance(foundVmName)
+	} else {
+		return nil, apierrors.NewNotFound(schema.GroupResource{
+			Group:    "kubevirt.io",
+			Resource: "virtualmachine",
+		}, foundVmName)
+	}
+}
+
+func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine, error) {
+	vmFullNameSplit := strings.Split(vmFullName, "/")
+	vmNamespace := vmFullNameSplit[1]
+	vmName := vmFullNameSplit[2]
+	log.V(1).Info("getvmInstance", "vmNamespace", vmNamespace, "vmName", vmName)
+	if vmNamespace == "" || vmName == "" {
+		return nil, errors.New("failed to extract vm namespace and name")
+	}
+
+	requestUrl := fmt.Sprintf("apis/kubevirt.io/v1/namespaces/%s/virtualmachines/%s", vmNamespace, vmName)
+	log.V(1).Info("getvmInstance", "requestURI", requestUrl)
+
+	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
+	if result.Error() != nil {
+		return nil, result.Error()
+	}
+	vm := &kubevirt.VirtualMachine{}
+	err := result.Into(vm)
+	if err != nil {
+		return nil, err
+	}
+
+	return vm, nil
 }
 
 // Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode
@@ -508,6 +503,14 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
 
 	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
 	return isNamespaceManaged, nil
+}
+
+func validateInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
+	if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
+		log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
+		return false
+	}
+	return true
 }
 
 func VmNamespaced(machine *kubevirt.VirtualMachine) string {

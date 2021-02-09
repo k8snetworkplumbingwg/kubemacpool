@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -316,13 +317,73 @@ func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
 	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
 }
 
-func getVmWaitConfigMapData() (map[string]string, error) {
+func createVmWaitConfigMap() error {
+	vmWaitConfigMap := &corev1.ConfigMap{Data: map[string]string{}}
+	vmWaitConfigMap.SetName(names.WAITING_VMS_CONFIGMAP)
+	vmWaitConfigMap.SetNamespace(managerNamespace)
+	_, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Create(context.TODO(), vmWaitConfigMap, metav1.CreateOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
+	}
+
+	return nil
+}
+
+func deleteVmWaitConfigMap() error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
+	}
+	return nil
+}
+
+func getVmWaitConfigMap() (*corev1.ConfigMap, error) {
 	vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
 	}
 
-	return vmWaitConfigMap.Data, nil
+	return vmWaitConfigMap, nil
+}
+
+func updateVmWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		vmWaitConfigMap, err := getVmWaitConfigMap()
+		if err != nil {
+			return err
+		}
+
+		err = f(vmWaitConfigMap)
+		if err != nil {
+			return errors.Wrap(err, "got an error in updating function")
+		}
+
+		_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, metav1.UpdateOptions{})
+		return err
+	})
+	return err
+}
+
+func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
+	waitTime := getVmFailCleanupWaitTime()
+	macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
+
+	err := updateVmWaitConfigMap(func(vmWaitConfigMap *corev1.ConfigMap) error {
+		if vmWaitConfigMap.Data == nil {
+			vmWaitConfigMap.Data = map[string]string{}
+		}
+		// legacy configMap uses time.RFC3339 format timestamps
+		// This entry should go stale after 1 minute
+		vmWaitConfigMap.Data[macAddressDashes] = time.Now().Add(-waitTime + time.Minute).Format(time.RFC3339)
+		return nil
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "Failed to add soon to be stale entry to configMap")
+	}
+	return nil
 }
 
 // function checks what is the currently configured opt-mode configured in a specific webhook

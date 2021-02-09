@@ -516,6 +516,18 @@ func (p *PoolManager) vmWaitingCleanupLook() {
 	}
 }
 
+func SetTransactionTimestampAnnotationToVm(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp string) {
+	virtualMachine.Annotations[transactionTimestampAnnotation] = transactionTimestamp
+}
+
+func GetTransactionTimestampAnnotationFromVm(virtualMachine *kubevirt.VirtualMachine) string {
+	return virtualMachine.GetAnnotations()[transactionTimestampAnnotation]
+}
+
+func GetTransactionTimestampAnnotation(virtualMachine *kubevirt.VirtualMachine) map[string]string {
+	return map[string]string{transactionTimestampAnnotation: GetTransactionTimestampAnnotationFromVm(virtualMachine)}
+}
+
 // Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode
 func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
 	mutatingWebhookConfigName := "kubemacpool-mutator"
@@ -536,4 +548,8 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
 
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("%s/%s", machine.Namespace, machine.Name)
+}
+
+func IsVirtualMachineNotMarkedForDeletion(vm *kubevirt.VirtualMachine) bool {
+	return vm.ObjectMeta.DeletionTimestamp.IsZero()
 }

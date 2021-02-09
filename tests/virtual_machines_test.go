@@ -12,12 +12,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
 )
@@ -42,15 +40,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		err := testClient.VirtClient.List(context.TODO(), currentVMList, &client.ListOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Should successfully list add VMs")
 		Expect(len(currentVMList.Items)).To(BeZero(), "There should be no VM's in the cluster before a test")
-
-		vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully get %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
-
-		By(fmt.Sprintf("Clearing the map inside %s configMap in-place instead of waiting to garbage-collector", names.WAITING_VMS_CONFIGMAP))
-		clearMap(vmWaitConfigMap.Data)
-		vmWaitConfigMap, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, metav1.UpdateOptions{})
-		Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should successfully update %s ConfigMap", names.WAITING_VMS_CONFIGMAP))
-		Expect(vmWaitConfigMap.Data).To(BeEmpty(), fmt.Sprintf("%s Data map should be empty", names.WAITING_VMS_CONFIGMAP))
 
 		// remove all the labels from the test namespaces
 		for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
@@ -478,6 +467,70 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 				})
 			})
+			Context("And checking kubemacpool upgrade", func() {
+				allocatedMacAddress := "02:00:ff:ff:ff:ff"
+				AfterEach(func() {
+					Expect(clearVmWaitConfigMap()).To(Succeed())
+				})
+				Context("When a vm was not successfully created in a version that uses the legacy configMap", func() {
+					vm := CreateVmObject(TestNamespace, false,
+						[]kubevirtv1.Interface{newInterface("br1", allocatedMacAddress)},
+						[]kubevirtv1.Network{newNetwork("br1")})
+					BeforeEach(func() {
+						By("simulating a leftover configMap entry from a failed vm, entry soon to become stale")
+						Expect(simulateSoonToBeStaleEntryInConfigMap(allocatedMacAddress)).To(Succeed())
+					})
+					Context("and then KMP is upgraded", func() {
+						BeforeEach(func() {
+							By("simulating kubemacpool upgrade with restart")
+							err := initKubemacpoolParams()
+							Expect(err).ToNot(HaveOccurred(), "should succeed restarting KMP")
+						})
+						It("Should remove the vm from cache and legacy configMap", func() {
+							By("checking that the mac is occupied by trying to allocate it in a new vm")
+							err := testClient.VirtClient.Create(context.TODO(), vm)
+							Expect(err).To(HaveOccurred(), "should fail creating a vm with the now occupied mac address")
+
+							Eventually(func() map[string]string {
+								cm, err := getVmWaitConfigMap()
+								Expect(err).ToNot(HaveOccurred(), "should succeed getting the configMap")
+								return cm.Data
+							}, timeout, pollingInterval).Should(BeEmpty(), "stale configMap entry should be successfully removed")
+
+							By("checking that the mac is released by trying to allocate it in a new vm")
+							err = testClient.VirtClient.Create(context.TODO(), vm)
+							Expect(err).ToNot(HaveOccurred(), "should succeed creating a vm with the now released mac address")
+						})
+					})
+				})
+				Context("When a vm was successfully created in a version that uses the legacy configMap", func() {
+					vm := CreateVmObject(TestNamespace, false,
+						[]kubevirtv1.Interface{newInterface("br1", allocatedMacAddress)},
+						[]kubevirtv1.Network{newNetwork("br1")})
+					BeforeEach(func() {
+						By("simulating a vm created on version using legacy configMap")
+						err := testClient.VirtClient.Create(context.TODO(), vm)
+						Expect(err).ToNot(HaveOccurred(), "should succeed creating a vm with the now released mac address")
+						Expect(simulateSoonToBeStaleEntryInConfigMap(allocatedMacAddress)).To(Succeed())
+					})
+					Context("and then KMP is upgraded", func() {
+						BeforeEach(func() {
+							By("simulating kubemacpool upgrade with restart")
+							err := initKubemacpoolParams()
+							Expect(err).ToNot(HaveOccurred(), "should succeed restarting KMP")
+						})
+						It("Should remove the vm from cache and legacy configMap", func() {
+							By("checking that the mac is occupied and not removed as stale by trying to allocate it in a new vm")
+							vm1 := CreateVmObject(TestNamespace, false,
+								[]kubevirtv1.Interface{newInterface("br1", allocatedMacAddress)},
+								[]kubevirtv1.Network{newNetwork("br1")})
+							Consistently(func() error {
+								return testClient.VirtClient.Create(context.TODO(), vm1)
+							}, timeout, pollingInterval).ShouldNot(Succeed())
+						})
+					})
+				})
+			})
 		})
 
 		Context("When all the VMs are not serviced by default (opt-in mode)", func() {
@@ -505,6 +558,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			Context("and kubemacpool is opted-in on a namespace", func() {
 				var vm *kubevirtv1.VirtualMachine
+				var allocatedMac string
 				BeforeEach(func() {
 					By("opting in the namespace")
 					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
@@ -518,17 +572,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						By("Create VM")
 						err := testClient.VirtClient.Create(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred(), "should succeed creating the vm")
+						allocatedMac = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					})
 					It("should create a VM object with a MAC assigned", func() {
-						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(net.ParseMAC(allocatedMac)).ToNot(BeEmpty(), "Should successfully parse mac address")
 					})
-					It("should remove the mac from vmWaitConfigMap after vm created successfully", func() {
-						By("Checking vmWaitConfigMap is cleared")
-						Eventually(func() map[string]string {
-							data, err := getVmWaitConfigMapData()
-							Expect(err).ToNot(HaveOccurred(), "Should succeed getting vmWaitConfigMap")
-							return data
-						}, timeout, pollingInterval).Should(BeEmpty(), "vmWaitConfigMap should be empty after successful vm creation")
+					It("should reject a new VM object with the occupied MAC assigned", func() {
+						vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
+							[]kubevirtv1.Network{newNetwork("br")})
+						Expect(testClient.VirtClient.Create(context.TODO(), vm)).ToNot(Succeed(), "Should reject a new vm with occupied mac address")
 					})
 				})
 			})
@@ -559,6 +611,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			Context("and the client creates a vm on a non-opted-out namespace", func() {
 				var vm *kubevirtv1.VirtualMachine
+				var allocatedMac string
 				BeforeEach(func() {
 					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 						[]kubevirtv1.Network{newNetwork("br")})
@@ -566,14 +619,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					By("Create VM")
 					err := testClient.VirtClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred(), "should success creating the vm")
-				})
-				It("should remove the mac from vmWaitConfigMap after vm created successfully", func() {
-					By("Checking vmWaitConfigMap is cleared")
-					Eventually(func() map[string]string {
-						data, err := getVmWaitConfigMapData()
-						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vmWaitConfigMap")
-						return data
-					}, timeout, pollingInterval).Should(BeEmpty(), "vmWaitConfigMap should be empty after successful vm creation")
+					allocatedMac = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				})
 				It("should automatically assign the vm with static MAC address within range", func() {
 					vmKey := types.NamespacedName{Namespace: vm.Namespace, Name: vm.Name}
@@ -581,7 +627,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err := testClient.VirtClient.Get(context.TODO(), vmKey, vm)
 					Expect(err).ToNot(HaveOccurred(), "should success getting the VM after creating it")
 
-					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(allocatedMac)).ToNot(BeEmpty(), "Should successfully parse mac address")
+				})
+				It("should reject a new VM object with the occupied MAC assigned", func() {
+					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
+						[]kubevirtv1.Network{newNetwork("br")})
+					Expect(testClient.VirtClient.Create(context.TODO(), vm)).ToNot(Succeed(), "Should reject a new vm with occupied mac address")
 				})
 				Context("and then when we opt-out the namespace", func() {
 					BeforeEach(func() {
@@ -712,12 +763,4 @@ func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 		Expect(err).ToNot(HaveOccurred(), "should success getting vm if is still there")
 		return false
 	}, timeout, pollingInterval).Should(BeTrue(), "should eventually fail getting vm with IsNotFound after vm deletion")
-}
-
-func clearMap(inputMap map[string]string) {
-	if inputMap != nil {
-		for key := range inputMap {
-			delete(inputMap, key)
-		}
-	}
 }

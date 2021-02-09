@@ -34,6 +34,9 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
+const tempVmName = "tempVmName"
+const tempVmInterface = "tempInterfaceName"
+
 func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp string, parentLogger logr.Logger) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
@@ -80,11 +83,6 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 			copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
 			newAllocations[iface.Name] = macAddr
 		}
-	}
-
-	err := p.AddMacToWaitingConfig(newAllocations, logger)
-	if err != nil {
-		return err
 	}
 
 	p.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
@@ -243,6 +241,32 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
+	err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface) {
+		if iface.MacAddress != "" {
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, logger); err != nil {
+				// Dont return an error here if we can't allocate a mac for a configured vm
+				logger.Error(fmt.Errorf("failed to parse mac address for virtual machine"),
+					"Invalid mac address for virtual machine",
+					"virtualMachineFullName", vmFullName,
+					"virtualMachineInterfaceMac", iface.MacAddress)
+			}
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = p.initMacMapFromLegacyConfigMap()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// forEachMacInClusterRunFunction gets all the macs from all the supported interfaces in all the cluster vms, and runs
+// a function f on it
+func (p *PoolManager) forEachVmInterfaceInClusterRunFunction(f func(vmFullName string, iface kubevirt.Interface)) error {
+	logger := log.WithName("forEachVmInterfaceInClusterRunFunction")
 	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1/virtualmachines").Do(context.TODO())
 	if result.Error() != nil {
 		return result.Error()
@@ -255,15 +279,16 @@ func (p *PoolManager) initVirtualMachineMap() error {
 	}
 
 	for _, vm := range vms.Items {
-		logger.V(1).Info("InitMaps for virtual machine",
-			"virtualMachineName", vm.Name,
-			"virtualMachineNamespace", vm.Namespace)
-		if len(vm.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
+		vmFullName := VmNamespaced(&vm)
+		vmInterfaces := getVirtualMachineInterfaces(&vm)
+		vmNetworks := getVirtualMachineNetworks(&vm)
+		logger.V(1).Info("InitMaps for virtual machine")
+		if len(vmInterfaces) == 0 {
 			logger.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
 			continue
 		}
 
-		if len(vm.Spec.Template.Spec.Networks) == 0 {
+		if len(vmNetworks) == 0 {
 			logger.V(1).Info("no networks found for virtual machine, skipping mac allocation",
 				"virtualMachineName", vm.Name,
 				"virtualMachineNamespace", vm.Namespace)
@@ -271,51 +296,77 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		}
 
 		networks := map[string]kubevirt.Network{}
-		for _, network := range vm.Spec.Template.Spec.Networks {
+		for _, network := range vmNetworks {
 			networks[network.Name] = network
 		}
 
 		logger.V(1).Info("virtual machine data",
-			"virtualMachineName", vm.Name,
-			"virtualMachineNamespace", vm.Namespace,
-			"virtualMachineInterfaces", vm.Spec.Template.Spec.Domain.Devices.Interfaces)
+			"vmFullName", vmFullName,
+			"virtualMachineInterfaces", vmInterfaces)
 
-		for _, iface := range vm.Spec.Template.Spec.Domain.Devices.Interfaces {
+		for _, iface := range vmInterfaces {
 			if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
 				logger.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 				continue
 			}
 
-			if iface.MacAddress != "" {
-				if err := p.allocateRequestedVirtualMachineInterfaceMac(&vm, iface, logger); err != nil {
-					// Dont return an error here if we can't allocate a mac for a configured vm
-					logger.Error(fmt.Errorf("failed to parse mac address for virtual machine"),
-						"Invalid mac address for virtual machine",
-						"virtualMachineNamespace", vm.Namespace,
-						"virtualMachineName", vm.Name,
-						"virtualMachineInterfaceMac", iface.MacAddress)
-					continue
-				}
-
-				p.macPoolMap[iface.MacAddress] = AllocationStatusAllocated
-			}
+			f(vmFullName, iface)
 		}
 	}
+	return nil
+}
 
-	waitingMac, err := p.getOrCreateVmMacWaitMap()
+// the legacy configMap is no longer used in KMP, but after upgrade we might find macs in there.
+// This can be from either 3 scenarios:
+// 1. the webhook that allocated this mac failed
+// 2. the webhook succeeded but vm didn't persist yet
+// 3. the webhook succeeded but configMap didn't remove it yet.
+// initMacMapFromLegacyConfigMap handles these cases by comparing the the current macPoolMap
+// and acting accordingly to prevent collisions.
+func (p *PoolManager) initMacMapFromLegacyConfigMap() error {
+	waitingMacData, err := p.getOrCreateVmMacWaitMap()
 	if err != nil {
 		return err
 	}
 
-	for macAddress := range waitingMac {
-		macAddress = strings.Replace(macAddress, "-", ":", 5)
-
-		if _, exist := p.macPoolMap[macAddress]; !exist {
-			p.macPoolMap[macAddress] = AllocationStatusWaitingForPod
-		}
+	if len(waitingMacData) == 0 {
+		return nil
 	}
+	notYetUpdatedMacMap, alreadyUpdatedMacList, err := p.splitLegacyConfigMapMacsByExistenceInMacPoolMap(waitingMacData)
+	if err != nil {
+		return err
+	}
+	p.removeUpdatedMacsFromLegacyConfigMap(alreadyUpdatedMacList)
+	p.addMacToMacPoolWithDummyFieldsToPreventDuplications(notYetUpdatedMacMap)
 
 	return nil
+}
+
+// splitLegacyConfigMapMacsByExistenceInMacPoolMap goes over the KMP configMap data splits it to 2 sets according
+// to whether they are already updated in the macPoolMap.
+func (p *PoolManager) splitLegacyConfigMapMacsByExistenceInMacPoolMap(waitingMacData map[string]string) (map[string]string, []string, error) {
+	notYetUpdatedMacMap := map[string]string{}
+	alreadyUpdatedMacList := []string{}
+
+	for macAddressDashes, transactionTimestamp := range waitingMacData {
+		macAddress := strings.Replace(macAddressDashes, "-", ":", 5)
+		if _, exist := p.macPoolMap[macAddress]; !exist {
+			notYetUpdatedMacMap[macAddress] = transactionTimestamp
+		} else {
+			alreadyUpdatedMacList = append(alreadyUpdatedMacList, macAddress)
+		}
+	}
+	log.Info("splitLegacyConfigMapMacsByExistenceInMacPoolMap", "notYetUpdatedMacMap", notYetUpdatedMacMap, "alreadyUpdatedMacList", alreadyUpdatedMacList)
+	return notYetUpdatedMacMap, alreadyUpdatedMacList, nil
+}
+
+// addMacToMacPoolWithDummyFieldsToPreventDuplications adds not yet persisted mac addresses to macMap, to protect the mac
+// from future duplication by another vm trying to set it.
+func (p *PoolManager) addMacToMacPoolWithDummyFieldsToPreventDuplications(notPersistedMacList map[string]string) {
+	// configMap timestamps are in RFC3339 format, but it is also applicable in the new RFC3339Nano format
+	for macAddress, transactionTimestamp := range notPersistedMacList {
+		p.recreateLegacyMacEntryInMacPoolMap(macAddress, tempVmName, tempVmInterface, transactionTimestamp)
+	}
 }
 
 func (p *PoolManager) IsKubevirtEnabled() bool {
@@ -373,41 +424,6 @@ func (p *PoolManager) getOrCreateVmMacWaitMap() (map[string]string, error) {
 	return configMap.Data, nil
 }
 
-// Add all the allocated mac addresses to the waiting config map with the current time.
-func (p *PoolManager) AddMacToWaitingConfig(allocations map[string]string, parentLogger logr.Logger) error {
-	logger := parentLogger.WithName("AddMacToWaitingConfig")
-
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		// refresh ConfigMaps instance
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		if configMap.Data == nil {
-			configMap.Data = map[string]string{}
-		}
-
-		for _, macAddress := range allocations {
-			logger.V(1).Info("add mac address to waiting config", "macAddress", macAddress)
-			macAddress = strings.Replace(macAddress, ":", "-", 5)
-			configMap.Data[macAddress] = time.Now().Format(time.RFC3339)
-		}
-
-		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-
-		return err
-	})
-
-	if err != nil {
-		return errors.Wrap(err, "Failed to update manager's configmap with allocated macs waiting for approval")
-	}
-
-	logger.V(1).Info("Successfully updated manager's configmap with allocated macs waiting for approval")
-
-	return err
-}
-
 // Remove all the mac addresses from the waiting configmap this mean the vm was saved in the etcd and pass validations
 func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersistedTransactionTimeStamp string, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("MarkVMAsReady")
@@ -441,8 +457,44 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 		}
 	}
 
+	p.removeUpdatedMacsFromLegacyConfigMap(updatedMacsList)
+
 	logger.Info("marked virtual machine as ready", "macPoolMap", p.macPoolMap)
 
+	return nil
+}
+
+func (p *PoolManager) removeUpdatedMacsFromLegacyConfigMap(updatedMacList []string) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		// refresh ConfigMaps instance
+		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		if err != nil {
+			return errors.Wrap(err, "Failed to refresh manager's configmap instance")
+		}
+
+		if configMap.Data == nil {
+			return nil
+		}
+
+		log.Info("the configMap is not empty", "data", configMap.Data)
+
+		for _, macAddress := range updatedMacList {
+			macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
+			if _, exists := configMap.Data[macAddressDashes]; exists {
+				delete(configMap.Data, macAddressDashes)
+			}
+		}
+
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
+
+		return err
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "Failed to update manager's legacy configmap with approved allocated macs")
+	} else {
+		log.Info("the configMap successfully updated")
+	}
 	return nil
 }
 
@@ -471,51 +523,123 @@ func (p *PoolManager) vmWaitingCleanupLook() {
 	for _ = range c {
 		p.poolMutex.Lock()
 
-		configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+		p.handleStaleLegacyConfigMapEntries(logger)
+
+		p.handleStaleMacEntries(logger)
+
+		p.poolMutex.Unlock()
+	}
+}
+
+func (p *PoolManager) handleStaleMacEntries(parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("handleStaleMacEntries")
+	var macMapChanged bool
+	for macAddress, macEntry := range p.macPoolMap {
+		macMapChanged = false
+		if !p.isMacUpdateRequired(macAddress) {
+			continue
+		}
+		isEntryStale, err := p.isMacTransactionStale(macAddress)
+		if err == nil && isEntryStale {
+			macMapChanged = true
+			logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", macEntry.instanceName, "interfaceName", macEntry.macInstanceKey, "stale TS", macEntry.transactionTimestamp)
+			vm, err := p.getvmInstance(macEntry.instanceName)
+			if err != nil && apierrors.IsNotFound(err) {
+				logger.Info("vm no longer exists or does not have Template. removing mac from pool", "macAddress", macAddress, "entry", macEntry)
+				p.removeMacEntry(macAddress)
+			} else if err == nil {
+				p.alignMacEntryAccordingToVmInterface(macAddress, macEntry, getVirtualMachineInterfaces(vm))
+			} else {
+				return err
+			}
+		}
+	}
+	if macMapChanged {
+		logger.V(1).Info("macMap is updated", "macPoolMap", p.macPoolMap)
+	}
+	return nil
+}
+
+func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine, error) {
+	vmFullNameSplit := strings.Split(vmFullName, "/")
+	vmNamespace := vmFullNameSplit[1]
+	vmName := vmFullNameSplit[2]
+	log.V(1).Info("getvmInstance", "vmNamespace", vmNamespace, "vmName", vmName)
+	if vmNamespace == "" || vmName == "" {
+		return nil, errors.New("failed to extract vm namespace and name")
+	}
+
+	requestUrl := fmt.Sprintf("apis/kubevirt.io/v1/namespaces/%s/virtualmachines/%s", vmNamespace, vmName)
+	log.V(1).Info("getvmInstance", "requestURI", requestUrl)
+
+	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
+	if result.Error() != nil {
+		return nil, result.Error()
+	}
+	vm := &kubevirt.VirtualMachine{}
+	err := result.Into(vm)
+	if err != nil {
+		return nil, err
+	}
+
+	return vm, nil
+}
+
+func (p *PoolManager) handleStaleLegacyConfigMapEntries(parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("handleStaleLegacyConfigMapEntries")
+	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	if err != nil {
+		logger.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
+		return err
+	}
+
+	configMapUpdateNeeded := false
+	if configMap.Data == nil {
+		return nil
+	}
+
+	for macAddressDashes, allocationTime := range configMap.Data {
+		// legacy Configmap uses time.RFC3339.
+		t, err := time.Parse(time.RFC3339, allocationTime)
 		if err != nil {
-			logger.Error(err, "failed to get config map", "configMapName", names.WAITING_VMS_CONFIGMAP)
-			p.poolMutex.Unlock()
+			// TODO: remove the mac from the wait map??
+			logger.Error(err, "failed to parse allocation time")
 			continue
 		}
 
-		configMapUpdateNeeded := false
-		if configMap.Data == nil {
-			logger.V(1).Info("the configMap is empty", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
-			p.poolMutex.Unlock()
-			continue
-		}
+		logger.Info("data:", "configMapName", names.WAITING_VMS_CONFIGMAP, "configMap.Data", configMap.Data, "macPoolMap", p.macPoolMap)
 
-		for macAddress, allocationTime := range configMap.Data {
-			t, err := time.Parse(time.RFC3339, allocationTime)
+		if p.now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
+			configMapUpdateNeeded = true
+			delete(configMap.Data, macAddressDashes)
+			macAddress := strings.Replace(macAddressDashes, "-", ":", 5)
+			// try to find vm that matches mac and allocate it in macPoolMap
+			err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface) {
+				if iface.MacAddress != "" && iface.MacAddress == macAddress {
+					p.createOrUpdateMacEntryInMacPoolMap(macAddress, vmFullName, iface.Name)
+				}
+			})
 			if err != nil {
-				// TODO: remove the mac from the wait map??
-				logger.Error(err, "failed to parse allocation time")
-				continue
+				return err
 			}
 
-			logger.Info("data:", "configMapName", names.WAITING_VMS_CONFIGMAP, "configMap.Data", configMap.Data, "macPoolMap", p.macPoolMap)
-
-			if time.Now().After(t.Add(time.Duration(p.waitTime) * time.Second)) {
-				configMapUpdateNeeded = true
-				delete(configMap.Data, macAddress)
-				macAddress = strings.Replace(macAddress, "-", ":", 5)
-				delete(p.macPoolMap, macAddress)
-				logger.Info("released mac address in waiting loop", "macAddress", macAddress)
+			// if vm was not found, release from macMap
+			if macEntry, exist := p.macPoolMap[macAddress]; exist && macEntry.instanceName == tempVmName {
+				p.removeMacEntry(macAddress)
 			}
 		}
+	}
 
-		if configMapUpdateNeeded {
-			_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
-		}
+	if configMapUpdateNeeded {
+		_, err = p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Update(context.TODO(), configMap, metav1.UpdateOptions{})
 
 		if err == nil {
 			logger.Info("the configMap successfully updated", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
 		} else {
 			logger.Info("the configMap failed to update", "configMapName", names.WAITING_VMS_CONFIGMAP, "macPoolMap", p.macPoolMap)
 		}
-
-		p.poolMutex.Unlock()
 	}
+	return nil
 }
 
 func SetTransactionTimestampAnnotationToVm(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp string) {

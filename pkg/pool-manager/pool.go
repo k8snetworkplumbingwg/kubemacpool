@@ -324,6 +324,14 @@ func (p *PoolManager) createOrUpdateMacEntryInMacPoolMap(macAddress, instanceFul
 	}
 }
 
+func (p *PoolManager) recreateLegacyMacEntryInMacPoolMap(macAddress, instanceFullName, macInstanceKey, transactionTimestamp string) {
+	p.macPoolMap[macAddress] = macEntry{
+		instanceName:         instanceFullName,
+		macInstanceKey:       macInstanceKey,
+		transactionTimestamp: transactionTimestamp,
+	}
+}
+
 // getInstanceMacMap creates a subset map from macPoolMap, holding only macs that belongs to a specific instance (pod/vm)
 func (p *PoolManager) getInstanceMacMap(instanceName string) (map[string]macEntry, error) {
 	instanceMacMap := map[string]macEntry{}

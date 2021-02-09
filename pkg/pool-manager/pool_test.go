@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"net"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo"
@@ -860,16 +859,13 @@ var _ = Describe("Pool", func() {
 					macInstanceKey:       newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name,
 				}
 			})
-			It("should set a mac in configmap with new mac", func() {
+			It("should not set a mac in legacy configmap with new mac", func() {
 				By("get configmap")
 				configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
 
-				By("checking the configmap is updated with mac allocated")
-				macAddressInConfigMapFormat := strings.Replace(allocatedMac, ":", "-", 5)
-				Expect(configMap.Data).To(HaveLen(1), "configmap should hold the mac address waiting for approval")
-				_, exist := configMap.Data[macAddressInConfigMapFormat]
-				Expect(exist).To(Equal(true), "should have an entry of the mac in the configmap")
+				By("checking the configmap is not updated with mac allocated")
+				Expect(configMap.Data).To(BeEmpty(), "configmap should not hold the mac address waiting for approval")
 			})
 			It("should set a mac in pool cache with updated transaction timestamp", func() {
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
@@ -895,7 +891,7 @@ var _ = Describe("Pool", func() {
 					By("check mac allocated as expected")
 					Expect(allocatedMac).To(Equal("02:00:00:00:00:01"), "should successfully allocate the first mac in the range")
 				})
-				It("should properly update the configmap after vm creation", func() {
+				It("should make sure legacy configmap is empty after vm creation", func() {
 					By("check configmap is empty")
 					configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")

@@ -25,17 +25,18 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
 	multus "github.com/intel/multus-cni/types"
-	"github.com/onsi/ginkgo/extensions/table"
 	"k8s.io/api/admissionregistration/v1beta1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
-	kubevirt "kubevirt.io/client-go/api/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+
+	kubevirt "kubevirt.io/client-go/api/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -47,6 +48,7 @@ var _ = Describe("Pool", func() {
 	afterAllocationAnnotation := map[string]string{networksAnnotation: `[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:00"}]`}
 	samplePod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: "default", Annotations: afterAllocationAnnotation}}
 	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
+	waitTimeSeconds := 10
 
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
@@ -54,7 +56,7 @@ var _ = Describe("Pool", func() {
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
+		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
 		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
 		err = poolManager.Start()
 		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
@@ -138,42 +140,44 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager General Functions ", func() {
 		It("should create a pool manager", func() {
-			createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF")
+			poolManager := createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF")
+			Expect(poolManager).ToNot(BeNil())
 		})
+		Context("check NewPoolManager", func() {
+			It("should fail to create pool manager when rangeStart is greater than rangeEnd", func() {
+				fakeClient := fake.NewSimpleClientset()
+				startPoolRangeEnv, err := net.ParseMAC("0A:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
 
-		It("should fail to create pool manager when rangeStart is greater than rangeEnd", func() {
-			fakeClient := fake.NewSimpleClientset()
-			startPoolRangeEnv, err := net.ParseMAC("0A:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
+			})
 
-		})
+			It("should fail to pool manager because of the first octet of RangeStart is not 2, 6, A, E", func() {
+				fakeClient := fake.NewSimpleClientset()
+				startPoolRangeEnv, err := net.ParseMAC("03:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
 
-		It("should fail to pool manager because of the first octet of RangeStart is not 2, 6, A, E", func() {
-			fakeClient := fake.NewSimpleClientset()
-			startPoolRangeEnv, err := net.ParseMAC("03:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
+			})
 
-		})
-
-		It("should fail to create a pool manager object when the first octet of RangeEnd is not 2, 6, A, E", func() {
-			fakeClient := fake.NewSimpleClientset()
-			startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
-			Expect(err).ToNot(HaveOccurred())
-			_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
+			It("should fail to create a pool manager object when the first octet of RangeEnd is not 2, 6, A, E", func() {
+				fakeClient := fake.NewSimpleClientset()
+				startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
+				Expect(err).ToNot(HaveOccurred())
+				_, err = NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
+			})
 		})
 	})
 

@@ -672,24 +672,24 @@ var _ = Describe("Pool", func() {
 
 			err := poolManager.AllocatePodMac(&newPod)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(poolManager.macPoolMap)).To(Equal(2))
-			_, exist := poolManager.macPoolMap["02:00:00:00:00:00"]
-			Expect(exist).To(BeTrue())
-			_, exist = poolManager.macPoolMap["02:00:00:00:00:01"]
-			Expect(exist).To(BeTrue())
+			preAllocatedPodMac := "02:00:00:00:00:00"
+			expectedAllocatedMac := "02:00:00:00:00:01"
+			Expect(poolManager.macPoolMap).To(HaveLen(2))
+			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac, expectedAllocatedMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 			Expect(newPod.Annotations[networksAnnotation]).To(Equal(`[{"name":"ovs-conf","namespace":"default","mac":"02:00:00:00:00:01","cni-args":null}]`))
-			macAddress, exist := poolManager.podToMacPoolMap[podNamespaced(&newPod)]
-			Expect(exist).To(BeTrue())
-			Expect(len(macAddress)).To(Equal(1))
-			Expect(macAddress["ovs-conf"]).To(Equal("02:00:00:00:00:01"))
+			expectedMacEntry := macEntry{
+				transactionTimestamp: nil,
+				instanceName:         podNamespaced(&newPod),
+				macInstanceKey:       "ovs-conf",
+			}
+			Expect(poolManager.macPoolMap[expectedAllocatedMac]).To(Equal(expectedMacEntry))
 
-			err = poolManager.ReleasePodMac(podNamespaced(&newPod))
+			err = poolManager.ReleaseAllPodMacs(podNamespaced(&newPod))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(len(poolManager.macPoolMap)).To(Equal(1))
-			_, exist = poolManager.macPoolMap["02:00:00:00:00:00"]
-			Expect(exist).To(BeTrue())
-			_, exist = poolManager.macPoolMap["02:00:00:00:00:01"]
+			Expect(poolManager.macPoolMap).To(HaveLen(1))
+			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+			_, exist := poolManager.macPoolMap[expectedAllocatedMac]
 			Expect(exist).To(BeFalse())
 		})
 		It("should allocate requested mac when empty", func() {

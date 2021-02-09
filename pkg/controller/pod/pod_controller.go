@@ -93,7 +93,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	err = r.Get(context.TODO(), request.NamespacedName, instance)
 	if err != nil {
 		if kuberneteserror.IsNotFound(err) {
-			err := r.poolManager.ReleasePodMac(fmt.Sprintf("%s/%s", request.Namespace, request.Name))
+			err := r.poolManager.ReleaseAllPodMacs(fmt.Sprintf("pod/%s/%s", request.Namespace, request.Name))
 			if err != nil {
 				logging.Errorf("%v, failed to release mac for pod %s: %v", logging.ErrorLevel, request.NamespacedName, err)
 			}

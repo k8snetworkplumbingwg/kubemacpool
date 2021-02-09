@@ -25,6 +25,7 @@ const pollingInterval = 5 * time.Second
 
 //TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", func() {
+	restoreFailedWebhookChangesTimeout := time.Duration(0)
 	BeforeAll(func() {
 		result := testClient.KubeClient.ExtensionsV1beta1().RESTClient().
 			Post().
@@ -32,6 +33,11 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
 			Do(context.TODO())
 		Expect(result.Error()).NotTo(HaveOccurred(), "KubeCient should successfully respond to post request")
+
+		vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
+		// since this test checks vmWaitingCleanupLook routine, we need to adjust the total timeout with the wait-time argument.
+		// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
+		restoreFailedWebhookChangesTimeout = vmFailCleanupWaitTime + time.Minute
 	})
 
 	BeforeEach(func() {
@@ -324,13 +330,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 			Context("and we re-apply a failed VM yaml", func() {
-				totalTimeout := time.Duration(0)
-				BeforeAll(func() {
-					vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
-					// since this test checks vmWaitingCleanupLook routine, we nned to adjust the total timeout with the wait-time argument.
-					// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
-					totalTimeout = timeout + vmFailCleanupWaitTime
-				})
 				It("[test_id:2633]should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 					vm1 := CreateVmObject(TestNamespace, false,
 						[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
@@ -350,7 +349,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 						return err
 
-					}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 				})
 				It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 					vm1 := CreateVmObject(TestNamespace, false,
@@ -372,7 +371,138 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 						return err
 
-					}, totalTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+				})
+			})
+			Context("and a vm is created with no interfaces", func() {
+				maxNumOfIfaces := 16
+				var vm *kubevirtv1.VirtualMachine
+				interfaces := []kubevirtv1.Interface{}
+				networks := []kubevirtv1.Network{}
+				BeforeEach(func() {
+					for numOfIfaces := 0; numOfIfaces < maxNumOfIfaces; numOfIfaces++ {
+						interfaces = append(interfaces, newInterface("br"+strconv.Itoa(numOfIfaces), fmt.Sprintf("02:00:00:00:00:%02X", numOfIfaces)))
+						networks = append(networks, newNetwork("br"+strconv.Itoa(numOfIfaces)))
+					}
+					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{}, []kubevirtv1.Network{})
+					By("Creating the vm with 0 interfaces")
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+				})
+				Context(fmt.Sprintf("and then sequentially updated from %d interfaces back to 0 with minimal time between requests", maxNumOfIfaces), func() {
+					BeforeEach(func() {
+						for numOfIfaces := maxNumOfIfaces; numOfIfaces >= 0; numOfIfaces-- {
+							By(fmt.Sprintf("updating the number of interfaces to %d", numOfIfaces))
+
+							err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+								err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+								Expect(err).ToNot(HaveOccurred())
+
+								vm.Spec.Template.Spec.Domain.Devices.Interfaces = interfaces[0:numOfIfaces]
+								vm.Spec.Template.Spec.Networks = networks[0:numOfIfaces]
+
+								return testClient.VirtClient.Update(context.TODO(), vm)
+							})
+
+							Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should succeed updating the vm to %d interfaces", numOfIfaces))
+						}
+
+						By("Checking that the vm has 0 interface after the changes are made")
+						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces).To(BeEmpty(), "Should Have no interfaces")
+					})
+					It("should be able to allocate the freed macs to new vms", func() {
+						By(fmt.Sprintf("Creating %d vms, each with a MAC interface used in the base vm", maxNumOfIfaces))
+						for ifaceIdx := 0; ifaceIdx < maxNumOfIfaces; ifaceIdx++ {
+							Eventually(func() error {
+								newVm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{interfaces[ifaceIdx]}, []kubevirtv1.Network{networks[ifaceIdx]})
+								err := testClient.VirtClient.Create(context.TODO(), newVm)
+
+								if err != nil {
+									Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only fail to allocate vm because the mac is already used")
+								}
+								return err
+
+							}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+						}
+					})
+				})
+				Context(fmt.Sprintf("and then sequentially updated from 0 to %d interfaces with minimal time between requests", maxNumOfIfaces), func() {
+					BeforeEach(func() {
+						for numOfIfaces := 1; numOfIfaces <= maxNumOfIfaces; numOfIfaces++ {
+							By(fmt.Sprintf("updating the number of interfaces to %d", numOfIfaces))
+							err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+								err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+								Expect(err).ToNot(HaveOccurred())
+
+								vm.Spec.Template.Spec.Domain.Devices.Interfaces = interfaces[0:numOfIfaces]
+								vm.Spec.Template.Spec.Networks = networks[0:numOfIfaces]
+
+								return testClient.VirtClient.Update(context.TODO(), vm)
+							})
+
+							Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("Should succeed updating the vm to %d interfaces", numOfIfaces))
+						}
+
+						By(fmt.Sprintf("Checking that the vm has %d interface after the changes are made", maxNumOfIfaces))
+						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces).To(HaveLen(maxNumOfIfaces), fmt.Sprintf("Should have %d interfaces", maxNumOfIfaces))
+					})
+					It("should not be able to allocate the occupied macs to new vms", func() {
+						By(fmt.Sprintf("Creating %d vms, each with a MAC interface used in the base vm", maxNumOfIfaces))
+						for ifaceIdx := 0; ifaceIdx < maxNumOfIfaces; ifaceIdx++ {
+							newVm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{interfaces[ifaceIdx]}, []kubevirtv1.Network{networks[ifaceIdx]})
+							err := testClient.VirtClient.Create(context.TODO(), newVm)
+							Expect(err).To(HaveOccurred(), "Should fail creating the vm")
+						}
+					})
+				})
+			})
+			Context("and a VM's NIC is added just before an old update request with no NICs is made", func() {
+				var vm *kubevirtv1.VirtualMachine
+				var reusedMacAddress string
+				BeforeEach(func() {
+					By("Creating a vm with no NICs")
+					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{}, []kubevirtv1.Network{})
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+
+					By("Saving the vm instance to reuse it after resourceVersion has changed to cause a conflict error")
+					copyVm := vm.DeepCopy()
+
+					By("Adding a new NIC to the vm")
+					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+						err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(err).ToNot(HaveOccurred())
+
+						vm.Spec.Template.Spec.Domain.Devices.Interfaces = []kubevirtv1.Interface{newInterface("br1", "")}
+						vm.Spec.Template.Spec.Networks = []kubevirtv1.Network{newNetwork("br1")}
+
+						return testClient.VirtClient.Update(context.TODO(), vm)
+					})
+
+					Expect(err).ToNot(HaveOccurred(), "Should succeed updating the vm")
+					reusedMacAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+					_, err = net.ParseMAC(reusedMacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing the vm mac")
+
+					By("Issuing the outdated vm request")
+					err = testClient.VirtClient.Update(context.TODO(), copyVm)
+					Expect(apierrors.IsConflict(err)).Should(Equal(true), "Should fail update on conflict")
+				})
+				It("should successfully reject the old request on conflict and should reject a new vm trying to allocate using this mac", func() {
+					By(fmt.Sprintf("waiting for cache to be restored after %v", restoreFailedWebhookChangesTimeout))
+					time.Sleep(restoreFailedWebhookChangesTimeout)
+
+					By("trying to reuse the mac in a new vm")
+					newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
+						[]kubevirtv1.Network{newNetwork("br1")})
+					err := testClient.VirtClient.Create(context.TODO(), newVM)
+					Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should fail to allocate vm because the mac is already used")
 				})
 			})
 			Context("and a VM's NIC is removed and a new VM is created with the same MAC", func() {
@@ -386,7 +516,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's second mac address")
 
 					reusedMacAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
-					By("checking that a new VM cannot be created when the range is full")
+					By("checking that a new VM cannot be created when the mac is already occupied")
 					newVM := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1")})
 					err = testClient.VirtClient.Create(context.TODO(), newVM)
@@ -457,7 +587,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() error {
 							err = testClient.VirtClient.Create(context.TODO(), newVM)
 							if err != nil {
-								Expect(err).Should(MatchError("Failed to create virtual machine allocation error: the range is full"), "Should only get a range full error until cache get updated")
+								Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: the range is full"), "Should only get a range full error until cache get updated")
 							}
 							return err
 
@@ -690,7 +820,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() bool {
 							err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
 							Expect(err).ToNot(HaveOccurred())
-							if vm.ObjectMeta.DeletionTimestamp.IsZero() {
+							if pool_manager.IsVirtualMachineNotMarkedForDeletion(vm) {
 								if len(vm.ObjectMeta.Finalizers) == 1 {
 									if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
 										return true

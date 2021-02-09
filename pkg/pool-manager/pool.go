@@ -22,6 +22,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -42,6 +43,9 @@ const (
 )
 
 var log = logf.Log.WithName("PoolManager")
+
+// now is an artifact to do some unit testing without waiting for expiration time.
+var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
 	kubeClient       kubernetes.Interface // kubernetes client
@@ -96,7 +100,8 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       map[string]AllocationStatus{},
 		poolMutex:        sync.Mutex{},
-		waitTime:         waitTime}
+		waitTime:         waitTime,
+	}
 
 	return poolManger, nil
 }

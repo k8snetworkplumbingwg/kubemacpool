@@ -3,6 +3,7 @@ package pool_manager
 import (
 	"time"
 
+	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
@@ -32,4 +33,12 @@ func GetTransactionTimestampAnnotationFromVm(virtualMachine *kubevirt.VirtualMac
 
 func parseTransactionTimestamp(timeStampAnnotation string) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, timeStampAnnotation)
+}
+
+func (p *PoolManager) commitChangesToMacPoolMap(macsMapToCommit *macMap, vm *kubevirt.VirtualMachine, parentLogger logr.Logger) {
+	vmPersistedInterfaceList := getVirtualMachineInterfaces(vm)
+	parentLogger.Info("committing macs to macPoolMap according to the current vm interfaces", "macsMapToCommit", macsMapToCommit, "vmPersistedInterfaceList", vmPersistedInterfaceList)
+	for macAddress, _ := range *macsMapToCommit {
+		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), vmPersistedInterfaceList)
+	}
 }

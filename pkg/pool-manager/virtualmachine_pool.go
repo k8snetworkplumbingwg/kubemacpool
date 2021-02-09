@@ -537,3 +537,7 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
 func vmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("%s/%s", machine.Namespace, machine.Name)
 }
+
+func IsVirtualMachineDeletionInProgress(vm *kubevirt.VirtualMachine) bool {
+	return !vm.ObjectMeta.DeletionTimestamp.IsZero()
+}

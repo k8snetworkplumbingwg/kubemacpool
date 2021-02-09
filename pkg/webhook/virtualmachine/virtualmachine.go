@@ -76,14 +76,15 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	}
 
 	logger.V(1).Info("got a virtual machine event")
+
 	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		err = a.mutateCreateVirtualMachinesFn(ctx, virtualMachine, logger)
+		err = a.mutateCreateVirtualMachinesFn(virtualMachine, logger)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
 		}
 	} else if req.AdmissionRequest.Operation == admissionv1beta1.Update {
-		err = a.mutateUpdateVirtualMachinesFn(ctx, virtualMachine, logger)
+		err = a.mutateUpdateVirtualMachinesFn(virtualMachine, logger)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError,
 				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
@@ -91,28 +92,38 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 	}
 
 	// admission.PatchResponse generates a Response containing patches.
-	return patchVMChanges(originalVirtualMachine, virtualMachine)
+	return patchVMChanges(originalVirtualMachine, virtualMachine, logger)
 }
 
 // create jsonpatches only to changed caused by the kubemacpool webhook changes
-func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine) admission.Response {
+func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) admission.Response {
+	logger := parentLogger.WithName("patchVMChanges")
 	var kubemapcoolJsonPatches []jsonpatch.Operation
 
-	for ifaceIdx, _ := range currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
-		interfacePatches, err := patchChange(fmt.Sprintf("/spec/template/spec/domain/devices/interfaces/%d/macAddress", ifaceIdx), originalVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress, currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress)
+	if !pool_manager.IsVirtualMachineDeletionInProgress(currentVirtualMachine) {
+		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
+		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
+		if originalTransactionTSString != currentTransactionTSString {
+			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("add", "/metadata/annotations", map[string]string{pool_manager.TransactionTimestampAnnotation: currentTransactionTSString})
+			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
+		}
+
+		for ifaceIdx, _ := range currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
+			interfacePatches, err := patchChange(fmt.Sprintf("/spec/template/spec/domain/devices/interfaces/%d/macAddress", ifaceIdx), originalVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress, currentVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces[ifaceIdx].MacAddress)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError, err)
+			}
+			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, interfacePatches...)
+		}
+
+		finalizerPatches, err := patchChange("/metadata/finalizers", originalVirtualMachine.ObjectMeta.Finalizers, currentVirtualMachine.ObjectMeta.Finalizers)
 		if err != nil {
 			return admission.Errored(http.StatusInternalServerError, err)
 		}
-		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, interfacePatches...)
+		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, finalizerPatches...)
 	}
 
-	finalizerPatches, err := patchChange("/metadata/finalizers", originalVirtualMachine.ObjectMeta.Finalizers, currentVirtualMachine.ObjectMeta.Finalizers)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError, err)
-	}
-	kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, finalizerPatches...)
-
-	log.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	logger.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
 	return admission.Response{
 		Patches: kubemapcoolJsonPatches,
 		AdmissionResponse: admissionv1beta1.AdmissionResponse{
@@ -137,17 +148,18 @@ func patchChange(pathChange string, original, current interface{}) ([]jsonpatch.
 }
 
 // mutateCreateVirtualMachinesFn calls the create allocation function
-func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateCreateVirtualMachinesFn")
 	logger.Info("got a create mutate virtual machine event")
+	transactionTimestamp := pool_manager.CreateTransactionTimestamp()
+	pool_manager.SetTransactionTimestampAnnotationToVm(virtualMachine, transactionTimestamp)
 
 	existingVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, existingVirtualMachine)
 	if err != nil {
 		// If the VM does not exist yet, allocate a new MAC address
 		if apierrors.IsNotFound(err) {
-			if virtualMachine.ObjectMeta.DeletionTimestamp.IsZero() {
-				logger.V(1).Info("The VM is not being deleted.")
+			if !pool_manager.IsVirtualMachineDeletionInProgress(virtualMachine) {
 				// If the object is not being deleted, then lets allocate macs and add the finalizer
 				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, logger)
 				if err != nil {
@@ -168,7 +180,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(ctx context.Cont
 }
 
 // mutateUpdateVirtualMachinesFn calls the update allocation function
-func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
 	logger.Info("got an update mutate virtual machine event")
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
@@ -179,10 +191,29 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(ctx context.Cont
 		}
 		return err
 	}
-	if !reflect.DeepEqual(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) {
-		return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, logger)
+
+	if isVirtualMachineSpecChanged(previousVirtualMachine, virtualMachine) {
+		transactionTimestamp := pool_manager.CreateTransactionTimestamp()
+		pool_manager.SetTransactionTimestampAnnotationToVm(virtualMachine, transactionTimestamp)
+
+		if isVirtualMachineInterfacesChanged(previousVirtualMachine, virtualMachine) {
+			return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, logger)
+		}
 	}
+
 	return nil
+}
+
+// isVirtualMachineSpecChanged checks if the vm spec changed in this webhook update request.
+// we want to update the timestamp on every change, but not on metadata changes, as they change all the time,
+// which will cause a unneeded Timestamp update.
+func isVirtualMachineSpecChanged(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine) bool {
+	return !reflect.DeepEqual(previousVirtualMachine.Spec, virtualMachine.Spec)
+}
+
+// isVirtualMachineInterfacesChanged checks if the vm interfaces changed in this webhook update request.
+func isVirtualMachineInterfacesChanged(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine) bool {
+	return !reflect.DeepEqual(previousVirtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces, virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 }
 
 // InjectClient injects the client into the podAnnotator

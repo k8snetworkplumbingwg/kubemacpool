@@ -62,7 +62,9 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		pod.Annotations = map[string]string{}
 	}
 
-	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace)
+	transactionTimestamp := a.poolManager.CreateTransactionTimestamp()
+	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
+
 	err = a.poolManager.AllocatePodMac(pod)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)

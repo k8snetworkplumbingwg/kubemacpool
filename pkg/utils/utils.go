@@ -18,6 +18,7 @@ package utils
 
 import (
 	"fmt"
+	kubevirt "kubevirt.io/client-go/api/v1"
 	"net"
 	"strconv"
 	"strings"
@@ -54,4 +55,16 @@ func ConvertHwAddrToInt64(address net.HardwareAddr) (int64, error) {
 	}
 
 	return addressValue, nil
+}
+
+func GetVirtualMachineInterfaces(virtualMachine *kubevirt.VirtualMachine) []kubevirt.Interface {
+	return virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces
+}
+
+func GetVirtualMachineNetworks(virtualMachine *kubevirt.VirtualMachine) []kubevirt.Network {
+	return virtualMachine.Spec.Template.Spec.Networks
+}
+
+func VmNamespaced(machine *kubevirt.VirtualMachine) string {
+	return fmt.Sprintf("vm/%s/%s", machine.Namespace, machine.Name)
 }

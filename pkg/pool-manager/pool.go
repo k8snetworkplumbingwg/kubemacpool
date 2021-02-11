@@ -35,13 +35,12 @@ import (
 )
 
 const (
-	RangeStartEnv                  = "RANGE_START"
-	RangeEndEnv                    = "RANGE_END"
-	RuntimeObjectFinalizerName     = "k8s.v1.cni.cncf.io/kubeMacPool"
-	networksAnnotation             = "k8s.v1.cni.cncf.io/networks"
-	networksStatusAnnotation       = "k8s.v1.cni.cncf.io/networks-status"
-	transactionTimestampAnnotation = "kubemacpoolTransactionTimestamp"
-	noPendingTransaction           = "no-pending-transaction"
+	RangeStartEnv              = "RANGE_START"
+	RangeEndEnv                = "RANGE_END"
+	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
+	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
+	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
+	macNotPendingTransaction   = "no-pending-transaction"
 )
 
 var log = logf.Log.WithName("PoolManager")
@@ -52,12 +51,10 @@ type PoolManager struct {
 	rangeEnd         net.HardwareAddr     // last mac in range
 	currentMac       net.HardwareAddr     // last given mac
 	managerNamespace string
-	macPoolMap       map[string]macEntry          // allocated mac map and macEntry
-	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	poolMutex        sync.Mutex                   // mutex for allocation an release
-	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
-	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
-	now              func() time.Time             // now is an artifact to do some unit testing without waiting for expiration time.
+	macPoolMap       map[string]macEntry // allocated mac map and macEntry
+	PoolMutex        sync.Mutex          // mutex for allocation an release
+	isKubevirt       bool                // bool if kubevirt virtualmachine crd exist in the cluster
+	waitTime         int                 // Duration in second to free macs of allocated vms that failed to start.
 }
 
 type OptMode string
@@ -96,11 +93,9 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		rangeStart:       rangeStart,
 		currentMac:       currentMac,
 		managerNamespace: managerNamespace,
-		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       map[string]macEntry{},
-		poolMutex:        sync.Mutex{},
+		PoolMutex:        sync.Mutex{},
 		waitTime:         waitTime,
-		now:              time.Now,
 	}
 
 	return poolManger, nil
@@ -320,7 +315,7 @@ func (p *PoolManager) createOrUpdateMacEntryInMacPoolMap(macAddress, instanceFul
 	p.macPoolMap[macAddress] = macEntry{
 		instanceName:         instanceFullName,
 		macInstanceKey:       macInstanceKey,
-		transactionTimestamp: noPendingTransaction,
+		transactionTimestamp: macNotPendingTransaction,
 	}
 }
 
@@ -333,7 +328,7 @@ func (p *PoolManager) recreateLegacyMacEntryInMacPoolMap(macAddress, instanceFul
 }
 
 // getInstanceMacMap creates a subset map from macPoolMap, holding only macs that belongs to a specific instance (pod/vm)
-func (p *PoolManager) getInstanceMacMap(instanceName string) (map[string]macEntry, error) {
+func (p *PoolManager) GetInstanceMacMap(instanceName string) (map[string]macEntry, error) {
 	instanceMacMap := map[string]macEntry{}
 
 	for macAddress, macEntry := range p.macPoolMap {
@@ -345,8 +340,8 @@ func (p *PoolManager) getInstanceMacMap(instanceName string) (map[string]macEntr
 }
 
 // isMacUpdateRequired checks mac entry if an update is needed
-func (p *PoolManager) isMacUpdateRequired(macAddress string) bool {
-	if p.macPoolMap[macAddress].transactionTimestamp != noPendingTransaction {
+func (p *PoolManager) IsMacPendingTransaction(macAddress string) bool {
+	if p.macPoolMap[macAddress].transactionTimestamp != macNotPendingTransaction {
 		return true
 	}
 	return false
@@ -355,7 +350,7 @@ func (p *PoolManager) isMacUpdateRequired(macAddress string) bool {
 // clearMacTransactionFromMacEntry clears mac entry's transactionTimestamp, signalling that no further update is needed
 func (p *PoolManager) clearMacTransactionFromMacEntry(macAddress string) {
 	macEntry := p.macPoolMap[macAddress]
-	macEntry.transactionTimestamp = noPendingTransaction
+	macEntry.transactionTimestamp = macNotPendingTransaction
 	p.macPoolMap[macAddress] = macEntry
 }
 
@@ -366,7 +361,7 @@ func (p *PoolManager) removeMacEntry(macAddress string) {
 
 // isMacReadyForTransactionUpdate checks latest vm persisted transaction TS passed the mac's transaction TS,
 // signalling that an macPoolMap update may be needed for this entry.
-func (p *PoolManager) isMacReadyForTransactionUpdate(macAddress, lastPersistentTransactionTimestamp string) (bool, error) {
+func (p *PoolManager) IsMacTransactionConflictWithVmTransaction(macAddress, lastPersistentTransactionTimestamp string) (bool, error) {
 	macTransactionTime, err := time.Parse(time.RFC3339Nano, p.macPoolMap[macAddress].transactionTimestamp)
 	if err != nil {
 		log.Error(err, "failed to parse mac transaction time")
@@ -392,14 +387,14 @@ func (p *PoolManager) isMacTransactionStale(macAddress string) (bool, error) {
 		return false, err
 	}
 
-	if p.now().After(macTransactionTime.Add(time.Duration(p.waitTime) * time.Second)) {
+	if time.Now().After(macTransactionTime.Add(time.Duration(p.waitTime) * time.Second)) {
 		return true, nil
 	}
 	return false, nil
 }
 
 // updateMacTransactionTimestampForUpdatedMacs updates the macEntry with the current transactionTimestamp
-func (p *PoolManager) updateMacTransactionTimestampForUpdatedMacs(instanceFullName, transactionTimestamp string, updatedInterfaceMap map[string]string) error {
+func (p *PoolManager) UpdateMacTransactionTimestampForUpdatedMacs(instanceFullName, transactionTimestamp string, updatedInterfaceMap map[string]string) error {
 	for _, macAddress := range updatedInterfaceMap {
 		if macEntry, exist := p.macPoolMap[macAddress]; exist {
 			if macEntry.instanceName == instanceFullName {
@@ -417,8 +412,4 @@ func (p *PoolManager) updateMacTransactionTimestampForUpdatedMacs(instanceFullNa
 		}
 	}
 	return nil
-}
-
-func (p *PoolManager) CreateTransactionTimestamp() string {
-	return p.now().Format(time.RFC3339Nano)
 }

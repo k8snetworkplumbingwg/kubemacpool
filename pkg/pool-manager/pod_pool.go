@@ -31,8 +31,8 @@ import (
 const tempPodName = "tempPodName"
 
 func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
-	p.poolMutex.Lock()
-	defer p.poolMutex.Unlock()
+	p.PoolMutex.Lock()
+	defer p.PoolMutex.Unlock()
 
 	log.V(1).Info("AllocatePodMac: Data",
 		"macmap", p.macPoolMap,
@@ -101,14 +101,14 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 }
 
 func (p *PoolManager) ReleaseAllMacsOnPodDelete(podFullName string) error {
-	p.poolMutex.Lock()
-	defer p.poolMutex.Unlock()
+	p.PoolMutex.Lock()
+	defer p.PoolMutex.Unlock()
 
 	log.V(1).Info("ReleaseAllMacsOnPodDelete: Data",
 		"macmap", p.macPoolMap,
 		"podFullName", podFullName)
 
-	macList, err := p.getInstanceMacMap(podFullName)
+	macList, err := p.GetInstanceMacMap(podFullName)
 
 	if err != nil {
 		log.Error(fmt.Errorf("not found"), "pod not found in the map",

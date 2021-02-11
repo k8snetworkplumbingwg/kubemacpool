@@ -19,6 +19,7 @@ package virtualmachine
 import (
 	"context"
 	"fmt"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager/transactions"
 	"math/rand"
 
 	"github.com/go-logr/logr"
@@ -36,7 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 var log = logf.Log.WithName("VirtualMachine Controller")
@@ -100,7 +101,10 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 		return reconcile.Result{}, errors.Wrap(err, "Failed to read the request object")
 	}
 
-	if pool_manager.IsVirtualMachineNotMarkedForDeletion(instance) {
+	transaction := &transactions.VmTransaction{}
+	transaction.GetLastPersisted(instance)
+
+	if transaction.IsNotVirtualMachineMarkedForDeletion() {
 		vmShouldBeManaged, err := r.poolManager.IsNamespaceManaged(instance.GetNamespace())
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to check if vm is managed")
@@ -112,8 +116,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 
 		logger.V(1).Info("vm create/update event")
 		// The object is not being deleted, so we can set the macs to allocated
-		latestPersistedTransactionTimeStamp := pool_manager.GetTransactionTimestampAnnotationFromVm(instance)
-		err = r.poolManager.MarkVMAsReady(instance, latestPersistedTransactionTimeStamp, logger)
+		err = transaction.CommitTransactionsToPool(r.poolManager, logger)
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to reconcile kubemacpool after virtual machine's creation event")
 		}
@@ -144,19 +147,19 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 			return errors.Wrap(err, "Failed to refresh the vm object")
 		}
 
-		if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
+		if !utils.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
 			return nil
 		}
 
 		// our finalizer is present, so lets handle our external dependency
 		logger.Info("The VM contains the finalizer. Releasing mac")
-		err = r.poolManager.ReleaseAllMacsOnVirtualMachineDelete(virtualMachine, parentLogger)
+		err = r.poolManager.ReleaseAllMacsOnVirtualMachineDelete(utils.VmNamespaced(virtualMachine), parentLogger)
 		if err != nil {
 			return errors.Wrap(err, "failed to release mac")
 		}
 
 		// remove our finalizer from the list and update it.
-		virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
+		virtualMachine.ObjectMeta.Finalizers = utils.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
 		logger.V(1).Info("Removed the finalizer from the VM instance")
 
 		err = r.Update(context.Background(), virtualMachine)

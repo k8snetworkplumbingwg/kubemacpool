@@ -240,6 +240,21 @@ func getVmFailCleanupWaitTime() time.Duration {
 	return 0
 }
 
+func checkKubemacpoolCrash() error {
+	kubemacpoolPods, err := getKubemacpoolPods()
+	if err != nil {
+		return err
+	}
+	for _, pod := range kubemacpoolPods.Items {
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.RestartCount != 0 {
+				return errors.New(fmt.Sprintf("Kubemacpool container crashed %d times", containerStatus.RestartCount))
+			}
+		}
+	}
+	return nil
+}
+
 func changeManagerReplicas(numOfReplica int32) error {
 	By(fmt.Sprintf("updating deployment pod replicas to be %d", numOfReplica))
 	Eventually(func() error {

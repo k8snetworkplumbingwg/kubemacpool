@@ -18,7 +18,6 @@ package pod
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
@@ -78,17 +77,12 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
 	var kubemapcoolJsonPatches []jsonpatch.Operation
 
-	marshaledOriginal, _ := json.Marshal(originalPod.GetAnnotations())
-	marshaledCurrent, _ := json.Marshal(currentPod.GetAnnotations())
-	patches, err := jsonpatch.CreatePatch(marshaledOriginal, marshaledCurrent)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError, err)
+	currentNetworkAnnotation := currentPod.GetAnnotations()[pool_manager.NetworksAnnotation]
+	originalPodNetworkAnnotation := originalPod.GetAnnotations()[pool_manager.NetworksAnnotation]
+	if originalPodNetworkAnnotation != currentNetworkAnnotation {
+		annotationPatch := jsonpatch.NewPatch("add", "/metadata/annotations", map[string]string{pool_manager.NetworksAnnotation: currentNetworkAnnotation})
+		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, annotationPatch)
 	}
-	for idx, _ := range patches {
-		patches[idx].Path = "/metadata/annotations"
-	}
-
-	kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, patches...)
 
 	log.Info("patchPodChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
 	return admission.Response{

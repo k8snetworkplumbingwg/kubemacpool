@@ -22,6 +22,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"k8s.io/api/admissionregistration/v1beta1"
@@ -34,14 +35,18 @@ import (
 )
 
 const (
-	RangeStartEnv              = "RANGE_START"
-	RangeEndEnv                = "RANGE_END"
-	RuntimeObjectFinalizerName = "k8s.v1.cni.cncf.io/kubeMacPool"
-	networksAnnotation         = "k8s.v1.cni.cncf.io/networks"
-	networksStatusAnnotation   = "k8s.v1.cni.cncf.io/networks-status"
+	RangeStartEnv                  = "RANGE_START"
+	RangeEndEnv                    = "RANGE_END"
+	RuntimeObjectFinalizerName     = "k8s.v1.cni.cncf.io/kubeMacPool"
+	networksAnnotation             = "k8s.v1.cni.cncf.io/networks"
+	networksStatusAnnotation       = "k8s.v1.cni.cncf.io/networks-status"
+	TransactionTimestampAnnotation = "kubemacpool.io/transaction-timestamp"
 )
 
 var log = logf.Log.WithName("PoolManager")
+
+// now is an artifact to do some unit testing without waiting for expiration time.
+var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
 	kubeClient       kubernetes.Interface // kubernetes client
@@ -49,7 +54,7 @@ type PoolManager struct {
 	rangeEnd         net.HardwareAddr     // last mac in range
 	currentMac       net.HardwareAddr     // last given mac
 	managerNamespace string
-	macPoolMap       map[string]AllocationStatus  // allocated mac map and status
+	macPoolMap       macMap                       // allocated mac map and macEntry
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
 	poolMutex        sync.Mutex                   // mutex for allocation an release
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
@@ -63,12 +68,13 @@ const (
 	OptOutMode OptMode = "Opt-out"
 )
 
-type AllocationStatus string
+type macEntry struct {
+	instanceName         string
+	macInstanceKey       string // for vms, it holds the interface Name, for pods, it holds the network Name
+	transactionTimestamp *time.Time
+}
 
-const (
-	AllocationStatusAllocated     AllocationStatus = "Allocated"
-	AllocationStatusWaitingForPod AllocationStatus = "WaitingForPod"
-)
+type macMap map[string]macEntry
 
 func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
@@ -94,9 +100,10 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 		currentMac:       currentMac,
 		managerNamespace: managerNamespace,
 		podToMacPoolMap:  map[string]map[string]string{},
-		macPoolMap:       map[string]AllocationStatus{},
+		macPoolMap:       macMap{},
 		poolMutex:        sync.Mutex{},
-		waitTime:         waitTime}
+		waitTime:         waitTime,
+	}
 
 	return poolManger, nil
 }
@@ -111,6 +118,49 @@ func (p *PoolManager) Start() error {
 		go p.vmWaitingCleanupLook()
 	}
 	return nil
+}
+
+func (p *PoolManager) InitMaps() error {
+	err := p.initPodMap()
+	if err != nil {
+		return err
+	}
+
+	err = p.initVirtualMachineMap()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func checkRange(startMac, endMac net.HardwareAddr) error {
+	for idx := 0; idx <= 5; idx++ {
+		if startMac[idx] < endMac[idx] {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
+}
+
+func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
+	err := checkRange(rangeStart, rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "mac Pool Size  is negative")
+	}
+
+	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeStart to int64")
+	}
+
+	endInt, err := utils.ConvertHwAddrToInt64(rangeEnd)
+	if err != nil {
+		return 0, errors.Wrap(err, "error converting rangeEnd to int64")
+	}
+
+	return endInt - startInt + 1, nil
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
@@ -148,30 +198,6 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 	}
 
 	return nil, fmt.Errorf("the range is full")
-}
-
-func (p *PoolManager) InitMaps() error {
-	err := p.initPodMap()
-	if err != nil {
-		return err
-	}
-
-	err = p.initVirtualMachineMap()
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func checkRange(startMac, endMac net.HardwareAddr) error {
-	for idx := 0; idx <= 5; idx++ {
-		if startMac[idx] < endMac[idx] {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("Invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
 }
 
 func checkCast(mac net.HardwareAddr) error {
@@ -289,23 +315,4 @@ func (p *PoolManager) getOptMode(mutatingWebhookConfigName, webhookName string) 
 	}
 
 	return "", fmt.Errorf("No Opt mode defined for webhook %s in mutatingWebhookConfig %s", webhookName, mutatingWebhookConfigName)
-}
-
-func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
-	err := checkRange(rangeStart, rangeEnd)
-	if err != nil {
-		return 0, errors.Wrap(err, "mac Pool Size  is negative")
-	}
-
-	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
-	if err != nil {
-		return 0, errors.Wrap(err, "error converting rangeStart to int64")
-	}
-
-	endInt, err := utils.ConvertHwAddrToInt64(rangeEnd)
-	if err != nil {
-		return 0, errors.Wrap(err, "error converting rangeEnd to int64")
-	}
-
-	return endInt - startInt + 1, nil
 }

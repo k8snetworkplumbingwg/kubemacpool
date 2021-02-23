@@ -104,14 +104,20 @@ func main() {
 		log.Error(err, "Failed retrieving cert rotate interval")
 		os.Exit(1)
 	}
+	certOverlapInterval, err := lookupEnvAsDuration("CERT_OVERLAP_INTERVAL")
+	if err != nil {
+		log.Error(err, "Failed retrieving cert rotate interval")
+		os.Exit(1)
+	}
 
 	certOptions := certificate.Options{
-		Namespace:          podNamespace,
-		WebhookName:        names.MUTATE_WEBHOOK_CONFIG,
-		WebhookType:        certificate.MutatingWebhook,
-		CARotateInterval:   caRotateInterval,
-		CAOverlapInterval:  caOverlapInterval,
-		CertRotateInterval: certRotateInterval,
+		Namespace:           podNamespace,
+		WebhookName:         names.MUTATE_WEBHOOK_CONFIG,
+		WebhookType:         certificate.MutatingWebhook,
+		CARotateInterval:    caRotateInterval,
+		CAOverlapInterval:   caOverlapInterval,
+		CertRotateInterval:  certRotateInterval,
+		CertOverlapInterval: certOverlapInterval,
 	}
 	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime, certOptions)
 

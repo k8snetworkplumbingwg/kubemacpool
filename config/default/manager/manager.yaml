@@ -89,9 +89,11 @@ spec:
           - name: CA_ROTATE_INTERVAL
             value: "8760h0m0s" # One Year
           - name: CA_OVERLAP_INTERVAL
-            value: "8760h0m0s" # One Year
+            value: "24h0m0s" # One day
           - name: CERT_ROTATE_INTERVAL
             value: "4380h0m0s" # Half Year
+          - name: CERT_OVERLAP_INTERVAL
+            value: "24h0m0s" # One day
           - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
             value: "v1"
         resources:

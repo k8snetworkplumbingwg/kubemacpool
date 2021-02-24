@@ -236,23 +236,9 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return nil
 	}
 
-	err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
-		if !validateInterfaceSupported(iface, networks) {
-			return nil
-		}
-
-		if iface.MacAddress != "" {
-			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, logger); err != nil {
-				// Dont return an error here if we can't allocate a mac for a configured vm
-				logger.Error(err, "Invalid/Duplicate mac address for virtual machine",
-					"virtualMachineFullName", vmFullName,
-					"virtualMachineInterfaceMac", iface.MacAddress)
-			}
-		}
-		return nil
-	})
+	err := p.initMacMapFromCluster(logger)
 	if err != nil {
-		return errors.Wrap(err, "failed to iterate the cluster vm interfaces to recreate the macPoolMap")
+		return errors.Wrap(err, "failed to init MacPoolMap From Cluster")
 	}
 
 	err = p.initMacMapFromLegacyConfigMap()
@@ -262,10 +248,32 @@ func (p *PoolManager) initVirtualMachineMap() error {
 	return nil
 }
 
-// forEachMacInClusterRunFunction gets all the macs from all the supported interfaces in all the cluster vms, and runs
+func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
+	err := p.forEachManagedVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
+		if !validateInterfaceSupported(iface, networks) {
+			return nil
+		}
+
+		if iface.MacAddress != "" {
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, parentLogger); err != nil {
+				// Dont return an error here if we can't allocate a mac for a configured vm
+				parentLogger.Error(err, "Invalid/Duplicate mac address for virtual machine",
+					"virtualMachineFullName", vmFullName,
+					"virtualMachineInterfaceMac", iface.MacAddress)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed to iterate the cluster vm interfaces to recreate the macPoolMap")
+	}
+	return nil
+}
+
+// forEachManagedVmInterfaceInClusterRunFunction gets all the macs from all the supported interfaces in all the managed cluster vms, and runs
 // a function f on it
-func (p *PoolManager) forEachVmInterfaceInClusterRunFunction(f func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
-	logger := log.WithName("forEachVmInterfaceInClusterRunFunction")
+func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(f func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
+	logger := log.WithName("forEachManagedVmInterfaceInClusterRunFunction")
 	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1/virtualmachines").Do(context.TODO())
 	if result.Error() != nil {
 		return result.Error()
@@ -278,10 +286,18 @@ func (p *PoolManager) forEachVmInterfaceInClusterRunFunction(f func(vmFullName s
 	}
 
 	for _, vm := range vms.Items {
+		vmNamespace := vm.GetNamespace()
+		isNamespaceManaged, err := p.IsVirtualMachineManaged(vmNamespace)
+		if err != nil {
+			return errors.Wrap(err, fmt.Sprintf("failed to check if namespace %s is managed in current opt-mode", vmNamespace))
+		}
+		if !isNamespaceManaged {
+			logger.V(1).Info("skipping vm in loop iteration, namespace not managed", "vmNamespace", vmNamespace)
+			continue
+		}
 		vmFullName := VmNamespaced(&vm)
 		vmInterfaces := getVirtualMachineInterfaces(&vm)
 		vmNetworks := getVirtualMachineNetworks(&vm)
-		logger.V(1).Info("InitMaps for virtual machine")
 		if len(vmInterfaces) == 0 {
 			logger.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
 			continue
@@ -438,7 +454,7 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 func (p *PoolManager) recoverVmFromCluster(macAddress string) (*kubevirt.VirtualMachine, error) {
 	log.V(1).Info("recoverVmFromCluster", "macAddress", macAddress)
 	foundVmName := ""
-	err := p.forEachVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
+	err := p.forEachManagedVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
 		if !validateInterfaceSupported(iface, networks) {
 			return nil
 		}
@@ -487,30 +503,17 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 	return vm, nil
 }
 
-// Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode
-func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
-	mutatingWebhookConfigName := "kubemacpool-mutator"
-	webhookName := "mutatevirtualmachines.kubemacpool.io"
-	vmOptMode, err := p.getOptMode(mutatingWebhookConfigName, webhookName)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to get opt-Mode")
-	}
-
-	isNamespaceManaged, err := p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName, vmOptMode)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check if namespace is managed according to opt-mode")
-	}
-
-	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
-	return isNamespaceManaged, nil
-}
-
 func validateInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
 	if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
 		log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 		return false
 	}
 	return true
+}
+
+// IsVirtualMachineManaged checks if the namespace of a VirtualMachine instance is managed by kubemacpool
+func (p *PoolManager) IsVirtualMachineManaged(namespaceName string) (bool, error) {
+	return p.IsNamespaceManaged(namespaceName, virtualMachnesWebhookName)
 }
 
 func VmNamespaced(machine *kubevirt.VirtualMachine) string {

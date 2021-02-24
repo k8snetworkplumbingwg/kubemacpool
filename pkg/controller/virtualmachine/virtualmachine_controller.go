@@ -101,7 +101,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	if !pool_manager.IsVirtualMachineDeletionInProgress(instance) {
-		vmShouldBeManaged, err := r.poolManager.IsNamespaceManaged(instance.GetNamespace())
+		vmShouldBeManaged, err := r.poolManager.IsVirtualMachineManaged(instance.GetNamespace())
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to check if vm is managed")
 		}

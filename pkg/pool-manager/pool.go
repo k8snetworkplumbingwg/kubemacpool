@@ -41,6 +41,9 @@ const (
 	networksAnnotation             = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation       = "k8s.v1.cni.cncf.io/networks-status"
 	TransactionTimestampAnnotation = "kubemacpool.io/transaction-timestamp"
+	mutatingWebhookConfigName      = "kubemacpool-mutator"
+	virtualMachnesWebhookName      = "mutatevirtualmachines.kubemacpool.io"
+	podsWebhookName                = "mutatepods.kubemacpool.io"
 )
 
 var log = logf.Log.WithName("PoolManager")
@@ -237,14 +240,16 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 	namespaceLabelMap := ns.GetLabels()
 	log.V(1).Info("namespaceName Labels", "vm instance namespaceName", namespaceName, "Labels", namespaceLabelMap)
 
-	webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
-	if err != nil {
-		return false, errors.Wrap(err, "Failed lookup webhook in MutatingWebhookConfig")
-	}
-	if namespaceLabelSet := labels.Set(namespaceLabelMap); namespaceLabelSet != nil {
-		isNamespaceManaged, err = isNamespaceManagedByWebhookNamespaceSelector(webhook, vmOptMode, namespaceLabelSet, isNamespaceManaged)
+	if namespaceLabelMap != nil {
+		webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
 		if err != nil {
-			return false, errors.Wrap(err, "Failed to check if namespace managed by webhook namespaceSelector")
+			return false, errors.Wrap(err, "Failed lookup webhook in MutatingWebhookConfig")
+		}
+		if namespaceLabelSet := labels.Set(namespaceLabelMap); namespaceLabelSet != nil {
+			isNamespaceManaged, err = isNamespaceManagedByWebhookNamespaceSelector(webhook, vmOptMode, namespaceLabelSet, isNamespaceManaged)
+			if err != nil {
+				return false, errors.Wrap(err, "Failed to check if namespace managed by webhook namespaceSelector")
+			}
 		}
 	}
 
@@ -274,6 +279,22 @@ func isNamespaceManagedByDefault(vmOptMode OptMode) (bool, error) {
 	default:
 		return false, fmt.Errorf("opt-mode is not defined: %s", vmOptMode)
 	}
+}
+
+// IsNamespaceManaged checks if the namespace of the instance is managed by kubemacpool in terms of opt-mode
+func (p *PoolManager) IsNamespaceManaged(namespaceName, webhookName string) (bool, error) {
+	vmOptMode, err := p.getOptMode(mutatingWebhookConfigName, webhookName)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to get opt-Mode")
+	}
+
+	isNamespaceManaged, err := p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName, vmOptMode)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if namespace is managed according to opt-mode")
+	}
+
+	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
+	return isNamespaceManaged, nil
 }
 
 // isNamespaceManagedByWebhookNamespaceSelector checks if namespace managed by webhook namespaceSelector and opt-mode

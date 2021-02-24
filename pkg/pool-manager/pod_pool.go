@@ -193,6 +193,14 @@ func (p *PoolManager) initPodMap() error {
 
 	for _, pod := range pods.Items {
 		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+		instanceManaged, err := p.IsPodManaged(pod.GetNamespace())
+		if err != nil {
+			continue
+		}
+		if !instanceManaged {
+			continue
+		}
+
 		if pod.Annotations == nil {
 			continue
 		}
@@ -258,9 +266,9 @@ func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[
 	}
 }
 
-// Checks if the namespace of a pod instance is opted in for kubemacpool
-func (p *PoolManager) IsPodInstanceOptedIn(namespaceName string) (bool, error) {
-	return p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, "kubemacpool-mutator", "mutatepods.kubemacpool.io", OptInMode)
+// IsPodManaged checks if the namespace of a pod instance is opted in for kubemacpool
+func (p *PoolManager) IsPodManaged(namespaceName string) (bool, error) {
+	return p.IsNamespaceManaged(namespaceName, podsWebhookName)
 }
 
 func podNamespaced(pod *corev1.Pod) string {

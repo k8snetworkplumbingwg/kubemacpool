@@ -80,12 +80,12 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	logger := log.WithName("Reconcile").WithValues("podName", request.Name, "podNamespace", request.Namespace)
 
 	logger.V(1).Info("got a pod event in the controller")
-	instanceOptedIn, err := r.poolManager.IsPodInstanceOptedIn(request.Namespace)
+	instanceManaged, err := r.poolManager.IsPodManaged(request.Namespace)
 	if err != nil {
-		return reconcile.Result{}, errors.Wrap(err, "failed to check opt-in selection for pod")
+		return reconcile.Result{}, errors.Wrap(err, "Failed to check if pod is managed")
 	}
-	if !instanceOptedIn {
-		logger.V(1).Info("pod is opted-out from kubemacpool")
+	if !instanceManaged {
+		logger.V(1).Info("pod is not managed by kubemacpool")
 		return reconcile.Result{}, nil
 	}
 

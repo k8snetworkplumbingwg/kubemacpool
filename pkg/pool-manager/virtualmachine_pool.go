@@ -487,30 +487,17 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 	return vm, nil
 }
 
-// Checks if the namespace of the vm instance is managed by kubemacpool in terms of opt-mode
-func (p *PoolManager) IsNamespaceManaged(namespaceName string) (bool, error) {
-	mutatingWebhookConfigName := "kubemacpool-mutator"
-	webhookName := "mutatevirtualmachines.kubemacpool.io"
-	vmOptMode, err := p.getOptMode(mutatingWebhookConfigName, webhookName)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to get opt-Mode")
-	}
-
-	isNamespaceManaged, err := p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName, vmOptMode)
-	if err != nil {
-		return false, errors.Wrap(err, "failed to check if namespace is managed according to opt-mode")
-	}
-
-	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
-	return isNamespaceManaged, nil
-}
-
 func validateInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
 	if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
 		log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 		return false
 	}
 	return true
+}
+
+// IsVirtualMachineManaged checks if the namespace of a VirtualMachine instance is managed by kubemacpool
+func (p *PoolManager) IsVirtualMachineManaged(namespaceName string) (bool, error) {
+	return p.IsNamespaceManaged(namespaceName, virtualMachnesWebhookName)
 }
 
 func VmNamespaced(machine *kubevirt.VirtualMachine) string {

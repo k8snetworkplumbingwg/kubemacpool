@@ -258,9 +258,9 @@ func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[
 	}
 }
 
-// Checks if the namespace of a pod instance is opted in for kubemacpool
-func (p *PoolManager) IsPodInstanceOptedIn(namespaceName string) (bool, error) {
-	return p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, "kubemacpool-mutator", "mutatepods.kubemacpool.io", OptInMode)
+// IsPodManaged checks if the namespace of a pod instance is opted in for kubemacpool
+func (p *PoolManager) IsPodManaged(namespaceName string) (bool, error) {
+	return p.IsNamespaceManaged(namespaceName, podsWebhookName)
 }
 
 func podNamespaced(pod *corev1.Pod) string {

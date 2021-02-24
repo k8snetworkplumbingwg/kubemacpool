@@ -682,46 +682,79 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and kubemacpool is not opted-in on a namespace", func() {
+				var allocatedMac, preSetMac string
+				notManagedNamespace := TestNamespace
+				managedNamespace := OtherTestNamespace
 				BeforeEach(func() {
 					By("Removing any namespace labels to make sure that kubemacpool is not opted in on the namespace")
-					err := cleanNamespaceLabels(TestNamespace)
+					err := cleanNamespaceLabels(notManagedNamespace)
 					Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 				})
-				It("should create a VM object without a MAC assigned", func() {
-					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
-						[]kubevirtv1.Network{newNetwork("br")})
-
-					err := testClient.VirtClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
-				})
-			})
-
-			Context("and kubemacpool is opted-in on a namespace", func() {
-				var vm *kubevirtv1.VirtualMachine
-				var allocatedMac string
-				BeforeEach(func() {
-					By("opting in the namespace")
-					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
-				})
-				Context("and a vm is created in the opt-in namespace", func() {
+				Context("and 2 vms is created in the non opted-in namespace", func() {
+					var notManagedVm1, notManagedVm2 *kubevirtv1.VirtualMachine
 					BeforeEach(func() {
-						vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+						By("Adding a vm with no preset mac")
+						notManagedVm1 = CreateVmObject(notManagedNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 							[]kubevirtv1.Network{newNetwork("br")})
+						err := testClient.VirtClient.Create(context.TODO(), notManagedVm1)
+						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 
-						By("Create VM")
-						err := testClient.VirtClient.Create(context.TODO(), vm)
-						Expect(err).ToNot(HaveOccurred(), "should succeed creating the vm")
-						allocatedMac = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
-					})
-					It("should create a VM object with a MAC assigned", func() {
-						Expect(net.ParseMAC(allocatedMac)).ToNot(BeEmpty(), "Should successfully parse mac address")
-					})
-					It("should reject a new VM object with the occupied MAC assigned", func() {
-						vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
+						By("Adding a vm with a preset mac")
+						preSetMac = "02:00:ff:ff:ff:ff"
+						notManagedVm2 = CreateVmObject(notManagedNamespace, false, []kubevirtv1.Interface{newInterface("br", preSetMac)},
 							[]kubevirtv1.Network{newNetwork("br")})
-						Expect(testClient.VirtClient.Create(context.TODO(), vm)).ToNot(Succeed(), "Should reject a new vm with occupied mac address")
+						err = testClient.VirtClient.Create(context.TODO(), notManagedVm2)
+						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+					})
+					It("should create the VM objects without a MAC allocated by Kubemacpool", func() {
+						Expect(notManagedVm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocate a mac to the opted-out vm")
+						Expect(notManagedVm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(preSetMac), "should not allocate a mac to the opted-out vm")
+					})
+					Context("and another vm is created in an opted-in namespace", func() {
+						BeforeEach(func() {
+							By(fmt.Sprintf("opting in the %s namespace", managedNamespace))
+							err := addLabelsToNamespace(managedNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
+							Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+
+							By("creating a vm in the opted-in namespace")
+							managedVm := CreateVmObject(managedNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+								[]kubevirtv1.Network{newNetwork("br")})
+							err = testClient.VirtClient.Create(context.TODO(), managedVm)
+							Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
+							allocatedMac = managedVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+						})
+						It("should create the opted-in VM object with a MAC assigned", func() {
+							Expect(net.ParseMAC(allocatedMac)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						})
+						It("should reject a new opted-in VM object with the occupied MAC assigned", func() {
+							anotherManagedVm := CreateVmObject(managedNamespace, false, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
+								[]kubevirtv1.Network{newNetwork("br")})
+							Expect(testClient.VirtClient.Create(context.TODO(), anotherManagedVm)).ToNot(Succeed(), "Should reject a new vm with occupied mac address")
+						})
+						It("should not reject a new opted-in VM object with unmanaged preset MAC", func() {
+							anotherManagedVm := CreateVmObject(managedNamespace, false, []kubevirtv1.Interface{newInterface("br", preSetMac)},
+								[]kubevirtv1.Network{newNetwork("br")})
+							Expect(testClient.VirtClient.Create(context.TODO(), anotherManagedVm)).To(Succeed(), "Should not reject a new vm if the mac is occupied on a non-opted-in namespce")
+						})
+
+						Context("and kubemacpool restarts", func() {
+							BeforeEach(func() {
+								//restart kubeMacPool
+								err := initKubemacpoolParams()
+								Expect(err).ToNot(HaveOccurred())
+							})
+
+							It("should still reject a new opted-in VM object with the occupied MAC assigned", func() {
+								anotherManagedVm := CreateVmObject(managedNamespace, false, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
+									[]kubevirtv1.Network{newNetwork("br")})
+								Expect(testClient.VirtClient.Create(context.TODO(), anotherManagedVm)).ToNot(Succeed(), "Should reject a new vm with occupied mac address")
+							})
+							It("should still not reject a new opted-in VM object with unmanaged preset MAC", func() {
+								anotherManagedVm := CreateVmObject(managedNamespace, false, []kubevirtv1.Interface{newInterface("br", preSetMac)},
+									[]kubevirtv1.Network{newNetwork("br")})
+								Expect(testClient.VirtClient.Create(context.TODO(), anotherManagedVm)).To(Succeed(), "Should not reject a new vm if the mac is occupied on a non-opted-in namespce")
+							})
+						})
 					})
 				})
 			})

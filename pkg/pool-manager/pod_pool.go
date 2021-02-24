@@ -193,6 +193,14 @@ func (p *PoolManager) initPodMap() error {
 
 	for _, pod := range pods.Items {
 		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+		instanceManaged, err := p.IsPodManaged(pod.GetNamespace())
+		if err != nil {
+			continue
+		}
+		if !instanceManaged {
+			continue
+		}
+
 		if pod.Annotations == nil {
 			continue
 		}

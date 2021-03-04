@@ -38,7 +38,7 @@ const (
 	RangeStartEnv                  = "RANGE_START"
 	RangeEndEnv                    = "RANGE_END"
 	RuntimeObjectFinalizerName     = "k8s.v1.cni.cncf.io/kubeMacPool"
-	networksAnnotation             = "k8s.v1.cni.cncf.io/networks"
+	NetworksAnnotation             = "k8s.v1.cni.cncf.io/networks"
 	networksStatusAnnotation       = "k8s.v1.cni.cncf.io/networks-status"
 	TransactionTimestampAnnotation = "kubemacpool.io/transaction-timestamp"
 	mutatingWebhookConfigName      = "kubemacpool-mutator"

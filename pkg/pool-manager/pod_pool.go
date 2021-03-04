@@ -38,7 +38,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 		"macmap", p.macPoolMap,
 		"currentMac", p.currentMac.String())
 
-	networkValue, ok := pod.Annotations[networksAnnotation]
+	networkValue, ok := pod.Annotations[NetworksAnnotation]
 	if !ok {
 		return nil
 	}
@@ -95,7 +95,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	if err != nil {
 		return err
 	}
-	pod.Annotations[networksAnnotation] = string(networkListJson)
+	pod.Annotations[NetworksAnnotation] = string(networkListJson)
 
 	return nil
 }
@@ -205,7 +205,7 @@ func (p *PoolManager) initPodMap() error {
 			continue
 		}
 
-		networkValue, ok := pod.Annotations[networksAnnotation]
+		networkValue, ok := pod.Annotations[NetworksAnnotation]
 		if !ok {
 			continue
 		}

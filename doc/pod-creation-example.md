@@ -76,6 +76,3 @@ k8s.v1.cni.cncf.io/networks: [{"name":"ovs-conf","namespace":"default","mac":"02
 
 MAC address can be also set manually by the user using the MAC field in the annotation.
 If the MAC is already in used the system will reject it even if the MAC address is outside of the range.
-
-**Note:** Due to a current open [issue](https://github.com/k8snetworkplumbingwg/kubemacpool/issues/273), creating the
-pod will result with a error.

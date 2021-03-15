@@ -28,8 +28,8 @@ import (
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"

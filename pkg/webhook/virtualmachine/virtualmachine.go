@@ -33,7 +33,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 

@@ -76,7 +76,7 @@ type ReconcilePolicy struct {
 }
 
 // Reconcile reads that state of the cluster for a Pod object and makes changes based on the state
-func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	logger := log.WithName("Reconcile").WithValues("podName", request.Name, "podNamespace", request.Namespace)
 
 	logger.V(1).Info("got a pod event in the controller")
@@ -90,7 +90,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	}
 
 	instance := &corev1.Pod{}
-	err = r.Get(context.TODO(), request.NamespacedName, instance)
+	err = r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if kuberneteserror.IsNotFound(err) {
 			err := r.poolManager.ReleaseAllPodMacs(fmt.Sprintf("pod/%s/%s", request.Namespace, request.Name))

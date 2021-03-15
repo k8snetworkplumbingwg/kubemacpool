@@ -45,7 +45,6 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	restartChannel           chan struct{}       // Close the channel if we need to regenerate certs
 	kubevirtInstalledChannel chan struct{}       // This channel is close after we found kubevirt to reload the manager
 	stopSignalChannel        chan os.Signal      // stop channel signal
 	podNamespace             string              // manager pod namespace
@@ -58,7 +57,6 @@ type KubeMacPoolManager struct {
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int, certOptions certificate.Options) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
 		continueToRunManager:     true,
-		restartChannel:           make(chan struct{}),
 		kubevirtInstalledChannel: make(chan struct{}),
 		stopSignalChannel:        make(chan os.Signal, 1),
 		podNamespace:             podNamespace,
@@ -126,13 +124,12 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return errors.Wrap(err, "failed to start pool manager routines")
 		}
 
-		err = k.runtimeManager.Start(k.restartChannel)
+		err = k.runtimeManager.Start(context.Background())
 		if err != nil {
 			log.Error(err, "unable to run the manager")
 		}
 
 		// restart channels
-		k.restartChannel = make(chan struct{})
 		k.kubevirtInstalledChannel = make(chan struct{})
 	}
 
@@ -182,8 +179,6 @@ func (k *KubeMacPoolManager) waitForSignal() {
 	case <-k.kubevirtInstalledChannel:
 		log.Info("found kubevirt restarting the manager")
 	}
-
-	close(k.restartChannel)
 }
 
 func init() {

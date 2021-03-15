@@ -16,8 +16,8 @@
 
 set -ex
 
-source ./cluster/kubevirtci.sh
-kubevirtci::install
+source ./cluster/cluster.sh
+cluster::install
 
 ./cluster/kubectl.sh delete --ignore-not-found -f ./config/test/kubemacpool.yaml || true
 

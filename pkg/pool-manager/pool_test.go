@@ -30,7 +30,7 @@ import (
 
 	multus "github.com/intel/multus-cni/types"
 	"github.com/pkg/errors"
-	"k8s.io/api/admissionregistration/v1beta1"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -56,16 +56,19 @@ var _ = Describe("Pool", func() {
 	managedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: managedNamespaceName, Annotations: afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:00")}}
 	unmanagedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "unmanagedPod", Namespace: notManagedNamespaceName, Annotations: afterAllocationAnnotation(notManagedNamespaceName, "02:00:00:00:00:FF")}}
 	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
+	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
 	waitTimeSeconds := 10
 
 	appendOptOutModes := func(fakeObjectsForClient []runtime.Object) []runtime.Object {
-		mutatingWebhookConfiguration := &v1beta1.MutatingWebhookConfiguration{
+		mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: mutatingWebhookConfigName,
 			},
-			Webhooks: []v1beta1.MutatingWebhook{
-				v1beta1.MutatingWebhook{
-					Name: virtualMachnesWebhookName,
+			Webhooks: []admissionregistrationv1.MutatingWebhook{
+				admissionregistrationv1.MutatingWebhook{
+					Name:                    virtualMachnesWebhookName,
+					SideEffects:             &noneOnDryRun,
+					AdmissionReviewVersions: []string{"v1", "v1beta1"},
 					NamespaceSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
 							metav1.LabelSelectorRequirement{
@@ -86,8 +89,10 @@ var _ = Describe("Pool", func() {
 						},
 					},
 				},
-				v1beta1.MutatingWebhook{
-					Name: podsWebhookName,
+				admissionregistrationv1.MutatingWebhook{
+					Name:                    podsWebhookName,
+					SideEffects:             &noneOnDryRun,
+					AdmissionReviewVersions: []string{"v1", "v1beta1"},
 					NamespaceSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
 							metav1.LabelSelectorRequirement{
@@ -861,14 +866,17 @@ var _ = Describe("Pool", func() {
 		namespaceWithExcludingLabelName := "withExcludingLabel"
 		namespaceWithNoLabelsName := "withNoLabels"
 		namespaceWithIrrelevantLabelsName := "withIrrelevantLabels"
+		noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
 
-		optOutMutatingWebhookConfiguration := &v1beta1.MutatingWebhookConfiguration{
+		optOutMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: optOutMutatingWebhookConfigurationName,
 			},
-			Webhooks: []v1beta1.MutatingWebhook{
-				v1beta1.MutatingWebhook{
-					Name: webhookName,
+			Webhooks: []admissionregistrationv1.MutatingWebhook{
+				admissionregistrationv1.MutatingWebhook{
+					Name:                    webhookName,
+					SideEffects:             &noneOnDryRun,
+					AdmissionReviewVersions: []string{"v1", "v1beta1"},
 					NamespaceSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
 							metav1.LabelSelectorRequirement{
@@ -891,13 +899,15 @@ var _ = Describe("Pool", func() {
 				},
 			},
 		}
-		optInMutatingWebhookConfiguration := &v1beta1.MutatingWebhookConfiguration{
+		optInMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: optInMutatingWebhookConfigurationName,
 			},
-			Webhooks: []v1beta1.MutatingWebhook{
-				v1beta1.MutatingWebhook{
-					Name: webhookName,
+			Webhooks: []admissionregistrationv1.MutatingWebhook{
+				admissionregistrationv1.MutatingWebhook{
+					Name:                    webhookName,
+					SideEffects:             &noneOnDryRun,
+					AdmissionReviewVersions: []string{"v1", "v1beta1"},
 					NamespaceSelector: &metav1.LabelSelector{
 						MatchExpressions: []metav1.LabelSelectorRequirement{
 							metav1.LabelSelectorRequirement{

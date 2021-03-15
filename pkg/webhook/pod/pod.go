@@ -22,7 +22,7 @@ import (
 
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"gomodules.xyz/jsonpatch/v2"
-	admissionv1beta1 "k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -61,12 +61,14 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		pod.Annotations = map[string]string{}
 	}
 
-	transactionTimestamp := pool_manager.CreateTransactionTimestamp()
-	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
+	if req.DryRun != nil && *req.DryRun != true {
+		transactionTimestamp := pool_manager.CreateTransactionTimestamp()
+		log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
 
-	err = a.poolManager.AllocatePodMac(pod)
-	if err != nil {
-		return admission.Errored(http.StatusInternalServerError, err)
+		err = a.poolManager.AllocatePodMac(pod)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError, err)
+		}
 	}
 
 	// admission.PatchResponse generates a Response containing patches.
@@ -80,16 +82,24 @@ func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
 	currentNetworkAnnotation := currentPod.GetAnnotations()[pool_manager.NetworksAnnotation]
 	originalPodNetworkAnnotation := originalPod.GetAnnotations()[pool_manager.NetworksAnnotation]
 	if originalPodNetworkAnnotation != currentNetworkAnnotation {
-		annotationPatch := jsonpatch.NewPatch("replace", "/metadata/annotations", currentPod.GetAnnotations())
+		annotationPatch := jsonpatch.NewOperation("replace", "/metadata/annotations", currentPod.GetAnnotations())
 		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, annotationPatch)
 	}
 
 	log.Info("patchPodChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	if len(kubemapcoolJsonPatches) == 0 {
+		return admission.Response{
+			Patches: kubemapcoolJsonPatches,
+			AdmissionResponse: admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		}
+	}
 	return admission.Response{
 		Patches: kubemapcoolJsonPatches,
-		AdmissionResponse: admissionv1beta1.AdmissionResponse{
+		AdmissionResponse: admissionv1.AdmissionResponse{
 			Allowed:   true,
-			PatchType: func() *admissionv1beta1.PatchType { pt := admissionv1beta1.PatchTypeJSONPatch; return &pt }(),
+			PatchType: func() *admissionv1.PatchType { pt := admissionv1.PatchTypeJSONPatch; return &pt }(),
 		},
 	}
 }

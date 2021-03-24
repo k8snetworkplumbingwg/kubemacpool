@@ -98,13 +98,13 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 // create jsonpatches only to changed caused by the kubemacpool webhook changes
 func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) admission.Response {
 	logger := parentLogger.WithName("patchVMChanges")
-	var kubemapcoolJsonPatches []jsonpatch.Operation
+	kubemapcoolJsonPatches := []jsonpatch.Operation{}
 
 	if !pool_manager.IsVirtualMachineDeletionInProgress(currentVirtualMachine) {
 		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		if originalTransactionTSString != currentTransactionTSString {
-			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("add", "/metadata/annotations", map[string]string{pool_manager.TransactionTimestampAnnotation: currentTransactionTSString})
+			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
 		}
 

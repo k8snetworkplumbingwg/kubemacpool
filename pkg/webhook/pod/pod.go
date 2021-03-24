@@ -75,12 +75,12 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 
 // create jsonpatches only to changed caused by the kubemacpool webhook changes
 func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
-	var kubemapcoolJsonPatches []jsonpatch.Operation
+	kubemapcoolJsonPatches := []jsonpatch.Operation{}
 
 	currentNetworkAnnotation := currentPod.GetAnnotations()[pool_manager.NetworksAnnotation]
 	originalPodNetworkAnnotation := originalPod.GetAnnotations()[pool_manager.NetworksAnnotation]
 	if originalPodNetworkAnnotation != currentNetworkAnnotation {
-		annotationPatch := jsonpatch.NewPatch("add", "/metadata/annotations", map[string]string{pool_manager.NetworksAnnotation: currentNetworkAnnotation})
+		annotationPatch := jsonpatch.NewPatch("replace", "/metadata/annotations", currentPod.GetAnnotations())
 		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, annotationPatch)
 	}
 

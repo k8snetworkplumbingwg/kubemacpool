@@ -86,14 +86,6 @@ spec:
               configMapKeyRef:
                 name: mac-range-config
                 key: RANGE_END
-          - name: CA_ROTATE_INTERVAL
-            value: "8760h0m0s" # One Year
-          - name: CA_OVERLAP_INTERVAL
-            value: "24h0m0s" # One day
-          - name: CERT_ROTATE_INTERVAL
-            value: "4380h0m0s" # Half Year
-          - name: CERT_OVERLAP_INTERVAL
-            value: "24h0m0s" # One day
           - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
             value: "v1"
         resources:
@@ -109,24 +101,76 @@ spec:
           protocol: TCP
         readinessProbe:
           httpGet:
-            path: /readyz
-            port: webhook-server
-            scheme: HTTPS
             httpHeaders:
             - name: Content-Type
               value: application/json
+            path: /readyz
+            port: webhook-server
+            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
         volumeMounts:
           - name: tls-key-pair
             readOnly: true
-            mountPath: /etc/webhook/certs
+            mountPath: /tmp/k8s-webhook-server/serving-certs/
       terminationGracePeriodSeconds: 5
       volumes:
         - name: tls-key-pair
           secret:
-            secretName: service
-
+            secretName: kubemacpool-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager
+  namespace: system
+  labels:
+    control-plane: cert-manager
+    controller-tools.k8s.io: "1.0"
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: cert-manager
+      controller-tools.k8s.io: "1.0"
+  template:
+    metadata:
+      labels:
+        app: kubemacpool
+        control-plane: cert-manager
+        controller-tools.k8s.io: "1.0"
+    spec:
+      restartPolicy: Always
+      containers:
+      - command:
+        - /manager
+        args:
+          - "--v=production"
+        image: quay.io/kubevirt/kubemacpool:latest
+        imagePullPolicy: Always
+        name: manager
+        env:
+          - name: RUN_CERT_MANAGER
+            value: ""
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: CA_ROTATE_INTERVAL
+            value: "8760h0m0s" # One Year
+          - name: CA_OVERLAP_INTERVAL
+            value: "24h0m0s" # One day
+          - name: CERT_ROTATE_INTERVAL
+            value: "4380h0m0s" # Half Year
+          - name: CERT_OVERLAP_INTERVAL
+            value: "24h0m0s" # One day
+      terminationGracePeriodSeconds: 5
 ---
 apiVersion: v1
 kind: Service
@@ -139,7 +183,7 @@ spec:
     - port: 443
       targetPort: 8000
   selector:
-    app: kubemacpool
+    control-plane: mac-controller-manager
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -202,13 +246,3 @@ webhooks:
         apiGroups: ["kubevirt.io"]
         apiVersions: ["v1"]
         resources: ["virtualmachines"]
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: service
-  namespace: system
-type: kubernetes.io/tls
-data:
-  tls.crt: YmFkIGNlcnRpZmljYXRlCg==
-  tls.key: YmFkIGtleQo=

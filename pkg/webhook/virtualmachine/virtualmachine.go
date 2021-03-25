@@ -27,7 +27,6 @@ import (
 	"github.com/go-logr/logr"
 	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
-	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -49,9 +48,9 @@ type virtualMachineAnnotator struct {
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *webhookserver.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s *webhook.Server, poolManager *pool_manager.PoolManager) error {
 	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
-	s.UpdateOpts(webhookserver.WithHook("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator}))
+	s.Register("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator})
 	return nil
 }
 

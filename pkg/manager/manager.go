@@ -34,8 +34,6 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
-
-	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 )
 
 var log logr.Logger
@@ -45,16 +43,15 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	kubevirtInstalledChannel chan struct{}       // This channel is close after we found kubevirt to reload the manager
-	stopSignalChannel        chan os.Signal      // stop channel signal
-	podNamespace             string              // manager pod namespace
-	podName                  string              // manager pod name
-	waitingTime              int                 // Duration in second to free macs of allocated vms that failed to start.
-	certOptions              certificate.Options // Options to use at the kube-admission-webhook certificate manager
-	runtimeManager           manager.Manager     // Delegated controller-runtime manager
+	kubevirtInstalledChannel chan struct{}   // This channel is close after we found kubevirt to reload the manager
+	stopSignalChannel        chan os.Signal  // stop channel signal
+	podNamespace             string          // manager pod namespace
+	podName                  string          // manager pod name
+	waitingTime              int             // Duration in second to free macs of allocated vms that failed to start.
+	runtimeManager           manager.Manager // Delegated controller-runtime manager
 }
 
-func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int, certOptions certificate.Options) *KubeMacPoolManager {
+func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
 		continueToRunManager:     true,
 		kubevirtInstalledChannel: make(chan struct{}),
@@ -62,8 +59,7 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 		podNamespace:             podNamespace,
 		podName:                  podName,
 		metricsAddr:              metricsAddr,
-		waitingTime:              waitingTime,
-		certOptions:              certOptions}
+		waitingTime:              waitingTime}
 
 	signal.Notify(kubemacpoolManager.stopSignalChannel, os.Interrupt, os.Kill)
 
@@ -114,7 +110,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		log.Info("Setting up webhooks")
-		err = webhook.AddToManager(k.certOptions, k.runtimeManager, poolManager)
+		err = webhook.AddToManager(k.runtimeManager, poolManager)
 		if err != nil {
 			return errors.Wrap(err, "unable to register webhooks to the manager")
 		}
@@ -151,7 +147,6 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
 		MetricsBindAddress: k.metricsAddr,
 	})
-
 	return err
 }
 

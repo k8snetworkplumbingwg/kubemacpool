@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
+    app: kubemacpool
     control-plane: mac-controller-manager
     mutatepods.kubemacpool.io: ignore
   name: kubemacpool-system
@@ -9,7 +10,8 @@ metadata:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  labels: null
+  labels:
+    app: kubemacpool
   name: kubemacpool-mutator
 webhooks:
 - admissionReviewVersions:
@@ -90,6 +92,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
+  labels:
+    app: kubemacpool
   name: kubemacpool-manager-role
 rules:
 - apiGroups:
@@ -190,6 +194,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   creationTimestamp: null
+  labels:
+    app: kubemacpool
   name: kubemacpool-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -207,24 +213,17 @@ data:
 kind: ConfigMap
 metadata:
   labels:
+    app: kubemacpool
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-range-config
   namespace: kubemacpool-system
 ---
 apiVersion: v1
-data:
-  tls.crt: YmFkIGNlcnRpZmljYXRlCg==
-  tls.key: YmFkIGtleQo=
-kind: Secret
-metadata:
-  name: kubemacpool-service
-  namespace: kubemacpool-system
-type: kubernetes.io/tls
----
-apiVersion: v1
 kind: Service
 metadata:
+  labels:
+    app: kubemacpool
   name: kubemacpool-service
   namespace: kubemacpool-system
 spec:
@@ -234,11 +233,68 @@ spec:
   publishNotReadyAddresses: true
   selector:
     app: kubemacpool
+    control-plane: mac-controller-manager
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
+    app: kubemacpool
+    control-plane: cert-manager
+    controller-tools.k8s.io: "1.0"
+  name: kubemacpool-cert-manager
+  namespace: kubemacpool-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubemacpool
+      control-plane: cert-manager
+      controller-tools.k8s.io: "1.0"
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: kubemacpool
+        control-plane: cert-manager
+        controller-tools.k8s.io: "1.0"
+    spec:
+      containers:
+      - args:
+        - --v=debug
+        command:
+        - /manager
+        env:
+        - name: RUN_CERT_MANAGER
+          value: ""
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: CA_ROTATE_INTERVAL
+          value: 8760h0m0s
+        - name: CA_OVERLAP_INTERVAL
+          value: 24h0m0s
+        - name: CERT_ROTATE_INTERVAL
+          value: 4380h0m0s
+        - name: CERT_OVERLAP_INTERVAL
+          value: 24h0m0s
+        image: registry:5000/kubevirt/kubemacpool:latest
+        imagePullPolicy: Always
+        name: manager
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 5
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubemacpool
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-controller-manager
@@ -247,6 +303,7 @@ spec:
   replicas: 1
   selector:
     matchLabels:
+      app: kubemacpool
       control-plane: mac-controller-manager
       controller-tools.k8s.io: "1.0"
   strategy:
@@ -297,14 +354,6 @@ spec:
             configMapKeyRef:
               key: RANGE_END
               name: kubemacpool-mac-range-config
-        - name: CA_ROTATE_INTERVAL
-          value: 8760h0m0s
-        - name: CA_OVERLAP_INTERVAL
-          value: 24h0m0s
-        - name: CERT_ROTATE_INTERVAL
-          value: 4380h0m0s
-        - name: CERT_OVERLAP_INTERVAL
-          value: 24h0m0s
         - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
           value: v1
         image: registry:5000/kubevirt/kubemacpool:latest
@@ -332,7 +381,7 @@ spec:
             cpu: 100m
             memory: 300Mi
         volumeMounts:
-        - mountPath: /etc/webhook/certs
+        - mountPath: /tmp/k8s-webhook-server/serving-certs/
           name: tls-key-pair
           readOnly: true
       restartPolicy: Always

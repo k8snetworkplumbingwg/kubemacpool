@@ -19,15 +19,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go.uber.org/zap/zapcore"
 	"net"
 	"os"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -48,43 +51,38 @@ func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
 }
 
 func main() {
-	var logType, metricsAddr string
-	var waitingTime int
+	_, ok := os.LookupEnv("RUN_CERT_MANAGER")
+	if ok {
+		runCertManager()
+	} else {
+		runKubemacpoolManager()
+	}
+}
 
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+func runCertManager() {
+
+	var logType string
+
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
-	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
 	flag.Parse()
 
-	if logType == "debug" {
-		logf.SetLogger(zap.New(zap.UseDevMode(true), zap.Level(zapcore.DebugLevel)))
-	} else {
-		logf.SetLogger(zap.New(zap.UseDevMode(false)))
-	}
+	ctrl.SetLogger(zap.New(zap.UseDevMode(logType != "production")))
 
-	log := logf.Log.WithName("main")
-
-	rangeStart, err := loadMacAddressFromEnvVar(poolmanager.RangeStartEnv)
-	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
-		os.Exit(1)
-	}
-
-	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEnv)
-	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
-		os.Exit(1)
-	}
+	log := ctrl.Log.WithName("runCertManager")
 
 	podNamespace, ok := os.LookupEnv("POD_NAMESPACE")
 	if !ok {
-		log.Error(err, "Failed to load pod namespace from environment variable")
+		log.Error(nil, "Failed to load pod namespace from environment variable")
 		os.Exit(1)
 	}
 
-	podName, ok := os.LookupEnv("POD_NAME")
-	if !ok {
-		log.Error(err, "Failed to load pod name from environment variable")
+	mgrOptions := ctrlmanager.Options{
+		MetricsBindAddress: "0", // disable metrics
+	}
+
+	mgr, err := ctrlmanager.New(config.GetConfigOrDie(), mgrOptions)
+	if err != nil {
+		log.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
@@ -120,7 +118,65 @@ func main() {
 		CertRotateInterval:  certRotateInterval,
 		CertOverlapInterval: certOverlapInterval,
 	}
-	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime, certOptions)
+
+	certManager, err := certificate.NewManager(mgr.GetClient(), certOptions)
+	if err != nil {
+		log.Error(err, "unable to create cert-manager", "controller", "cert-manager")
+		os.Exit(1)
+	}
+
+	err = certManager.Add(mgr)
+	if err != nil {
+		log.Error(err, "unable to add cert-manager to controller-runtime manager", "controller", "cert-manager")
+		os.Exit(1)
+	}
+
+	log.Info("starting manager")
+	if err := mgr.Start(signals.SetupSignalHandler()); err != nil {
+		log.Error(err, "problem running manager")
+		os.Exit(1)
+	}
+
+}
+
+func runKubemacpoolManager() {
+	var logType, metricsAddr string
+	var waitingTime int
+
+	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
+	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
+	flag.Parse()
+
+	ctrl.SetLogger(zap.New(zap.UseDevMode(logType != "production")))
+
+	log := ctrl.Log.WithName("runKubemacpoolManager")
+
+	podNamespace, ok := os.LookupEnv("POD_NAMESPACE")
+	if !ok {
+		log.Error(nil, "Failed to load pod namespace from environment variable")
+		os.Exit(1)
+	}
+
+	podName, ok := os.LookupEnv("POD_NAME")
+	if !ok {
+		log.Error(nil, "Failed to load pod name from environment variable")
+		os.Exit(1)
+	}
+
+	rangeStart, err := loadMacAddressFromEnvVar(poolmanager.RangeStartEnv)
+	if err != nil {
+		log.Error(err, "Failed to load mac address from environment variable")
+		os.Exit(1)
+	}
+
+	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEnv)
+	if err != nil {
+		log.Error(err, "Failed to load mac address from environment variable")
+		os.Exit(1)
+	}
+
+	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime)
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {

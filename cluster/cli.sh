@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-source ./cluster/kubevirtci.sh
-kubevirtci::install
+source ./cluster/cluster.sh
+cluster::install
 
-$(kubevirtci::path)/cluster-up/cli.sh "$@"
+$(cluster::path)/cluster-up/cli.sh "$@"

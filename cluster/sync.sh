@@ -16,8 +16,8 @@
 
 set -ex
 
-source ./cluster/kubevirtci.sh
-kubevirtci::install
+source ./cluster/cluster.sh
+cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" == external ]]; then
     if [[ ! -v DEV_REGISTRY ]]; then

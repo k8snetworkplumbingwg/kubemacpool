@@ -21,15 +21,15 @@ function getLatestPatchVersion {
   curl -s https://api.github.com/repos/kubevirt/kubevirt/releases | grep .tag_name | grep ${major_minors} | sort -V | tail -1 | awk -F':' '{print $2}' | sed 's/,//' | xargs
 }
 
-source ./cluster/kubevirtci.sh
+source ./cluster/cluster.sh
 CNAO_VERSION=v0.42.1
 
 #use kubevirt latest z stream release
 KUBEVIRT_VERSION=$(getLatestPatchVersion v0.37)
-kubevirtci::install
+cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
-    $(kubevirtci::path)/cluster-up/up.sh
+    $(cluster::path)/cluster-up/up.sh
 fi
 
 # Deploy CNA

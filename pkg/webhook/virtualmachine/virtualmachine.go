@@ -98,13 +98,13 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 // create jsonpatches only to changed caused by the kubemacpool webhook changes
 func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) admission.Response {
 	logger := parentLogger.WithName("patchVMChanges")
-	var kubemapcoolJsonPatches []jsonpatch.Operation
+	kubemapcoolJsonPatches := []jsonpatch.Operation{}
 
 	if !pool_manager.IsVirtualMachineDeletionInProgress(currentVirtualMachine) {
 		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		if originalTransactionTSString != currentTransactionTSString {
-			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("add", "/metadata/annotations", map[string]string{pool_manager.TransactionTimestampAnnotation: currentTransactionTSString})
+			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
 		}
 
@@ -192,7 +192,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *
 		return err
 	}
 
-	if isVirtualMachineSpecChanged(previousVirtualMachine, virtualMachine) {
+	if isVirtualMachineChanged(previousVirtualMachine, virtualMachine) {
 		transactionTimestamp := pool_manager.CreateTransactionTimestamp()
 		pool_manager.SetTransactionTimestampAnnotationToVm(virtualMachine, transactionTimestamp)
 
@@ -204,11 +204,41 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *
 	return nil
 }
 
-// isVirtualMachineSpecChanged checks if the vm spec changed in this webhook update request.
-// we want to update the timestamp on every change, but not on metadata changes, as they change all the time,
-// which will cause a unneeded Timestamp update.
+func isVirtualMachineChanged(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine) bool {
+	if isVirtualMachineSpecChanged(previousVirtualMachine, virtualMachine) {
+		return true
+	}
+	if isVirtualMachineMetadataChanged(previousVirtualMachine, virtualMachine) {
+		return true
+	}
+	return false
+}
+
+// isVirtualMachineChanged checks if the vm spec changed in this webhook update request.
 func isVirtualMachineSpecChanged(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine) bool {
 	return !reflect.DeepEqual(previousVirtualMachine.Spec, virtualMachine.Spec)
+}
+
+// isVirtualMachineMetadataChanged checks if non-automatically generated metadata fields changed in this webhook
+// update request.
+func isVirtualMachineMetadataChanged(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine) bool {
+	if !reflect.DeepEqual(previousVirtualMachine.GetLabels(), virtualMachine.GetLabels()) {
+		return true
+	}
+	currentAnnotations := getAnnotationsWithoutTransactionTimestamp(virtualMachine)
+	previousAnnotations := getAnnotationsWithoutTransactionTimestamp(previousVirtualMachine)
+	if !reflect.DeepEqual(previousAnnotations, currentAnnotations) {
+		return true
+	}
+	return false
+}
+
+// getAnnotationsWithoutTransactionTimestamp get the vm's annotation, but excludes the changes made
+// on this webhook such as TransactionTimestampAnnotation.
+func getAnnotationsWithoutTransactionTimestamp(virtualMachine *kubevirt.VirtualMachine) map[string]string {
+	annotations := virtualMachine.GetAnnotations()
+	delete(annotations, pool_manager.TransactionTimestampAnnotation)
+	return annotations
 }
 
 // isVirtualMachineInterfacesChanged checks if the vm interfaces changed in this webhook update request.

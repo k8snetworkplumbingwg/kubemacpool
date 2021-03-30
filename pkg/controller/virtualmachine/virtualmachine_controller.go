@@ -30,9 +30,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
@@ -83,14 +83,14 @@ type ReconcilePolicy struct {
 }
 
 // Reconcile reads that state of the cluster for a virtual machine object and makes changes based on the state
-func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result, error) {
+func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	//used for multi thread log separation
 	reconcileRequestId := rand.Intn(100000)
 	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "vmFullName", fmt.Sprintf("vm/%s/%s", request.Namespace, request.Name))
 	logger.Info("got a virtual machine event in the controller")
 
 	instance := &kubevirt.VirtualMachine{}
-	err := r.Get(context.TODO(), request.NamespacedName, instance)
+	err := r.Get(ctx, request.NamespacedName, instance)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("vm not found. aborting reconcile")
@@ -128,7 +128,7 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	} else {
 		// The object is being deleted
 		logger.V(1).Info("The VM is being marked for deletion")
-		err = r.removeFinalizerAndReleaseMac(&request, logger)
+		err = r.removeFinalizerAndReleaseMac(ctx, &request, logger)
 
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to reconcile kubemacpool after virtual machine's deletion event")
@@ -138,12 +138,12 @@ func (r *ReconcilePolicy) Reconcile(request reconcile.Request) (reconcile.Result
 	return reconcile.Result{}, err
 }
 
-func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Request, parentLogger logr.Logger) error {
+func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(ctx context.Context, request *reconcile.Request, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("removeFinalizerAndReleaseMac")
 
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		virtualMachine := &kubevirt.VirtualMachine{}
-		err := r.Get(context.TODO(), request.NamespacedName, virtualMachine)
+		err := r.Get(ctx, request.NamespacedName, virtualMachine)
 		if err != nil {
 			if isVmDeletionAlreadyPersistedByFormerUpdates(err, logger) {
 				return nil
@@ -167,7 +167,7 @@ func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(request *reconcile.Reques
 		virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
 		logger.V(1).Info("Removed the finalizer from the VM instance")
 
-		err = r.Update(context.Background(), virtualMachine)
+		err = r.Update(ctx, virtualMachine)
 
 		return err
 	})

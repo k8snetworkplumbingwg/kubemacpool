@@ -19,14 +19,15 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go.uber.org/zap/zapcore"
 	"net"
 	"os"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
-
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -56,9 +57,9 @@ func main() {
 	flag.Parse()
 
 	if logType == "debug" {
-		logf.SetLogger(logf.ZapLogger(true))
+		logf.SetLogger(zap.New(zap.UseDevMode(true), zap.Level(zapcore.DebugLevel)))
 	} else {
-		logf.SetLogger(logf.ZapLogger(false))
+		logf.SetLogger(zap.New(zap.UseDevMode(false)))
 	}
 
 	log := logf.Log.WithName("main")

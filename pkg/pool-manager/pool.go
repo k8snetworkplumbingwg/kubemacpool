@@ -25,11 +25,11 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"k8s.io/api/admissionregistration/v1beta1"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
@@ -256,8 +256,8 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 	return isNamespaceManaged, nil
 }
 
-func (p *PoolManager) lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName string) (*v1beta1.MutatingWebhook, error) {
-	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1beta1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
+func (p *PoolManager) lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName string) (*admissionregistrationv1.MutatingWebhook, error) {
+	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to get mutatingWebhookConfig")
 	}
@@ -298,7 +298,7 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName, webhookName string) (boo
 }
 
 // isNamespaceManagedByWebhookNamespaceSelector checks if namespace managed by webhook namespaceSelector and opt-mode
-func isNamespaceManagedByWebhookNamespaceSelector(webhook *v1beta1.MutatingWebhook, vmOptMode OptMode, namespaceLabelSet labels.Set, defaultIsManaged bool) (bool, error) {
+func isNamespaceManagedByWebhookNamespaceSelector(webhook *admissionregistrationv1.MutatingWebhook, vmOptMode OptMode, namespaceLabelSet labels.Set, defaultIsManaged bool) (bool, error) {
 	webhookNamespaceLabelSelector, err := metav1.LabelSelectorAsSelector(webhook.NamespaceSelector)
 	if err != nil {
 		return false, errors.Wrapf(err, "Failed to set webhook Namespace Label Selector for webhook %s", webhook.Name)

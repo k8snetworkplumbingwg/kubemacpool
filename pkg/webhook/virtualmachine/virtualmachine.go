@@ -29,11 +29,11 @@ import (
 	"github.com/pkg/errors"
 	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"gomodules.xyz/jsonpatch/v2"
-	admissionv1beta1 "k8s.io/api/admission/v1beta1"
+	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	kubevirt "kubevirt.io/client-go/api/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -77,17 +77,19 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 
 	logger.V(1).Info("got a virtual machine event")
 
-	if req.AdmissionRequest.Operation == admissionv1beta1.Create {
-		err = a.mutateCreateVirtualMachinesFn(virtualMachine, logger)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError,
-				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
-		}
-	} else if req.AdmissionRequest.Operation == admissionv1beta1.Update {
-		err = a.mutateUpdateVirtualMachinesFn(virtualMachine, logger)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError,
-				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
+	if req.DryRun != nil && *req.DryRun != true {
+		if req.AdmissionRequest.Operation == admissionv1.Create {
+			err = a.mutateCreateVirtualMachinesFn(virtualMachine, logger)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError,
+					fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
+			}
+		} else if req.AdmissionRequest.Operation == admissionv1.Update {
+			err = a.mutateUpdateVirtualMachinesFn(virtualMachine, logger)
+			if err != nil {
+				return admission.Errored(http.StatusInternalServerError,
+					fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
+			}
 		}
 	}
 
@@ -104,7 +106,7 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		if originalTransactionTSString != currentTransactionTSString {
-			transactionTimestampAnnotationPatch := jsonpatch.NewPatch("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
+			transactionTimestampAnnotationPatch := jsonpatch.NewOperation("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
 		}
 
@@ -124,11 +126,19 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 	}
 
 	logger.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	if len(kubemapcoolJsonPatches) == 0 {
+		return admission.Response{
+			Patches: kubemapcoolJsonPatches,
+			AdmissionResponse: admissionv1.AdmissionResponse{
+				Allowed: true,
+			},
+		}
+	}
 	return admission.Response{
 		Patches: kubemapcoolJsonPatches,
-		AdmissionResponse: admissionv1beta1.AdmissionResponse{
+		AdmissionResponse: admissionv1.AdmissionResponse{
 			Allowed:   true,
-			PatchType: func() *admissionv1beta1.PatchType { pt := admissionv1beta1.PatchTypeJSONPatch; return &pt }(),
+			PatchType: func() *admissionv1.PatchType { pt := admissionv1.PatchTypeJSONPatch; return &pt }(),
 		},
 	}
 }

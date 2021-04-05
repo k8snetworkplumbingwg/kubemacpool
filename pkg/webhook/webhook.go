@@ -19,9 +19,9 @@ package webhook
 import (
 	"github.com/pkg/errors"
 
-	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
-	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
@@ -40,14 +40,13 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*webhookserver.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(*webhook.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
-func AddToManager(certOptions certificate.Options, mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	s, err := webhookserver.New(mgr.GetClient(), certOptions, webhookserver.WithPort(WebhookServerPort))
-	if err != nil {
-		return errors.Wrap(err, "failed creating new webhook server")
-	}
+func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
+
+	s := &webhook.Server{Port: WebhookServerPort}
+	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {
 		if err := f(s, poolManager); err != nil {
@@ -55,7 +54,7 @@ func AddToManager(certOptions certificate.Options, mgr manager.Manager, poolMana
 		}
 	}
 
-	err = s.Add(mgr)
+	err := mgr.Add(s)
 	if err != nil {
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}

@@ -11,6 +11,11 @@ patches:
       kind: Deployment
       name: kubemacpool-mac-controller-manager
       namespace: kubemacpool-system
+  - path: manager_image_patch.yaml
+    target:
+      kind: Deployment
+      name: kubemacpool-cert-manager
+      namespace: kubemacpool-system
   - path: manager_range_patch.yaml
     target:
       kind: ConfigMap

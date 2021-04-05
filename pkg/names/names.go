@@ -2,6 +2,8 @@ package names
 
 const MANAGER_DEPLOYMENT = "kubemacpool-mac-controller-manager"
 
+const CERT_MANAGER_DEPLOYMENT = "kubemacpool-cert-manager"
+
 const WEBHOOK_SERVICE = "kubemacpool-service"
 
 const MUTATE_WEBHOOK = "kubemacpool-webhook"

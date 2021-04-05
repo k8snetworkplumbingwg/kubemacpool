@@ -174,14 +174,25 @@ func findManagerNamespace() string {
 
 func restartKubemacpoolManagerPods() error {
 	// Remove all replicas
-	err := changeManagerReplicas(0)
+	err := changeReplicas(names.MANAGER_DEPLOYMENT, 0)
 	if err != nil {
 		return errors.Wrap(err, "failed stopping manager pods")
 	}
 
-	err = changeManagerReplicas(1)
+	err = changeReplicas(names.MANAGER_DEPLOYMENT, 1)
 	if err != nil {
 		return errors.Wrap(err, "failed starting manager pods")
+	}
+
+	// Remove all replicas
+	err = changeReplicas(names.CERT_MANAGER_DEPLOYMENT, 0)
+	if err != nil {
+		return errors.Wrap(err, "failed stopping cert manager pods")
+	}
+
+	err = changeReplicas(names.CERT_MANAGER_DEPLOYMENT, 1)
+	if err != nil {
+		return errors.Wrap(err, "failed starting cert manager pods")
 	}
 
 	return nil
@@ -256,9 +267,13 @@ func checkKubemacpoolCrash() error {
 }
 
 func changeManagerReplicas(numOfReplica int32) error {
+	return changeReplicas(names.MANAGER_DEPLOYMENT, numOfReplica)
+}
+
+func changeReplicas(managerName string, numOfReplica int32) error {
 	By(fmt.Sprintf("updating deployment pod replicas to be %d", numOfReplica))
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -275,7 +290,7 @@ func changeManagerReplicas(numOfReplica int32) error {
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}

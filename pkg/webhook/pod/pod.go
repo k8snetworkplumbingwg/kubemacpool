@@ -20,7 +20,6 @@ import (
 	"context"
 	"net/http"
 
-	webhookserver "github.com/qinqon/kube-admission-webhook/pkg/webhook/server"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -41,9 +40,9 @@ type podAnnotator struct {
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *webhookserver.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s *webhook.Server, poolManager *pool_manager.PoolManager) error {
 	podAnnotator := &podAnnotator{poolManager: poolManager}
-	s.UpdateOpts(webhookserver.WithHook("/mutate-pods", &webhook.Admission{Handler: podAnnotator}))
+	s.Register("/mutate-pods", &webhook.Admission{Handler: podAnnotator})
 	return nil
 }
 

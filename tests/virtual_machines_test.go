@@ -427,7 +427,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 								}
 								return err
 
-							}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+							}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 						}
 					})
 				})
@@ -547,7 +547,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 						return err
 
-					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+					}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 
 					Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "new vm should be allocated with the now released mac address")
 				})
@@ -593,7 +593,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							}
 							return err
 
-						}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
+						}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 
 						Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "new vm should be allocated with the now released mac address")
 					})
@@ -636,7 +636,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 								[]kubevirtv1.Network{newNetwork("br1")})
 							Eventually(func() error {
 								return testClient.VirtClient.Create(context.TODO(), vm1)
-							}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "should succeed creating a vm with the now released mac address after stale mac restored")
+							}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "should succeed creating a vm with the now released mac address after stale mac restored")
 						})
 					})
 				})

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -271,9 +272,14 @@ func changeManagerReplicas(numOfReplica int32) error {
 }
 
 func changeReplicas(managerName string, numOfReplica int32) error {
-	By(fmt.Sprintf("updating deployment pod replicas to be %d", numOfReplica))
+	By(fmt.Sprintf("updating deployment %s, pod replicas to be %d", managerName, numOfReplica))
+	var indentedDeployment []byte
 	Eventually(func() error {
 		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		indentedDeployment, err = json.MarshalIndent(managerDeployment, "", "\t")
 		if err != nil {
 			return err
 		}
@@ -286,11 +292,15 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return nil
-	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on manager")
+	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on deployment:\n%v", string(indentedDeployment))
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
 	Eventually(func() bool {
 		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		if err != nil {
+			return false
+		}
+		indentedDeployment, err = json.MarshalIndent(managerDeployment, "", "\t")
 		if err != nil {
 			return false
 		}
@@ -300,8 +310,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return true
-
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas")
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas.\n deployment:\n%v", string(indentedDeployment))
 
 	return nil
 }

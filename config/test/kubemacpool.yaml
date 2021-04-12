@@ -2,7 +2,6 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    app: kubemacpool
     control-plane: mac-controller-manager
     mutatepods.kubemacpool.io: ignore
   name: kubemacpool-system
@@ -10,8 +9,6 @@ metadata:
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
 metadata:
-  labels:
-    app: kubemacpool
   name: kubemacpool-mutator
 webhooks:
 - admissionReviewVersions:
@@ -92,8 +89,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
-  labels:
-    app: kubemacpool
   name: kubemacpool-manager-role
 rules:
 - apiGroups:
@@ -194,8 +189,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   creationTimestamp: null
-  labels:
-    app: kubemacpool
   name: kubemacpool-manager-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -213,7 +206,6 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app: kubemacpool
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-range-config
@@ -222,8 +214,6 @@ metadata:
 apiVersion: v1
 kind: Service
 metadata:
-  labels:
-    app: kubemacpool
   name: kubemacpool-service
   namespace: kubemacpool-system
 spec:
@@ -232,14 +222,12 @@ spec:
     targetPort: 8000
   publishNotReadyAddresses: true
   selector:
-    app: kubemacpool
     control-plane: mac-controller-manager
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: kubemacpool
     control-plane: cert-manager
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-cert-manager
@@ -248,7 +236,6 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kubemacpool
       control-plane: cert-manager
       controller-tools.k8s.io: "1.0"
   strategy:
@@ -294,7 +281,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: kubemacpool
     control-plane: mac-controller-manager
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-controller-manager
@@ -303,7 +289,6 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kubemacpool
       control-plane: mac-controller-manager
       controller-tools.k8s.io: "1.0"
   strategy:

@@ -190,7 +190,6 @@ kind: MutatingWebhookConfiguration
 metadata:
   # metadata.name will be kubemacpool-mutator (prefix added by kustomize)
   name: mutator
-  labels:
 webhooks:
   - name: mutatepods.kubemacpool.io
     sideEffects: NoneOnDryRun

@@ -21,6 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -174,26 +175,16 @@ func findManagerNamespace() string {
 }
 
 func restartKubemacpoolManagerPods() error {
-	// Remove all replicas
-	err := changeReplicas(names.MANAGER_DEPLOYMENT, 0)
+	// Delete all kmp manager pods
+	err := restartPodsFromDeployment(names.MANAGER_DEPLOYMENT)
 	if err != nil {
-		return errors.Wrap(err, "failed stopping manager pods")
+		return errors.Wrap(err, "failed deleting mac manager pods")
 	}
 
-	err = changeReplicas(names.MANAGER_DEPLOYMENT, 1)
+	// Delete all cert-manager pods
+	err = restartPodsFromDeployment(names.CERT_MANAGER_DEPLOYMENT)
 	if err != nil {
-		return errors.Wrap(err, "failed starting manager pods")
-	}
-
-	// Remove all replicas
-	err = changeReplicas(names.CERT_MANAGER_DEPLOYMENT, 0)
-	if err != nil {
-		return errors.Wrap(err, "failed stopping cert manager pods")
-	}
-
-	err = changeReplicas(names.CERT_MANAGER_DEPLOYMENT, 1)
-	if err != nil {
-		return errors.Wrap(err, "failed starting cert manager pods")
+		return errors.Wrap(err, "failed deleting cert manager pods")
 	}
 
 	return nil
@@ -312,6 +303,49 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		return true
 	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas.\n deployment:\n%v", string(indentedDeployment))
 
+	return nil
+}
+
+func restartPodsFromDeployment(deploymentName string) error {
+	deployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
+
+	podList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+
+	By(fmt.Sprintf("Deleting pods from deployment %s with label selector %s", deploymentName, labelSelector))
+	err = testClient.KubeClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return err
+	}
+
+	By(fmt.Sprintf("Checking that all the old pods from deployment %s with label selector %s have being deleted", deploymentName, labelSelector))
+	for _, pod := range podList.Items {
+		Eventually(func() error {
+			_, err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+			return err
+		}, 2*time.Minute, time.Second).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())), "should have delete the old pods from deployment %s", deploymentName)
+	}
+
+	deploymentConditionAvailability := func(conditionStatus corev1.ConditionStatus, timeout, interval time.Duration) {
+		By(fmt.Sprintf("Waiting for deployment %s Available condition to be %s", deploymentName, conditionStatus))
+		Eventually(func() bool {
+			deployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
+			if err != nil {
+				return false
+			}
+			for _, condition := range deployment.Status.Conditions {
+				if condition.Type == v1.DeploymentAvailable {
+					return condition.Status == conditionStatus
+				}
+			}
+
+			return true
+		}, timeout, interval).Should(BeTrue(), "Failed waiting readiness at for deployment:\n%v", string(deploymentName))
+	}
+	deploymentConditionAvailability(corev1.ConditionTrue, 2*time.Minute, 3*time.Second)
 	return nil
 }
 

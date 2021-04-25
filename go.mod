@@ -10,14 +10,14 @@ require (
 	github.com/onsi/gomega v1.10.5
 	github.com/pkg/errors v0.9.1
 	github.com/qinqon/kube-admission-webhook v0.14.0
-	go.uber.org/zap v1.15.0
+	github.com/spf13/pflag v1.0.5
 	gomodules.xyz/jsonpatch/v2 v2.1.0
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2
 	k8s.io/client-go v12.0.0+incompatible
 	k8s.io/code-generator v0.20.2
-	kubevirt.io/client-go v0.37.1
-	kubevirt.io/kubevirt v0.37.1
+	kubevirt.io/client-go v0.40.0-rc.2
+	kubevirt.io/kubevirt v0.40.0-rc.2
 	kubevirt.io/qe-tools v0.1.6
 	sigs.k8s.io/controller-runtime v0.8.2
 	sigs.k8s.io/controller-tools v0.4.0
@@ -27,9 +27,10 @@ require (
 replace (
 	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 	github.com/go-logr/zapr => github.com/go-logr/zapr v0.2.0
-	github.com/openshift/api => github.com/openshift/api v3.9.0+incompatible
-	github.com/openshift/client-go => github.com/openshift/client-go v3.9.0+incompatible
+	github.com/openshift/api => github.com/openshift/api v0.0.0-20201120165435-072a4cd8ca42
+	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20200521150516-05eb9880269c
 	golang.org/x/text => golang.org/x/text v0.3.3
+
 	// Pinned to kubernetes-0.20.2
 	k8s.io/api => k8s.io/api v0.20.2
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.20.2
@@ -50,6 +51,7 @@ replace (
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.20.2
 	k8s.io/metrics => k8s.io/metrics v0.20.2
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.20.2
-	kubevirt.io/client-go => github.com/kubevirt/client-go v0.37.1
+
+	kubevirt.io/client-go => kubevirt.io/client-go v0.40.0-rc.2
 	sigs.k8s.io/structured-merge-diff => sigs.k8s.io/structured-merge-diff v1.0.2
 )

@@ -16,8 +16,9 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
+
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 const timeout = 2 * time.Minute
@@ -94,6 +95,77 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}
 			})
 
+			Context("and a non running vm is created", func() {
+				var macAddress, vmName, vmNewName string
+				var vm *kubevirtv1.VirtualMachine
+				BeforeEach(func() {
+					vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
+					err := testClient.VirtClient.Create(context.TODO(), vm)
+					Expect(err).ToNot(HaveOccurred())
+					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+					vmName = vm.GetName()
+					vmNewName = vmName + "_new"
+					Expect(net.ParseMAC(macAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+				})
+				FContext("and the vm name is changed via virtctl", func() {
+					BeforeEach(func() {
+						err := testClient.newVirtClient.VirtualMachine(TestNamespace).Rename(vmName, &kubevirtv1.RenameOptions{NewName: vmNewName})
+						Expect(err).ToNot(HaveOccurred())
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal(macAddress), "mac address should not change due to vm renaming")
+					})
+					It("Should allow changing the mac on the same vm without blocking", func() {
+						err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+							err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vmNewName}, vm)
+							Expect(err).ToNot(HaveOccurred())
+
+							vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = "02:00:00:00:ff:ff"
+
+							return testClient.VirtClient.Update(context.TODO(), vm)
+						})
+						Expect(err).ToNot(HaveOccurred(), "should succeed changing the vm's mac address.")
+					})
+					It("Should allow changing the interface name on the same vm without blocking", func() {
+						vmNewInterfaceName := "newInterfaceName"
+						err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+							err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vmNewName}, vm)
+							Expect(err).ToNot(HaveOccurred())
+
+							vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name = vmNewInterfaceName
+
+							return testClient.VirtClient.Update(context.TODO(), vm)
+						})
+						Expect(err).ToNot(HaveOccurred(), "should succeed changing the vm's interface name.")
+						err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vmNewName}, vm)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name).To(Equal(vmNewInterfaceName))
+
+					})
+					It("Should restore the mac when value is deleted from interface", func() {
+						err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+
+							err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vmNewName}, vm)
+							Expect(err).ToNot(HaveOccurred())
+
+							vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = ""
+
+							return testClient.VirtClient.Update(context.TODO(), vm)
+						})
+						Expect(err).ToNot(HaveOccurred(), "should succeed removing the mac interface from the interface")
+						err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vmNewName}, vm)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal(macAddress), "should restore the vm's mac address after update")
+					})
+					It("Should deny allocating the same mac to a different vm", func() {
+						otherVm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
+						otherVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = macAddress
+						err := testClient.VirtClient.Create(context.TODO(), otherVm)
+						Expect(err).To(HaveOccurred(), "should deny allocating the same mac to a different vm")
+					})
+				})
+			})
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
 					It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {

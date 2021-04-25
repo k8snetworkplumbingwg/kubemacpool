@@ -11,17 +11,17 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/rand"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -56,8 +57,9 @@ var (
 )
 
 type TestClient struct {
-	VirtClient client.Client
-	KubeClient *kubernetes.Clientset
+	VirtClient    client.Client
+	KubeClient    *kubernetes.Clientset
+	newVirtClient kubecli.KubevirtClient
 }
 
 func NewTestClient() (*TestClient, error) {
@@ -88,7 +90,13 @@ func NewTestClient() (*TestClient, error) {
 		return nil, err
 	}
 
-	return &TestClient{VirtClient: c, KubeClient: kubeClient}, nil
+	myCfg := kubecli.DefaultClientConfig(&pflag.FlagSet{})
+	myNewVirtClient, err := kubecli.GetKubevirtClientFromClientConfig(myCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TestClient{VirtClient: c, KubeClient: kubeClient, newVirtClient: myNewVirtClient}, nil
 }
 
 func createTestNamespaces() error {

@@ -43,12 +43,13 @@ type KubeMacPoolManager struct {
 	config                   *rest.Config
 	metricsAddr              string
 	continueToRunManager     bool
-	kubevirtInstalledChannel chan struct{}   // This channel is close after we found kubevirt to reload the manager
-	stopSignalChannel        chan os.Signal  // stop channel signal
-	podNamespace             string          // manager pod namespace
-	podName                  string          // manager pod name
-	waitingTime              int             // Duration in second to free macs of allocated vms that failed to start.
-	runtimeManager           manager.Manager // Delegated controller-runtime manager
+	kubevirtInstalledChannel chan struct{}      // This channel is close after we found kubevirt to reload the manager
+	stopSignalChannel        chan os.Signal     // stop channel signal
+	cancel                   context.CancelFunc // cancel() closes the controller-runtime context internal channel
+	podNamespace             string             // manager pod namespace
+	podName                  string             // manager pod name
+	waitingTime              int                // Duration in second to free macs of allocated vms that failed to start.
+	runtimeManager           manager.Manager    // Delegated controller-runtime manager
 }
 
 func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
@@ -97,6 +98,8 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return errors.Wrap(err, "unable to create pool manager")
 		}
 
+		var ctx context.Context
+		ctx, k.cancel = context.WithCancel(context.Background())
 		if !isKubevirtInstalled {
 			log.Info("kubevirt was not found in the cluster start a watching process")
 			go k.waitForKubevirt()
@@ -120,7 +123,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return errors.Wrap(err, "failed to start pool manager routines")
 		}
 
-		err = k.runtimeManager.Start(context.Background())
+		err = k.runtimeManager.Start(ctx)
 		if err != nil {
 			log.Error(err, "unable to run the manager")
 		}
@@ -164,6 +167,8 @@ func (k *KubeMacPoolManager) waitForKubevirt() {
 
 // wait for the any interrupt to stop the manager and clean the webhook.
 func (k *KubeMacPoolManager) waitForSignal() {
+	defer k.cancel()
+
 	select {
 	// This channel is a system interrupt this will stop the container
 	case <-k.stopSignalChannel:

@@ -25,7 +25,7 @@ source ./cluster/cluster.sh
 CNAO_VERSION=v0.42.1
 
 #use kubevirt latest z stream release
-KUBEVIRT_VERSION=$(getLatestPatchVersion v0.37)
+KUBEVIRT_VERSION=$(getLatestPatchVersion v0.40)
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

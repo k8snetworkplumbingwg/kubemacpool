@@ -22,7 +22,7 @@ function getLatestPatchVersion {
 }
 
 source ./cluster/cluster.sh
-CNAO_VERSION=v0.42.1
+CNAO_VERSION=v0.53.0
 
 #use kubevirt latest z stream release
 KUBEVIRT_VERSION=$(getLatestPatchVersion v0.40)

@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	multus "github.com/intel/multus-cni/types"
+	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -192,56 +193,81 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 	return macAddr.String(), nil
 }
 
+// paginatePodsWithLimit performs a pods list request with pagination, to limit the amount of pods received at a time
+// and prevent exceeding the memory limit.
+func (p *PoolManager) paginatePodsWithLimit(limit int64, f func(pods *corev1.PodList) error) error {
+	continueFlag := ""
+	for {
+		pods, err := p.kubeClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{Limit: limit, Continue: continueFlag})
+		if err != nil {
+			return err
+		}
+
+		err = f(pods)
+		if err != nil {
+			return err
+		}
+
+		continueFlag = pods.GetContinue()
+		log.V(1).Info("limit Pod list", "pods len", len(pods.Items), "remaining", pods.GetRemainingItemCount(), "continue", continueFlag)
+		if continueFlag == "" {
+			break
+		}
+	}
+	return nil
+}
+
 func (p *PoolManager) initPodMap() error {
 	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
-	pods, err := p.kubeClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	err := p.paginatePodsWithLimit(100, func(pods *corev1.PodList) error {
+		for _, pod := range pods.Items {
+			log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
+			if pod.Annotations == nil {
+				continue
+			}
+
+			networkValue, ok := pod.Annotations[networksAnnotation]
+			if !ok {
+				continue
+			}
+
+			networks, err := parsePodNetworkAnnotation(networkValue, pod.Namespace)
+			if err != nil {
+				continue
+			}
+
+			log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
+			if len(networks) == 0 {
+				continue
+			}
+
+			// validate if the pod is related to kubevirt
+			if p.isRelatedToKubevirt(&pod) {
+				// nothing to do here. the mac is already by allocated by the virtual machine webhook
+				log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
+				continue
+			}
+
+			for _, network := range networks {
+				if network.MacRequest == "" {
+					continue
+				}
+
+				if err := p.allocatePodRequestedMac(network, &pod); err != nil {
+					// Dont return an error here if we can't allocate a mac for a running pod
+					log.Error(fmt.Errorf("failed to parse mac address for pod"),
+						"Invalid mac address for pod",
+						"namespace", pod.Namespace,
+						"name", pod.Name,
+						"mac", network.MacRequest)
+					continue
+				}
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return err
-	}
-
-	for _, pod := range pods.Items {
-		log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
-		if pod.Annotations == nil {
-			continue
-		}
-
-		networkValue, ok := pod.Annotations[networksAnnotation]
-		if !ok {
-			continue
-		}
-
-		networks, err := parsePodNetworkAnnotation(networkValue, pod.Namespace)
-		if err != nil {
-			continue
-		}
-
-		log.V(1).Info("pod meta data", "podMetaData", pod.ObjectMeta)
-		if len(networks) == 0 {
-			continue
-		}
-
-		// validate if the pod is related to kubevirt
-		if p.isRelatedToKubevirt(&pod) {
-			// nothing to do here. the mac is already by allocated by the virtual machine webhook
-			log.V(1).Info("This pod have ownerReferences from kubevirt skipping")
-			continue
-		}
-
-		for _, network := range networks {
-			if network.MacRequest == "" {
-				continue
-			}
-
-			if err := p.allocatePodRequestedMac(network, &pod); err != nil {
-				// Dont return an error here if we can't allocate a mac for a running pod
-				log.Error(fmt.Errorf("failed to parse mac address for pod"),
-					"Invalid mac address for pod",
-					"namespace", pod.Namespace,
-					"name", pod.Name,
-					"mac", network.MacRequest)
-				continue
-			}
-		}
+		return errors.Wrap(err, "failed iterating over all cluster pods")
 	}
 
 	return nil

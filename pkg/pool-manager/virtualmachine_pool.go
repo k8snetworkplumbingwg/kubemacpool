@@ -270,61 +270,87 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 	return nil
 }
 
-// forEachManagedVmInterfaceInClusterRunFunction gets all the macs from all the supported interfaces in all the managed cluster vms, and runs
-// a function f on it
-func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(f func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
-	logger := log.WithName("forEachManagedVmInterfaceInClusterRunFunction")
-	var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("apis/kubevirt.io/v1/virtualmachines").Do(context.TODO())
-	if result.Error() != nil {
-		return result.Error()
-	}
+// paginateVmsWithLimit performs a vm list request with pagination, to limit the amount of vms received at a time
+// and prevent taking too much memory.
+func (p *PoolManager) paginateVmsWithLimit(limit int64, vmsFunc func(pods *kubevirt.VirtualMachineList) error) error {
+	continueFlag := ""
+	for {
+		//FIXME we should use the internal limit using ListOptions after we implement using the kubevirt client.
+		var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(fmt.Sprintf("apis/kubevirt.io/v1/virtualmachines?limit=%v&continue=%v", limit, continueFlag)).Do(context.TODO())
+		if result.Error() != nil {
+			return result.Error()
+		}
 
-	vms := &kubevirt.VirtualMachineList{}
-	err := result.Into(vms)
-	if err != nil {
-		return err
-	}
-
-	for _, vm := range vms.Items {
-		vmNamespace := vm.GetNamespace()
-		isNamespaceManaged, err := p.IsVirtualMachineManaged(vmNamespace)
+		vms := &kubevirt.VirtualMachineList{}
+		err := result.Into(vms)
 		if err != nil {
-			return errors.Wrap(err, fmt.Sprintf("failed to check if namespace %s is managed in current opt-mode", vmNamespace))
-		}
-		if !isNamespaceManaged {
-			logger.V(1).Info("skipping vm in loop iteration, namespace not managed", "vmNamespace", vmNamespace)
-			continue
-		}
-		vmFullName := VmNamespaced(&vm)
-		vmInterfaces := getVirtualMachineInterfaces(&vm)
-		vmNetworks := getVirtualMachineNetworks(&vm)
-		if len(vmInterfaces) == 0 {
-			logger.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
-			continue
+			return err
 		}
 
-		if len(vmNetworks) == 0 {
-			logger.V(1).Info("no networks found for virtual machine, skipping mac allocation",
-				"virtualMachineName", vm.Name,
-				"virtualMachineNamespace", vm.Namespace)
-			continue
+		err = vmsFunc(vms)
+		if err != nil {
+			return err
 		}
 
-		networks := map[string]kubevirt.Network{}
-		for _, network := range vmNetworks {
-			networks[network.Name] = network
+		continueFlag = vms.GetContinue()
+		log.V(1).Info("limit vms list", "vms len", len(vms.Items), "remaining", vms.GetRemainingItemCount(), "continue", continueFlag)
+		if continueFlag == "" {
+			break
 		}
+	}
+	return nil
+}
 
-		logger.V(1).Info("virtual machine data",
-			"vmFullName", vmFullName,
-			"virtualMachineInterfaces", vmInterfaces)
-
-		for _, iface := range vmInterfaces {
-			err := f(vmFullName, iface, networks)
+// forEachManagedVmInterfaceInClusterRunFunction gets all the macs from all the supported interfaces in all the managed cluster vms, and runs
+// a function vmInterfacesFunc on it
+func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(vmInterfacesFunc func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
+	err := p.paginateVmsWithLimit(100, func(vms *kubevirt.VirtualMachineList) error {
+		logger := log.WithName("forEachManagedVmInterfaceInClusterRunFunction")
+		for _, vm := range vms.Items {
+			vmNamespace := vm.GetNamespace()
+			isNamespaceManaged, err := p.IsVirtualMachineManaged(vmNamespace)
 			if err != nil {
-				return errors.Wrapf(err, "failed vm interface loop on vm %s", vmFullName)
+				return errors.Wrap(err, fmt.Sprintf("failed to check if namespace %s is managed in current opt-mode", vmNamespace))
+			}
+			if !isNamespaceManaged {
+				logger.V(1).Info("skipping vm in loop iteration, namespace not managed", "vmNamespace", vmNamespace)
+				continue
+			}
+			vmFullName := VmNamespaced(&vm)
+			vmInterfaces := getVirtualMachineInterfaces(&vm)
+			vmNetworks := getVirtualMachineNetworks(&vm)
+			if len(vmInterfaces) == 0 {
+				logger.V(1).Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", vm)
+				continue
+			}
+
+			if len(vmNetworks) == 0 {
+				logger.V(1).Info("no networks found for virtual machine, skipping mac allocation",
+					"virtualMachineName", vm.Name,
+					"virtualMachineNamespace", vm.Namespace)
+				continue
+			}
+
+			networks := map[string]kubevirt.Network{}
+			for _, network := range vmNetworks {
+				networks[network.Name] = network
+			}
+
+			logger.V(1).Info("virtual machine data",
+				"vmFullName", vmFullName,
+				"virtualMachineInterfaces", vmInterfaces)
+
+			for _, iface := range vmInterfaces {
+				err := vmInterfacesFunc(vmFullName, iface, networks)
+				if err != nil {
+					return errors.Wrapf(err, "failed vm interface loop on vm %s", vmFullName)
+				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return errors.Wrap(err, "failed iterating over all cluster vms")
 	}
 	return nil
 }

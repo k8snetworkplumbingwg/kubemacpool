@@ -17,19 +17,17 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	"kubevirt.io/client-go/kubecli"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -56,39 +54,22 @@ var (
 )
 
 type TestClient struct {
-	VirtClient client.Client
-	KubeClient *kubernetes.Clientset
+	kubevirtClient kubecli.KubevirtClient
 }
 
 func NewTestClient() (*TestClient, error) {
-	trueBoolean := true
-	t := &envtest.Environment{
-		UseExistingCluster: &trueBoolean,
-	}
 
-	var cfg *rest.Config
-	var err error
-
-	if cfg, err = t.Start(); err != nil {
+	err := kubevirtv1.AddToScheme(scheme.Scheme)
+	if err != nil {
 		return nil, err
 	}
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
+	myCfg := kubecli.DefaultClientConfig(&pflag.FlagSet{})
+	newKubevirtClient, err := kubecli.GetKubevirtClientFromClientConfig(myCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	err = kubevirtv1.AddToScheme(scheme.Scheme)
-	if err != nil {
-		return nil, err
-	}
-
-	var c client.Client
-	if c, err = client.New(cfg, client.Options{Scheme: scheme.Scheme}); err != nil {
-		return nil, err
-	}
-
-	return &TestClient{VirtClient: c, KubeClient: kubeClient}, nil
+	return &TestClient{kubevirtClient: newKubevirtClient}, nil
 }
 
 func createTestNamespaces() error {

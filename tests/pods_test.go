@@ -8,11 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const defaultNumberOfReplicas = 1
@@ -33,18 +30,10 @@ var _ = Describe("Pods", func() {
 		AfterEach(func() {
 			// Clean pods from our test namespaces after every test to start clean
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-				podList := &corev1.PodList{}
-				err := testClient.VirtClient.List(context.TODO(), podList, &client.ListOptions{Namespace: namespace})
-				Expect(err).ToNot(HaveOccurred())
-
-				for _, podObject := range podList.Items {
-					err = testClient.VirtClient.Delete(context.TODO(), &podObject)
-					Expect(err).ToNot(HaveOccurred())
-				}
+				err := testClient.kubevirtClient.CoreV1().Pods(namespace).DeleteCollection(context.Background(), k8smetav1.DeleteOptions{}, k8smetav1.ListOptions{})
 
 				Eventually(func() int {
-					podList := &corev1.PodList{}
-					err := testClient.VirtClient.List(context.TODO(), podList, &client.ListOptions{Namespace: namespace})
+					podList, err := testClient.kubevirtClient.CoreV1().Pods(namespace).List(context.Background(), k8smetav1.ListOptions{})
 					Expect(err).ToNot(HaveOccurred())
 					return len(podList.Items)
 
@@ -70,7 +59,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(OtherTestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.kubevirtClient.CoreV1().Pods(OtherTestNamespace).Create(context.TODO(), podObject, k8smetav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -83,7 +72,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.kubevirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, k8smetav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -102,7 +91,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.kubevirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, k8smetav1.CreateOptions{})
 				if err != nil {
 					return false
 				}
@@ -119,7 +108,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.KubeClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.kubevirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, k8smetav1.CreateOptions{})
 				if err != nil {
 					return false
 				}

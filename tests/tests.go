@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	ctx "golang.org/x/net/context"
 	"net"
 	"reflect"
 	"regexp"
@@ -21,7 +22,7 @@ import (
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/util/retry"
@@ -73,16 +74,16 @@ func NewTestClient() (*TestClient, error) {
 }
 
 func createTestNamespaces() error {
-	_, err := testClient.KubeClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}}, metav1.CreateOptions{})
+	_, err := testClient.kubevirtClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: k8smetav1.ObjectMeta{Name: TestNamespace}}, k8smetav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}}, metav1.CreateOptions{})
+	_, err = testClient.kubevirtClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: k8smetav1.ObjectMeta{Name: OtherTestNamespace}}, k8smetav1.CreateOptions{})
 	return err
 }
 
 func deleteTestNamespaces(namespace string) error {
-	return testClient.KubeClient.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
+	return testClient.kubevirtClient.CoreV1().Namespaces().Delete(context.TODO(), namespace, k8smetav1.DeleteOptions{})
 }
 
 func removeTestNamespaces() {
@@ -108,7 +109,7 @@ func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Inte
 
 func createPodObject() *corev1.Pod {
 	podName := "testpod" + rand.String(32)
-	podObject := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName},
+	podObject := corev1.Pod{ObjectMeta: k8smetav1.ObjectMeta{Name: podName},
 		Spec: corev1.PodSpec{TerminationGracePeriodSeconds: &gracePeriodSeconds,
 			Containers: []corev1.Container{{Name: "test",
 				Image:   "centos",
@@ -133,11 +134,7 @@ func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
 }
 
 func getKubemacpoolPods() (*corev1.PodList, error) {
-	filterByApp := client.MatchingLabels{
-		"app": "kubemacpool",
-	}
-	pods := &corev1.PodList{}
-	err := testClient.VirtClient.List(context.TODO(), pods, filterByApp)
+	pods, err := testClient.kubevirtClient.CoreV1().Pods(k8smetav1.NamespaceAll).List(context.TODO(), k8smetav1.ListOptions{LabelSelector: "app=kubemacpool"})
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +177,7 @@ func initKubemacpoolParams() error {
 }
 
 func getMacPoolSize() int64 {
-	configMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
+	configMap, err := testClient.kubevirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", k8smetav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should succeed getting kubemacpool range configmap")
 
 	rangeStart, err := net.ParseMAC(configMap.Data["RANGE_START"])
@@ -207,8 +204,7 @@ func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
 }
 
 func getVmFailCleanupWaitTime() time.Duration {
-	managerDeployment := v1.Deployment{}
-	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MANAGER_DEPLOYMENT}, &managerDeployment)
+	managerDeployment, err := testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Get(ctx.Background(), names.MANAGER_DEPLOYMENT, k8smetav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
 	Expect(managerDeployment.Spec.Template.Spec.Containers).ToNot(BeEmpty(), "Manager's deployment should contain containers")
 
@@ -247,7 +243,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 	By(fmt.Sprintf("updating deployment %s, pod replicas to be %d", managerName, numOfReplica))
 	var indentedDeployment []byte
 	Eventually(func() error {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		managerDeployment, err := testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, k8smetav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -258,7 +254,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 
 		managerDeployment.Spec.Replicas = &numOfReplica
 
-		_, err = testClient.KubeClient.AppsV1().Deployments(managerNamespace).Update(context.TODO(), managerDeployment, metav1.UpdateOptions{})
+		_, err = testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Update(context.TODO(), managerDeployment, k8smetav1.UpdateOptions{})
 		if err != nil {
 			return err
 		}
@@ -268,7 +264,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
 	Eventually(func() bool {
-		managerDeployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		managerDeployment, err := testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, k8smetav1.GetOptions{})
 		if err != nil {
 			return false
 		}
@@ -288,16 +284,16 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 }
 
 func restartPodsFromDeployment(deploymentName string) error {
-	deployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
+	deployment, err := testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, k8smetav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
 
-	podList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+	podList, err := testClient.kubevirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), k8smetav1.ListOptions{LabelSelector: labelSelector})
 
 	By(fmt.Sprintf("Deleting pods from deployment %s with label selector %s", deploymentName, labelSelector))
-	err = testClient.KubeClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labelSelector})
+	err = testClient.kubevirtClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(), k8smetav1.DeleteOptions{}, k8smetav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return err
 	}
@@ -305,7 +301,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 	By(fmt.Sprintf("Checking that all the old pods from deployment %s with label selector %s have being deleted", deploymentName, labelSelector))
 	for _, pod := range podList.Items {
 		Eventually(func() error {
-			_, err = testClient.KubeClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+			_, err = testClient.kubevirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, k8smetav1.GetOptions{})
 			return err
 		}, 2*time.Minute, time.Second).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())), "should have delete the old pods from deployment %s", deploymentName)
 	}
@@ -313,7 +309,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 	deploymentConditionAvailability := func(conditionStatus corev1.ConditionStatus, timeout, interval time.Duration) {
 		By(fmt.Sprintf("Waiting for deployment %s Available condition to be %s", deploymentName, conditionStatus))
 		Eventually(func() bool {
-			deployment, err := testClient.KubeClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, metav1.GetOptions{})
+			deployment, err := testClient.kubevirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), deploymentName, k8smetav1.GetOptions{})
 			if err != nil {
 				return false
 			}
@@ -331,14 +327,14 @@ func restartPodsFromDeployment(deploymentName string) error {
 }
 
 func cleanNamespaceLabels(namespace string) error {
-	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
+	nsObject, err := testClient.kubevirtClient.CoreV1().Namespaces().Get(context.TODO(), namespace, k8smetav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
 	nsObject.Labels = make(map[string]string)
 
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
+	_, err = testClient.kubevirtClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, k8smetav1.UpdateOptions{})
 	return err
 }
 
@@ -346,7 +342,7 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 	if len(labels) == 0 {
 		return nil
 	}
-	nsObject, err := testClient.KubeClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
+	nsObject, err := testClient.kubevirtClient.CoreV1().Namespaces().Get(context.TODO(), namespace, k8smetav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -359,23 +355,23 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 		}
 	}
 
-	_, err = testClient.KubeClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
+	_, err = testClient.kubevirtClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, k8smetav1.UpdateOptions{})
 	return err
 }
 
-func getOptInLabel(webhookName string) metav1.LabelSelectorRequirement {
-	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}}
+func getOptInLabel(webhookName string) k8smetav1.LabelSelectorRequirement {
+	return k8smetav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}}
 }
 
-func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
-	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
+func getOptOutLabel(webhookName string) k8smetav1.LabelSelectorRequirement {
+	return k8smetav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
 }
 
 func createVmWaitConfigMap() error {
 	vmWaitConfigMap := &corev1.ConfigMap{Data: map[string]string{}}
 	vmWaitConfigMap.SetName(names.WAITING_VMS_CONFIGMAP)
 	vmWaitConfigMap.SetNamespace(managerNamespace)
-	_, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Create(context.TODO(), vmWaitConfigMap, metav1.CreateOptions{})
+	_, err := testClient.kubevirtClient.CoreV1().ConfigMaps(managerNamespace).Create(context.TODO(), vmWaitConfigMap, k8smetav1.CreateOptions{})
 	if err != nil {
 		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
 	}
@@ -385,7 +381,7 @@ func createVmWaitConfigMap() error {
 
 func deleteVmWaitConfigMap() error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		return testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
+		return testClient.kubevirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(), names.WAITING_VMS_CONFIGMAP, k8smetav1.DeleteOptions{})
 	})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
@@ -394,7 +390,7 @@ func deleteVmWaitConfigMap() error {
 }
 
 func getVmWaitConfigMap() (*corev1.ConfigMap, error) {
-	vmWaitConfigMap, err := testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	vmWaitConfigMap, err := testClient.kubevirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, k8smetav1.GetOptions{})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
 	}
@@ -414,7 +410,7 @@ func updateVmWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) erro
 			return errors.Wrap(err, "got an error in updating function")
 		}
 
-		_, err = testClient.KubeClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, metav1.UpdateOptions{})
+		_, err = testClient.kubevirtClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, k8smetav1.UpdateOptions{})
 		return err
 	})
 	return err
@@ -442,7 +438,7 @@ func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
 
 // function checks what is the currently configured opt-mode configured in a specific webhook
 func getOptMode(webhookName string) (string, error) {
-	mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
+	mutatingWebhook, err := testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, k8smetav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -468,14 +464,14 @@ func getOptMode(webhookName string) (string, error) {
 func setWebhookOptMode(webhookName, optMode string) error {
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook, err := testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
+		mutatingWebhook, err := testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, k8smetav1.GetOptions{})
 		if err != nil {
 			return err
 		}
 
 		for webhookIdx, webhook := range mutatingWebhook.Webhooks {
 			if webhook.Name == webhookName {
-				var expressions []metav1.LabelSelectorRequirement
+				var expressions []k8smetav1.LabelSelectorRequirement
 				for _, matchExpression := range webhook.NamespaceSelector.MatchExpressions {
 					if matchExpression.Key != webhookName {
 						expressions = append(expressions, matchExpression)
@@ -492,7 +488,7 @@ func setWebhookOptMode(webhookName, optMode string) error {
 				}
 
 				mutatingWebhook.Webhooks[webhookIdx].NamespaceSelector.MatchExpressions = expressions
-				_, err = testClient.KubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
+				_, err = testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, k8smetav1.UpdateOptions{})
 
 				return err
 			}

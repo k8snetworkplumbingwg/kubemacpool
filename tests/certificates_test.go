@@ -2,14 +2,13 @@ package tests
 
 import (
 	"context"
-	"k8s.io/api/admissionregistration/v1beta1"
-	"k8s.io/client-go/util/retry"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	v1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	//apierrors "k8s.io/apimachinery/pkg/api/errors"
+	k8smetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -17,12 +16,13 @@ import (
 var _ = Describe("kube-admission library", func() {
 	Context("Check objects recovery", func() {
 		var (
-			oldSecret   v1.Secret
+			oldSecret   *v1.Secret
 			oldCABundle []byte
+			err         error
 		)
 		BeforeEach(func() {
 			By("getting the secret prior to any certification change ")
-			err := GetCurrentSecret(&oldSecret)
+			oldSecret, err = GetCurrentSecret()
 			Expect(err).ToNot(HaveOccurred(), "Should successfully get pre test secret")
 
 			By("getting the caBundle prior to any certification change ")
@@ -33,7 +33,7 @@ var _ = Describe("kube-admission library", func() {
 			By("deleting the webhook service secret")
 			deleteServiceSecret()
 
-			checkCertLibraryRecovery(oldCABundle, &oldSecret)
+			checkCertLibraryRecovery(oldCABundle, oldSecret)
 		})
 
 		It("should be able to recover from mutatingWebhookConfiguration caBundle deletion", func() {
@@ -41,31 +41,26 @@ var _ = Describe("kube-admission library", func() {
 			By("deleting the mutatingWebhookConfiguration caBundle")
 			deleteServiceCaBundle()
 
-			checkCertLibraryRecovery(oldCABundle, &oldSecret)
+			checkCertLibraryRecovery(oldCABundle, oldSecret)
 		})
 	})
 })
 
 func deleteServiceSecret() {
-	secret := v1.Secret{}
-	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.WEBHOOK_SERVICE}, &secret)
-	Expect(err).ToNot(HaveOccurred(), "Should successfully get kubemacpool secret")
-
-	err = testClient.VirtClient.Delete(context.TODO(), &secret)
+	err := testClient.kubevirtClient.CoreV1().Secrets(managerNamespace).Delete(context.Background(), names.WEBHOOK_SERVICE, k8smetav1.DeleteOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully delete the new secret")
 }
 
 func deleteServiceCaBundle() {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+		mutatingWebhook, err := testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.Background(), names.MUTATE_WEBHOOK_CONFIG, k8smetav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
 		for i, _ := range mutatingWebhook.Webhooks {
 			mutatingWebhook.Webhooks[i].ClientConfig.CABundle = make([]byte, 0)
 		}
 
-		err = testClient.VirtClient.Update(context.TODO(), &mutatingWebhook)
+		_, err = testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.Background(), mutatingWebhook, k8smetav1.UpdateOptions{})
 		return err
 	})
 
@@ -80,13 +75,12 @@ func checkCertLibraryRecovery(oldCABundle []byte, oldSecret *v1.Secret) {
 	checkCaBundleRecovery(oldCABundle)
 }
 
-func GetCurrentSecret(secret *v1.Secret) error {
-	return testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.WEBHOOK_SERVICE}, secret)
+func GetCurrentSecret() (*v1.Secret, error) {
+	return testClient.kubevirtClient.CoreV1().Secrets(managerNamespace).Get(context.Background(), names.WEBHOOK_SERVICE, k8smetav1.GetOptions{})
 }
 
 func GetCurrentCABundle() (caBundle []byte) {
-	mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+	mutatingWebhook, err := testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.Background(), names.MUTATE_WEBHOOK_CONFIG, k8smetav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
 	//get the first one
@@ -95,9 +89,8 @@ func GetCurrentCABundle() (caBundle []byte) {
 
 func checkSecretRecovery(oldSecret *v1.Secret) {
 	Eventually(func() (map[string][]byte, error) {
-		secret := v1.Secret{}
 		By("Getting the new secret if exists")
-		err := GetCurrentSecret(&secret)
+		secret, err := GetCurrentSecret()
 		if err != nil {
 			return nil, err
 		}
@@ -109,8 +102,7 @@ func checkSecretRecovery(oldSecret *v1.Secret) {
 func checkCaBundleRecovery(oldCABundle []byte) {
 	Eventually(func() ([][]byte, error) {
 		By("Getting the MutatingWebhookConfiguration")
-		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
-		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
+		mutatingWebhook, err := testClient.kubevirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.Background(), names.MUTATE_WEBHOOK_CONFIG, k8smetav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}

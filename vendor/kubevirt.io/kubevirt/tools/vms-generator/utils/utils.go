@@ -107,7 +107,7 @@ func getBaseVMISpec() *v1.VirtualMachineInstanceSpec {
 		Domain: v1.DomainSpec{
 			Resources: v1.ResourceRequirements{
 				Requests: k8sv1.ResourceList{
-					k8sv1.ResourceMemory: resource.MustParse("64M"),
+					k8sv1.ResourceMemory: resource.MustParse("128Mi"),
 				},
 			},
 		},
@@ -819,6 +819,9 @@ func toUnstructured(object runtime.Object) *unstructured.Unstructured {
 	}
 	var objmap map[string]interface{}
 	err = json.Unmarshal(raw, &objmap)
+	if err != nil {
+		panic(err)
+	}
 
 	return &unstructured.Unstructured{Object: objmap}
 }
@@ -968,7 +971,7 @@ func GetVMIPresetSmall() *v1.VirtualMachineInstancePreset {
 	vmPreset.Spec.Domain = &v1.DomainSpec{
 		Resources: v1.ResourceRequirements{
 			Requests: k8sv1.ResourceList{
-				k8sv1.ResourceMemory: resource.MustParse("64M"),
+				k8sv1.ResourceMemory: resource.MustParse("128Mi"),
 			},
 		},
 	}

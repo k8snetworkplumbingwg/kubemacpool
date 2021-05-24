@@ -93,6 +93,9 @@ spec:
           - name: CERT_ROTATE_INTERVAL
             value: "4380h0m0s" # Half Year
         resources:
+          limits:
+            cpu: 300m
+            memory: 600Mi
           requests:
             cpu: 100m
             memory: 300Mi

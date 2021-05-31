@@ -19,7 +19,7 @@ require (
 	kubevirt.io/kubevirt v0.37.1
 	kubevirt.io/qe-tools v0.1.6
 	sigs.k8s.io/controller-runtime v0.8.2
-	sigs.k8s.io/controller-tools v0.4.0
+	sigs.k8s.io/controller-tools v0.5.0
 	sigs.k8s.io/kustomize/kustomize/v3 v3.3.0
 )
 

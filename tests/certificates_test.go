@@ -2,14 +2,14 @@ package tests
 
 import (
 	"context"
-	"k8s.io/api/admissionregistration/v1beta1"
-	"k8s.io/client-go/util/retry"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"k8s.io/client-go/util/retry"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	//apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -57,7 +57,7 @@ func deleteServiceSecret() {
 
 func deleteServiceCaBundle() {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
+		mutatingWebhook := admissionregistrationv1.MutatingWebhookConfiguration{}
 		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
@@ -85,7 +85,7 @@ func GetCurrentSecret(secret *v1.Secret) error {
 }
 
 func GetCurrentCABundle() (caBundle []byte) {
-	mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
+	mutatingWebhook := admissionregistrationv1.MutatingWebhookConfiguration{}
 	err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
@@ -109,7 +109,7 @@ func checkSecretRecovery(oldSecret *v1.Secret) {
 func checkCaBundleRecovery(oldCABundle []byte) {
 	Eventually(func() ([][]byte, error) {
 		By("Getting the MutatingWebhookConfiguration")
-		mutatingWebhook := v1beta1.MutatingWebhookConfiguration{}
+		mutatingWebhook := admissionregistrationv1.MutatingWebhookConfiguration{}
 		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: managerNamespace, Name: names.MUTATE_WEBHOOK_CONFIG}, &mutatingWebhook)
 		if err != nil {
 			return nil, err

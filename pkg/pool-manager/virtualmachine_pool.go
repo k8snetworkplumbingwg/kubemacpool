@@ -103,7 +103,8 @@ func (p *PoolManager) ReleaseAllVirtualMachineMacs(vm *kubevirt.VirtualMachine, 
 		delete(p.macPoolMap, macAddress)
 	}
 
-	logger.Info("released macs in virtual machine", "macmap", p.macPoolMap)
+	logger.Info("released macs in virtual machine", "vmMacMap", vmMacMap)
+	logger.V(1).Info("macmap after release", "macmap", p.macPoolMap)
 
 	return nil
 }
@@ -176,7 +177,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, releaseOldAllocations)
 
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = getVirtualMachineInterfaces(copyVM)
-	logger.Info("data after update", "macmap", p.macPoolMap, "updated interfaces", getVirtualMachineInterfaces(virtualMachine))
+	logger.V(1).Info("data after update", "macmap", p.macPoolMap, "updated interfaces", getVirtualMachineInterfaces(virtualMachine))
 	return nil
 }
 
@@ -414,7 +415,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 		p.commitChangesToMacPoolMap(vmMacMap, vm, logger)
 	}
 
-	logger.Info("marked virtual machine as ready", "macPoolMap", p.macPoolMap)
+	logger.V(1).Info("marked virtual machine as ready", "macPoolMap", p.macPoolMap)
 	return nil
 }
 
@@ -473,7 +474,7 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), getVirtualMachineInterfaces(vm))
 	}
 
-	logger.Info("macMap is updated", "macPoolMap", p.macPoolMap)
+	logger.V(1).Info("macMap is updated", "macPoolMap", p.macPoolMap)
 	return nil
 }
 

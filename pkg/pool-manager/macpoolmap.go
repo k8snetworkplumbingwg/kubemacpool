@@ -77,7 +77,7 @@ func (m *macMap) updateMacTransactionTimestampForUpdatedMacs(instanceFullName st
 
 func (m *macMap) filterMacsThatRequireCommit(latestPersistedTransactionTimeStamp *time.Time, parentLogger logr.Logger) error {
 	filteredMap := macMap{}
-	parentLogger.V(1).Info("checking macMap Alignment", "macMAp", *m, "latestPersistedTransactionTimeStamp", latestPersistedTransactionTimeStamp)
+	parentLogger.V(1).Info("checking macMap Alignment", "macMap", *m, "latestPersistedTransactionTimeStamp", latestPersistedTransactionTimeStamp)
 	for macAddress, macEntry := range *m {
 		if macEntry.hasPendingTransaction() {
 			parentLogger.V(1).Info("macAddress params:", "interfaceName", macEntry.macInstanceKey, "transactionTimeStamp", macEntry.transactionTimestamp)
@@ -95,14 +95,16 @@ func (m *macMap) filterMacsThatRequireCommit(latestPersistedTransactionTimeStamp
 
 // alignMacEntryAccordingToVmInterface compares the mac entry with the current vm yaml interface and aligns itself to it
 func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullName string, vmInterfaces []kubevirt.Interface) {
+	logger := log.WithName("alignMacEntryAccordingToVmInterface")
 	macEntry, _ := m.findByMacAddress(macAddress)
 	for _, iface := range vmInterfaces {
 		if iface.MacAddress == macAddress {
 			if iface.Name == macEntry.macInstanceKey {
-				log.V(1).Info("alignMacEntryAccordingToVmInterface marked mac as allocated", "macAddress", macAddress)
+				logger.Info("marked mac as allocated", "macAddress", macAddress)
 				m.clearMacTransactionFromMacEntry(macAddress)
 				return
 			} else if macEntry.isDummyEntry() {
+				logger.Info("Dummy entry released a mac from macMap", "macAddress", macAddress)
 				m.removeMacEntry(macAddress)
 				m.createOrUpdateEntry(macAddress, instanceFullName, iface.Name)
 			}
@@ -110,6 +112,6 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 	}
 
 	// if not match found, then it means that the mac was removed. also remove from macPoolMap
-	log.V(1).Info("alignMacEntryAccordingToVmInterface released a mac from macMap", "macAddress", macAddress)
+	logger.Info("released a mac from macMap", "macAddress", macAddress)
 	m.removeMacEntry(macAddress)
 }

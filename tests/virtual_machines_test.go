@@ -853,26 +853,29 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).To(HaveOccurred(), "Should fail to allocate vm because there are no free mac addresses")
 				})
 			})
-			Context("and testing finalizers", func() {
-				Context("When the VM is not being deleted", func() {
-					It("should have a finalizer and deletion timestamp should be zero ", func() {
-						vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
+			Context("and testing finalizers removal", func() {
+				Context("When VM with legacy finalizer is being deleted", func() {
+					var vm *kubevirtv1.VirtualMachine
+					BeforeEach(func() {
+						vm = CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")},
 							[]kubevirtv1.Network{newNetwork("br")})
 						err := testClient.VirtClient.Create(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred())
+						By("checking the original created vm does not have a finalizer")
+						Expect(vm.GetFinalizers()).ToNot(ContainElements(pool_manager.RuntimeObjectFinalizerName), "vm should have a finalizer")
+						By("adding a finalizer to the vm")
+						Expect(addFinalizer(vm, pool_manager.RuntimeObjectFinalizerName)).To(Succeed(), "Should succeed adding the legacy finalizer to the vm")
+						testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
+						Expect(vm.GetFinalizers()).To(ContainElements(pool_manager.RuntimeObjectFinalizerName), "vm should have a finalizer")
+					})
+					It("should allow vm removal", func() {
+						By("deleting the vm")
+						err := testClient.VirtClient.Delete(context.TODO(), vm)
+						Expect(err).ToNot(HaveOccurred())
 
-						Eventually(func() bool {
-							err = testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, vm)
-							Expect(err).ToNot(HaveOccurred())
-							if !pool_manager.IsVirtualMachineDeletionInProgress(vm) {
-								if len(vm.ObjectMeta.Finalizers) == 1 {
-									if strings.Compare(vm.ObjectMeta.Finalizers[0], pool_manager.RuntimeObjectFinalizerName) == 0 {
-										return true
-									}
-								}
-							}
-							return false
-						}, timeout, pollingInterval).Should(BeTrue())
+						Eventually(func() error {
+							return testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, &kubevirtv1.VirtualMachine{})
+						}, timeout, pollingInterval).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())), "should remove the finalizer and delete the vm")
 					})
 				})
 			})

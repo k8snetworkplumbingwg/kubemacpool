@@ -91,17 +91,21 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 
 	instance := &kubevirt.VirtualMachine{}
 	err := r.Get(ctx, request.NamespacedName, instance)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			logger.V(1).Info("vm not found. aborting reconcile")
-			return reconcile.Result{}, nil
+	vmNotFound := apierrors.IsNotFound(err)
+	if vmNotFound {
+		logger.V(1).Info("vm not found. Assuming vm is deleted")
+		err := r.poolManager.ReleaseAllVirtualMachineMacs(pool_manager.VmNamespacedFromRequest(&request), logger)
+		if err != nil {
+			return reconcile.Result{}, errors.Wrap(err, "failed to release vm macs")
 		}
+		return reconcile.Result{}, nil
+	} else if err != nil {
 		// Error reading the object - requeue the request.
 		return reconcile.Result{}, errors.Wrap(err, "Failed to read the request object")
 	}
 
 	if !pool_manager.IsVirtualMachineDeletionInProgress(instance) {
-		vmShouldBeManaged, err := r.poolManager.IsVirtualMachineManaged(instance.GetNamespace())
+		vmShouldBeManaged, err := r.poolManager.IsVirtualMachineManaged(request.Namespace)
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to check if vm is managed")
 		}
@@ -128,7 +132,7 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 	} else {
 		// The object is being deleted
 		logger.V(1).Info("The VM is being marked for deletion")
-		err = r.removeFinalizerAndReleaseMac(ctx, &request, logger)
+		err = r.freeVmFromMacPool(ctx, &request, logger)
 
 		if err != nil {
 			return reconcile.Result{}, errors.Wrap(err, "Failed to reconcile kubemacpool after virtual machine's deletion event")
@@ -138,46 +142,54 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 	return reconcile.Result{}, err
 }
 
-func (r *ReconcilePolicy) removeFinalizerAndReleaseMac(ctx context.Context, request *reconcile.Request, parentLogger logr.Logger) error {
-	logger := parentLogger.WithName("removeFinalizerAndReleaseMac")
+func (r *ReconcilePolicy) freeVmFromMacPool(ctx context.Context, request *reconcile.Request, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("freeVmFromMacPool")
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		virtualMachine := &kubevirt.VirtualMachine{}
-		err := r.Get(ctx, request.NamespacedName, virtualMachine)
-		if err != nil {
-			if isVmDeletionAlreadyPersistedByFormerUpdates(err, logger) {
-				return nil
-			}
-			// Error reading the object - requeue the request.
-			return errors.Wrap(err, "Failed to refresh the vm object")
-		}
-
-		if !helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
-			return nil
-		}
-
-		// our finalizer is present, so lets handle our external dependency
-		logger.Info("The VM contains the finalizer. Releasing mac")
-		err = r.poolManager.ReleaseAllVirtualMachineMacs(virtualMachine, parentLogger)
-		if err != nil {
-			return errors.Wrap(err, "failed to release mac")
-		}
-
-		// remove our finalizer from the list and update it.
-		virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
-		logger.V(1).Info("Removed the finalizer from the VM instance")
-
-		err = r.Update(ctx, virtualMachine)
-
-		return err
-	})
-
+	err := r.poolManager.ReleaseAllVirtualMachineMacs(pool_manager.VmNamespacedFromRequest(request), parentLogger)
 	if err != nil {
-		return errors.Wrap(err, "Failed to updated VM instance with finalizer removal")
+		return errors.Wrap(err, "failed to release vm macs")
 	}
 
-	logger.Info("Successfully updated VM instance with finalizer removal")
+	virtualMachine := &kubevirt.VirtualMachine{}
+	err = r.Get(ctx, request.NamespacedName, virtualMachine)
+	if err != nil {
+		if isVmDeletionAlreadyPersistedByFormerUpdates(err, logger) {
+			return nil
+		}
+		// Error reading the object - requeue the request.
+		return errors.Wrap(err, "Failed to refresh the vm object")
+	}
 
+	err = r.removeLegacyFinalizerIfPresent(ctx, virtualMachine, parentLogger)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove the finalizer")
+	}
+
+	return nil
+}
+
+// the finalizer is no longer used by kubemacpool, but may exist if the vm was created with old kubemacpool version
+// removeLegacyFinalizerIfPresent removes the finalizer if exists to allow the vm to be deleted.
+func (r *ReconcilePolicy) removeLegacyFinalizerIfPresent(ctx context.Context, virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("removeLegacyFinalizerIfPresent")
+	if helper.ContainsString(virtualMachine.GetFinalizers(), pool_manager.RuntimeObjectFinalizerName) {
+		err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			// our finalizer is present, so lets handle our external dependency
+			logger.Info("The VM contains the finalizer")
+			// remove our finalizer from the list and update it.
+			virtualMachine.ObjectMeta.Finalizers = helper.RemoveString(virtualMachine.GetFinalizers(), pool_manager.RuntimeObjectFinalizerName)
+
+			return r.Update(ctx, virtualMachine)
+		})
+
+		if err != nil {
+			return errors.Wrap(err, "Failed to updated VM instance with finalizer removal")
+		}
+
+		logger.Info("Successfully updated VM instance with finalizer removal")
+	} else {
+		logger.V(1).Info("legacy finalizer does not exist on VM instance")
+	}
 	return nil
 }
 

@@ -11,17 +11,17 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/rand"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -521,6 +521,26 @@ func setWebhookOptMode(webhookName, optMode string) error {
 
 	if err != nil {
 		return errors.Wrap(err, "failed to perform Retry on Conflict to set opt mode")
+	}
+	return nil
+}
+
+func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName string) error {
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		err := testClient.VirtClient.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, virtualMachine)
+		if err != nil {
+			return err
+		}
+		finalizersList := virtualMachine.GetFinalizers()
+		if helper.ContainsString(finalizersList, finalizerName) {
+			return nil
+		}
+		virtualMachine.ObjectMeta.Finalizers = append(finalizersList, finalizerName)
+		return testClient.VirtClient.Update(context.TODO(), virtualMachine)
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "failed to apply finalizer to vm")
 	}
 	return nil
 }

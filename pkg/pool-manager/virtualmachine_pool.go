@@ -27,7 +27,9 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubevirt "kubevirt.io/client-go/api/v1"
 )
@@ -87,13 +89,12 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	return nil
 }
 
-func (p *PoolManager) ReleaseAllVirtualMachineMacs(vm *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+func (p *PoolManager) ReleaseAllVirtualMachineMacs(vmFullName string, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("ReleaseAllVirtualMachineMacs")
 
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger.V(1).Info("data", "macmap", p.macPoolMap)
-	vmFullName := VmNamespaced(vm)
 	vmMacMap, err := p.macPoolMap.filterInByInstanceName(vmFullName)
 	if err != nil {
 		return errors.Wrapf(err, "Failed to get VmMacMap for vm %s", vmFullName)
@@ -545,6 +546,14 @@ func (p *PoolManager) IsVirtualMachineManaged(namespaceName string) (bool, error
 
 func VmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("vm/%s/%s", machine.Namespace, machine.Name)
+}
+
+func VmNamespacedFromRequest(request *reconcile.Request) string {
+	vm := &kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{
+		Name:      request.Name,
+		Namespace: request.Namespace,
+	}}
+	return VmNamespaced(vm)
 }
 
 func IsVirtualMachineDeletionInProgress(vm *kubevirt.VirtualMachine) bool {

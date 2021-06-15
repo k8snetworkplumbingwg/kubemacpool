@@ -25,7 +25,6 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
@@ -116,12 +115,6 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 			}
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, interfacePatches...)
 		}
-
-		finalizerPatches, err := patchChange("/metadata/finalizers", originalVirtualMachine.ObjectMeta.Finalizers, currentVirtualMachine.ObjectMeta.Finalizers)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, finalizerPatches...)
 	}
 
 	logger.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
@@ -175,7 +168,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *
 					return errors.Wrap(err, "Failed to allocate mac to the vm object")
 				}
 
-				return addFinalizer(virtualMachine, logger)
+				return nil
 			}
 		}
 
@@ -264,18 +257,5 @@ func (a *virtualMachineAnnotator) InjectClient(c client.Client) error {
 // InjectDecoder injects the decoder.
 func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
 	a.decoder = d
-	return nil
-}
-
-func addFinalizer(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
-	logger := parentLogger.WithName("addFinalizer")
-
-	if helper.ContainsString(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName) {
-		return nil
-	}
-
-	virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, pool_manager.RuntimeObjectFinalizerName)
-	logger.Info("Finalizer was added to the VM instance")
-
 	return nil
 }

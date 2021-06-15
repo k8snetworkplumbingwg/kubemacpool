@@ -375,7 +375,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01"}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
-				err = poolManager.ReleaseAllVirtualMachineMacs(&newVM, logger)
+				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(&newVM), logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "Should keep the pod mac in the macMap")
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
@@ -394,7 +394,7 @@ var _ = Describe("Pool", func() {
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 
-				err = poolManager.ReleaseAllVirtualMachineMacs(newVM, logf.Log.WithName("VirtualMachine Controller"))
+				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(newVM), logf.Log.WithName("VirtualMachine Controller"))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "Should keep the pod mac in the macMap")
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")

@@ -117,6 +117,7 @@ func runCertManager() {
 		CAOverlapInterval:   caOverlapInterval,
 		CertRotateInterval:  certRotateInterval,
 		CertOverlapInterval: certOverlapInterval,
+		ExtraLabels:         names.IncludeRelationshipLabels(nil),
 	}
 
 	certManager, err := certificate.NewManager(mgr.GetClient(), certOptions)

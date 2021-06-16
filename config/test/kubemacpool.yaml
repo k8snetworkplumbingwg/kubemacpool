@@ -274,6 +274,7 @@ spec:
         image: registry:5000/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager
+      priorityClassName: system-cluster-critical
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
 ---
@@ -366,6 +367,7 @@ spec:
         - mountPath: /tmp/k8s-webhook-server/serving-certs/
           name: tls-key-pair
           readOnly: true
+      priorityClassName: system-cluster-critical
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
       volumes:

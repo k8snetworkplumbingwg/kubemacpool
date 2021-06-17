@@ -110,6 +110,7 @@ spec:
           - name: tls-key-pair
             readOnly: true
             mountPath: /tmp/k8s-webhook-server/serving-certs/
+      priorityClassName: system-cluster-critical
       terminationGracePeriodSeconds: 5
       volumes:
         - name: tls-key-pair
@@ -183,6 +184,7 @@ spec:
             value: "4380h0m0s" # Half Year
           - name: CERT_OVERLAP_INTERVAL
             value: "24h0m0s" # One day
+      priorityClassName: system-cluster-critical
       terminationGracePeriodSeconds: 5
 ---
 apiVersion: v1

@@ -91,7 +91,7 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 300Mi
+            memory: 100Mi
         ports:
         - containerPort: 8000
           name: webhook-server

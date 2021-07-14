@@ -91,7 +91,7 @@ spec:
         resources:
           requests:
             cpu: 100m
-            memory: 300Mi
+            memory: 100Mi
         ports:
         - containerPort: 8000
           name: webhook-server
@@ -149,6 +149,10 @@ spec:
         image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager
+        resources:
+          requests:
+            cpu: "30m"
+            memory: "30Mi"
         env:
           - name: RUN_CERT_MANAGER
             value: ""

@@ -355,7 +355,7 @@ var _ = Describe("Pool", func() {
 			newVM.Name = "newVM"
 
 			transactionTimestamp := updateTransactionTimestamp(0)
-			err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, logger)
+			err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, true, logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate mac for unsupported bridge binding")
 		})
@@ -368,7 +368,7 @@ var _ = Describe("Pool", func() {
 				newVM := masqueradeVM
 				newVM.Name = "newVM"
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(poolManager.macPoolMap).To(HaveLen(2))
@@ -385,7 +385,7 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(poolManager.macPoolMap).To(HaveLen(3))
@@ -412,14 +412,14 @@ var _ = Describe("Pool", func() {
 
 				addDiskIO(newVM, "native-new")
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-new")), "disk.io configuration must be preserved after mac allocation")
 
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
 				addDiskIO(updateVm, "native-update")
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &transactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
 			})
@@ -428,7 +428,7 @@ var _ = Describe("Pool", func() {
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -438,7 +438,7 @@ var _ = Describe("Pool", func() {
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
 				newTransactionTimestamp := updateTransactionTimestamp(1)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -450,7 +450,7 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -462,7 +462,7 @@ var _ = Describe("Pool", func() {
 				By("changing one of the macs")
 				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress = "01:00:00:00:00:02"
 				newTransactionTimestamp := updateTransactionTimestamp(1)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("01:00:00:00:00:02"))
@@ -474,7 +474,7 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -486,7 +486,7 @@ var _ = Describe("Pool", func() {
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
 				updatedVM.Spec.Template.Spec.Networks = append(updatedVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -501,7 +501,7 @@ var _ = Describe("Pool", func() {
 				newVM.Spec.Template.Spec.Networks = append(newVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
 
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -513,7 +513,7 @@ var _ = Describe("Pool", func() {
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress = newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -525,7 +525,7 @@ var _ = Describe("Pool", func() {
 				newVM.Name = "newVM"
 
 				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -538,7 +538,7 @@ var _ = Describe("Pool", func() {
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
 				updatedVM.Spec.Template.Spec.Networks = append(updatedVM.Spec.Template.Spec.Networks, anotherMultusNetwork)
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, logger)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
@@ -568,7 +568,7 @@ var _ = Describe("Pool", func() {
 				vm = masqueradeVM.DeepCopy()
 				vm.Name = "testVm"
 
-				err := poolManager.AllocateVirtualMachineMac(vm, &vmCreationTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(vm, &vmCreationTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				allocatedMac = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				macEntry, exist := poolManager.macPoolMap[allocatedMac]
@@ -592,7 +592,7 @@ var _ = Describe("Pool", func() {
 					vmFirstUpdate.Spec.Template.Spec.Domain.Devices.Interfaces = vmFirstUpdate.Spec.Template.Spec.Domain.Devices.Interfaces[:0]
 
 					By("updating the vm, removing the interface")
-					err := poolManager.UpdateMacAddressesForVirtualMachine(vm, vmFirstUpdate, &vmFirstUpdateTimestamp, logger)
+					err := poolManager.UpdateMacAddressesForVirtualMachine(vm, vmFirstUpdate, &vmFirstUpdateTimestamp, true, logger)
 					Expect(err).ToNot(HaveOccurred(), "should update vm with no error")
 					macEntry, exist := poolManager.macPoolMap[allocatedMac]
 					Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap after first update")
@@ -615,7 +615,7 @@ var _ = Describe("Pool", func() {
 						By("updating the vm, re-adding the interface")
 						vmSecondUpdate = vm.DeepCopy()
 						By("updating the vm, removing the interface")
-						err := poolManager.UpdateMacAddressesForVirtualMachine(vmFirstUpdate, vmSecondUpdate, &vmSecondUpdateTimestamp, logger)
+						err := poolManager.UpdateMacAddressesForVirtualMachine(vmFirstUpdate, vmSecondUpdate, &vmSecondUpdateTimestamp, true, logger)
 						Expect(err).ToNot(HaveOccurred(), "should update vm with no error")
 						macEntry, exist := poolManager.macPoolMap[allocatedMac]
 						Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap after first update")
@@ -684,7 +684,7 @@ var _ = Describe("Pool", func() {
 
 				By("Create a VM")
 				transactionTimestamp = updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, logger)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred(), "should successfully  allocated macs")
 
 				allocatedMac = newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress

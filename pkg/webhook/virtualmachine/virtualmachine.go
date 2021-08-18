@@ -75,19 +75,18 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 
 	logger.V(1).Info("got a virtual machine event")
 
-	if req.DryRun == nil || *req.DryRun == false {
-		if req.AdmissionRequest.Operation == admissionv1.Create {
-			err = a.mutateCreateVirtualMachinesFn(virtualMachine, logger)
-			if err != nil {
-				return admission.Errored(http.StatusInternalServerError,
-					fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
-			}
-		} else if req.AdmissionRequest.Operation == admissionv1.Update {
-			err = a.mutateUpdateVirtualMachinesFn(virtualMachine, logger)
-			if err != nil {
-				return admission.Errored(http.StatusInternalServerError,
-					fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
-			}
+	isNotDryRun := (req.DryRun == nil || *req.DryRun == false)
+	if req.AdmissionRequest.Operation == admissionv1.Create {
+		err = a.mutateCreateVirtualMachinesFn(virtualMachine, isNotDryRun, logger)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError,
+				fmt.Errorf("Failed to create virtual machine allocation error: %v", err))
+		}
+	} else if req.AdmissionRequest.Operation == admissionv1.Update {
+		err = a.mutateUpdateVirtualMachinesFn(virtualMachine, isNotDryRun, logger)
+		if err != nil {
+			return admission.Errored(http.StatusInternalServerError,
+				fmt.Errorf("Failed to update virtual machine allocation error: %v", err))
 		}
 	}
 
@@ -150,7 +149,7 @@ func patchChange(pathChange string, original, current interface{}) ([]jsonpatch.
 }
 
 // mutateCreateVirtualMachinesFn calls the create allocation function
-func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, isNotDryRun bool, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateCreateVirtualMachinesFn")
 	logger.Info("got a create mutate virtual machine event")
 	transactionTimestamp := pool_manager.CreateTransactionTimestamp()
@@ -163,7 +162,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *
 		if apierrors.IsNotFound(err) {
 			if !pool_manager.IsVirtualMachineDeletionInProgress(virtualMachine) {
 				// If the object is not being deleted, then lets allocate macs and add the finalizer
-				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, &transactionTimestamp, logger)
+				err = a.poolManager.AllocateVirtualMachineMac(virtualMachine, &transactionTimestamp, isNotDryRun, logger)
 				if err != nil {
 					return errors.Wrap(err, "Failed to allocate mac to the vm object")
 				}
@@ -182,7 +181,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *
 }
 
 // mutateUpdateVirtualMachinesFn calls the update allocation function
-func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, parentLogger logr.Logger) error {
+func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, isNotDryRun bool, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
 	logger.Info("got an update mutate virtual machine event")
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
@@ -199,7 +198,7 @@ func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *
 		pool_manager.SetTransactionTimestampAnnotationToVm(virtualMachine, transactionTimestamp)
 
 		if isVirtualMachineInterfacesChanged(previousVirtualMachine, virtualMachine) {
-			return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, &transactionTimestamp, logger)
+			return a.poolManager.UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine, &transactionTimestamp, isNotDryRun, logger)
 		}
 	}
 

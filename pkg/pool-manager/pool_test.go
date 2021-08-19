@@ -706,6 +706,26 @@ var _ = Describe("Pool", func() {
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
 				Expect(poolManager.macPoolMap[allocatedMac]).To(Equal(expectedMacEntry), "macPoolMap's mac's entry should be as expected")
 			})
+			Context("and creating a dry run VM", func() {
+				var macPoolMapCopy macMap
+				BeforeEach(func() {
+					macPoolMapCopy = macMap{}
+					for key, value := range poolManager.macPoolMap {
+						macPoolMapCopy[key] = value
+					}
+
+					newVMDryRun := masqueradeVM.DeepCopy()
+					newVMDryRun.Name = "newVMDryRun"
+
+					By("Create a dry run VM")
+					transactionTimestamp = updateTransactionTimestamp(0)
+					err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, false, logger)
+					Expect(err).ToNot(HaveOccurred(), "should successfully create dry run VM")
+				})
+				It("should not storage the dry run mac in the mac pool", func() {
+					Expect(poolManager.macPoolMap).To(Equal(macPoolMapCopy), "macPoolMap should left unchanged")
+				})
+			})
 			Context("and VM is marked as ready by controller reconcile", func() {
 				var lastPersistedtransactionTimstamp *time.Time
 				BeforeEach(func() {

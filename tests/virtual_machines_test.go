@@ -100,6 +100,33 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}
 			})
 
+			Context("and applying a dryRun vm create request", func() {
+				var macAddress string
+				BeforeEach(func() {
+					By("Creating a vm with dry run mode")
+					vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
+					createOptions := &client.CreateOptions{}
+					client.DryRunAll.ApplyToCreate(createOptions)
+
+					err := testClient.VirtClient.Create(context.TODO(), vm, createOptions)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+				})
+
+				It("should not allocate the Mac assigned in the dryRun request into the pool", func() {
+					By("creating a vm with the same mac to make sure the dryRun assigned mac is not occupied on the macpool")
+					vmDryRunOverlap := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("brDryRunOverlap", macAddress)}, []kubevirtv1.Network{newNetwork("brDryRunOverlap")})
+					err := testClient.VirtClient.Create(context.TODO(), vmDryRunOverlap)
+					Expect(err).ToNot(HaveOccurred())
+
+					actualMac, err := net.ParseMAC(vmDryRunOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vmDryRunOverlap mac")
+
+					Expect(actualMac.String()).To(Equal(macAddress), "Should successfully parse mac address")
+				})
+			})
+
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
 					It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {

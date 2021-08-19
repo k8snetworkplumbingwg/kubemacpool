@@ -60,7 +60,7 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		pod.Annotations = map[string]string{}
 	}
 
-	if req.DryRun != nil && *req.DryRun != true {
+	if req.DryRun == nil || *req.DryRun == false {
 		transactionTimestamp := pool_manager.CreateTransactionTimestamp()
 		log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
 

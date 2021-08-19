@@ -116,7 +116,7 @@ func removeTestNamespaces() {
 
 func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
 	vm := kubevirtutils.GetVMCirros()
-	vm.Name = "testvm" + rand.String(32)
+	vm.Name = randName("testvm")
 	vm.Namespace = namespace
 	vm.Spec.Running = &running
 	vm.Spec.Template.Spec.Domain.Devices.Interfaces = interfaces
@@ -126,7 +126,7 @@ func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Inte
 }
 
 func createPodObject() *corev1.Pod {
-	podName := "testpod" + rand.String(32)
+	podName := randName("testpod")
 	podObject := corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: podName},
 		Spec: corev1.PodSpec{TerminationGracePeriodSeconds: &gracePeriodSeconds,
 			Containers: []corev1.Container{{Name: "test",
@@ -134,6 +134,10 @@ func createPodObject() *corev1.Pod {
 				Command: []string{"/bin/bash", "-c", "sleep INF"}}}}}
 
 	return &podObject
+}
+
+func randName(name string) string {
+	return name + "-" + rand.String(5)
 }
 
 func addNetworksToPod(pod *corev1.Pod, networks []map[string]string) {

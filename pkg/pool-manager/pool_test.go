@@ -778,7 +778,7 @@ var _ = Describe("Pool", func() {
 			newPod.Name = "newPod"
 			newPod.Annotations = beforeAllocationAnnotation
 
-			err := poolManager.AllocatePodMac(&newPod)
+			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
 			preAllocatedPodMac := "02:00:00:00:00:00"
 			expectedAllocatedMac := "02:00:00:00:00:01"
@@ -805,7 +805,7 @@ var _ = Describe("Pool", func() {
 			newPod := managedPodWithMacAllocated
 			newPod.Name = "newPod"
 
-			err := poolManager.AllocatePodMac(&newPod)
+			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(newPod.Annotations[NetworksAnnotation]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:00")[NetworksAnnotation]))
 		})
@@ -826,7 +826,7 @@ var _ = Describe("Pool", func() {
 					pod.Annotations = map[string]string{NetworksAnnotation: fmt.Sprintf("%s", networkRequestAnnotation)}
 
 					By("Request specific mac-address by adding the address to the networks pod annotation")
-					err := poolManager.AllocatePodMac(&pod)
+					err := poolManager.AllocatePodMac(&pod, true)
 					Expect(err).ToNot(HaveOccurred(), "should allocate mac address and ip address correspond to networks annotation")
 
 					By("Convert obtained networks annotation JSON to multus.NetworkSelectionElement array")
@@ -860,7 +860,7 @@ var _ = Describe("Pool", func() {
 					NetworksAnnotation: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
 
 				By("Request specific mac-address by adding the address to the networks pod annotation")
-				err := poolManager.AllocatePodMac(&pod)
+				err := poolManager.AllocatePodMac(&pod, true)
 				Expect(err).To(HaveOccurred(), "should fail to allocate mac address due to bad annotation format")
 			})
 		})

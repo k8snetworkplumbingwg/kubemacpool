@@ -31,7 +31,7 @@ import (
 
 const tempPodName = "tempPodName"
 
-func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
+func (p *PoolManager) AllocatePodMac(pod *corev1.Pod, isNotDryRun bool) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 
@@ -74,15 +74,15 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod) error {
 	networkList := []*multus.NetworkSelectionElement{}
 	for _, network := range networks {
 		if network.MacRequest != "" {
-			if err := p.allocatePodRequestedMac(network, pod); err != nil {
-				p.revertAllocationOnPod(podFullName, newAllocations)
+			if err := p.allocatePodRequestedMac(network, pod, isNotDryRun); err != nil {
+				p.revertAllocationOnPod(podFullName, newAllocations, isNotDryRun)
 				return err
 			}
 			newAllocations[network.Name] = network.MacRequest
 		} else {
-			macAddr, err := p.allocatePodFromPool(network, pod)
+			macAddr, err := p.allocatePodFromPool(network, pod, isNotDryRun)
 			if err != nil {
-				p.revertAllocationOnPod(podFullName, newAllocations)
+				p.revertAllocationOnPod(podFullName, newAllocations, isNotDryRun)
 				return err
 			}
 
@@ -129,7 +129,7 @@ func (p *PoolManager) ReleaseAllPodMacs(podFullName string) error {
 	return nil
 }
 
-func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionElement, pod *corev1.Pod) error {
+func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionElement, pod *corev1.Pod, isNotDryRun bool) error {
 	requestedMac := network.MacRequest
 
 	if _, err := net.ParseMAC(requestedMac); err != nil {
@@ -141,7 +141,9 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 		// the pod name may have not been updated in the webhook context yet,
 		// so we use a temp pod name and update it the the controller
 		podFullName = tempPodName
-		p.macPoolMap.createOrUpdateEntry(requestedMac, podFullName, network.Name)
+		if isNotDryRun {
+			p.macPoolMap.createOrUpdateEntry(requestedMac, podFullName, network.Name)
+		}
 		return nil
 	}
 	if macEntry, exist := p.macPoolMap[requestedMac]; exist {
@@ -153,8 +155,9 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 		}
 	}
 
-	p.macPoolMap.createOrUpdateEntry(requestedMac, podFullName, network.Name)
-
+	if isNotDryRun {
+		p.macPoolMap.createOrUpdateEntry(requestedMac, podFullName, network.Name)
+	}
 	log.Info("requested mac was allocated for pod",
 		"requestedMap", requestedMac,
 		"podFullName", podFullName)
@@ -162,7 +165,7 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 	return nil
 }
 
-func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElement, pod *corev1.Pod) (string, error) {
+func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElement, pod *corev1.Pod, isNotDryRun bool) (string, error) {
 	macAddr, err := p.getFreeMac()
 	if err != nil {
 		return "", err
@@ -173,12 +176,15 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 		// the pod name may have not been updated in the webhook context yet,
 		// so we use a temp pod name and update it the the controller
 		podFullName = tempPodName
-		p.macPoolMap.createOrUpdateEntry(macAddr.String(), podFullName, network.Name)
+		if isNotDryRun {
+			p.macPoolMap.createOrUpdateEntry(macAddr.String(), podFullName, network.Name)
+		}
 		return macAddr.String(), nil
 	}
 
-	p.macPoolMap.createOrUpdateEntry(macAddr.String(), podFullName, network.Name)
-
+	if isNotDryRun {
+		p.macPoolMap.createOrUpdateEntry(macAddr.String(), podFullName, network.Name)
+	}
 	log.Info("mac from pool was allocated to the pod",
 		"allocatedMac", macAddr.String(),
 		"podFullName", podFullName)
@@ -253,7 +259,7 @@ func (p *PoolManager) initPodMap() error {
 					continue
 				}
 
-				if err := p.allocatePodRequestedMac(network, &pod); err != nil {
+				if err := p.allocatePodRequestedMac(network, &pod, true); err != nil {
 					// Dont return an error here if we can't allocate a mac for a running pod
 					log.Error(fmt.Errorf("failed to parse mac address for pod"),
 						"Invalid mac address for pod",
@@ -285,7 +291,11 @@ func macAlreadyBelongsToPodAndNetwork(podFullName, networkName string, macEntry 
 }
 
 // Revert allocation if one of the requested mac addresses fails to be allocated
-func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[string]string) {
+func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[string]string, isNotDryRun bool) {
+	if isNotDryRun == false {
+		return
+	}
+
 	log.V(1).Info("Revert vm allocation", "podFullName", podFullName, "allocations", allocations)
 	for _, macAddress := range allocations {
 		delete(p.macPoolMap, macAddress)

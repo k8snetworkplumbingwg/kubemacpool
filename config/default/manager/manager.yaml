@@ -96,6 +96,9 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
         readinessProbe:
           httpGet:
             httpHeaders:

@@ -32,6 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubevirt "kubevirt.io/client-go/api/v1"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/gauges"
 )
 
 func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, parentLogger logr.Logger) error {
@@ -212,7 +214,8 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 	if macEntry, exist := p.macPoolMap[requestedMac]; exist {
 		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, macEntry) {
 			err := fmt.Errorf("failed to allocate requested mac address")
-			logger.Error(err, "mac address already allocated")
+			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %s, %s, conflict with: %s, %s",
+				iface.MacAddress, macEntry.instanceName, macEntry.macInstanceKey, vmFullName, iface.Name))
 
 			return err
 		}
@@ -258,6 +261,9 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 
 		if iface.MacAddress != "" {
 			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, parentLogger); err != nil {
+				if strings.Contains(err.Error(), "failed to allocate requested mac address") {
+					gauges.DuplicateMacGauge.Inc()
+				}
 				// Dont return an error here if we can't allocate a mac for a configured vm
 				parentLogger.Error(err, "Invalid/Duplicate mac address for virtual machine",
 					"virtualMachineFullName", vmFullName,

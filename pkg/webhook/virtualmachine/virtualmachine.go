@@ -75,7 +75,7 @@ func (a *virtualMachineAnnotator) Handle(ctx context.Context, req admission.Requ
 
 	logger.V(1).Info("got a virtual machine event")
 
-	if req.DryRun != nil && *req.DryRun != true {
+	if req.DryRun == nil || *req.DryRun == false {
 		if req.AdmissionRequest.Operation == admissionv1.Create {
 			err = a.mutateCreateVirtualMachinesFn(virtualMachine, logger)
 			if err != nil {

@@ -60,14 +60,13 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 		pod.Annotations = map[string]string{}
 	}
 
-	if req.DryRun == nil || *req.DryRun == false {
-		transactionTimestamp := pool_manager.CreateTransactionTimestamp()
-		log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
+	isNotDryRun := (req.DryRun == nil || *req.DryRun == false)
+	transactionTimestamp := pool_manager.CreateTransactionTimestamp()
+	log.V(1).Info("got a create pod event", "podName", pod.Name, "podNamespace", pod.Namespace, "transactionTimestamp", transactionTimestamp)
 
-		err = a.poolManager.AllocatePodMac(pod)
-		if err != nil {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
+	err = a.poolManager.AllocatePodMac(pod, isNotDryRun)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, err)
 	}
 
 	// admission.PatchResponse generates a Response containing patches.

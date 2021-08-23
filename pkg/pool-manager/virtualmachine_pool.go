@@ -36,7 +36,7 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/gauges"
 )
 
-func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, parentLogger logr.Logger) error {
+func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, isNotDryRun bool, parentLogger logr.Logger) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("AllocateVirtualMachineMac")
@@ -68,15 +68,16 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		}
 
 		if iface.MacAddress != "" {
-			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, logger); err != nil {
-				p.revertAllocationOnVm(vmFullName, newAllocations)
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, isNotDryRun, logger); err != nil {
+				p.revertAllocationOnVm(vmFullName, newAllocations, isNotDryRun)
+
 				return err
 			}
 			newAllocations[iface.Name] = iface.MacAddress
 		} else {
-			macAddr, err := p.allocateFromPoolForVirtualMachine(vmFullName, iface, logger)
+			macAddr, err := p.allocateFromPoolForVirtualMachine(vmFullName, iface, isNotDryRun, logger)
 			if err != nil {
-				p.revertAllocationOnVm(vmFullName, newAllocations)
+				p.revertAllocationOnVm(vmFullName, newAllocations, isNotDryRun)
 				return err
 			}
 			copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
@@ -84,7 +85,10 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		}
 	}
 
-	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
+	if isNotDryRun {
+		p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
+	}
+
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = copyVM.Spec.Template.Spec.Domain.Devices.Interfaces
 	logger.Info("data after allocation", "Allocations", newAllocations, "updated vm Interfaces", virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces)
 
@@ -112,12 +116,12 @@ func (p *PoolManager) ReleaseAllVirtualMachineMacs(vmFullName string, parentLogg
 	return nil
 }
 
-func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, parentLogger logr.Logger) error {
+func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine, virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, isNotDryRun bool, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("UpdateMacAddressesForVirtualMachine")
 	p.poolMutex.Lock()
 	if previousVirtualMachine == nil {
 		p.poolMutex.Unlock()
-		return p.AllocateVirtualMachineMac(virtualMachine, transactionTimestamp, logger)
+		return p.AllocateVirtualMachineMac(virtualMachine, transactionTimestamp, isNotDryRun, logger)
 	}
 	defer p.poolMutex.Unlock()
 
@@ -145,9 +149,9 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 				newAllocations[requestIface.Name] = currentlyAllocatedMacAddress
 			} else if requestIface.MacAddress != currentlyAllocatedMacAddress {
 				// Specific mac address was requested
-				err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, requestIface, logger)
+				err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, requestIface, isNotDryRun, logger)
 				if err != nil {
-					p.revertAllocationOnVm(vmFullName, newAllocations)
+					p.revertAllocationOnVm(vmFullName, newAllocations, isNotDryRun)
 					return err
 				}
 				releaseOldAllocations[requestIface.Name] = currentlyAllocatedMacAddress
@@ -157,15 +161,15 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 
 		} else {
 			if requestIface.MacAddress != "" {
-				if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, requestIface, logger); err != nil {
-					p.revertAllocationOnVm(vmFullName, newAllocations)
+				if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, requestIface, isNotDryRun, logger); err != nil {
+					p.revertAllocationOnVm(vmFullName, newAllocations, isNotDryRun)
 					return err
 				}
 				newAllocations[requestIface.Name] = requestIface.MacAddress
 			} else {
-				macAddr, err := p.allocateFromPoolForVirtualMachine(vmFullName, requestIface, logger)
+				macAddr, err := p.allocateFromPoolForVirtualMachine(vmFullName, requestIface, isNotDryRun, logger)
 				if err != nil {
-					p.revertAllocationOnVm(vmFullName, newAllocations)
+					p.revertAllocationOnVm(vmFullName, newAllocations, isNotDryRun)
 					return err
 				}
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = macAddr
@@ -175,9 +179,11 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 	}
 
 	logger.Info("updating updated mac's transaction timestamp", "newAllocations", newAllocations, "deltaInterfacesMap", deltaInterfacesMap, "releaseOldAllocations", releaseOldAllocations)
-	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
-	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, deltaInterfacesMap)
-	p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, releaseOldAllocations)
+	if isNotDryRun {
+		p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, newAllocations)
+		p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, deltaInterfacesMap)
+		p.macPoolMap.updateMacTransactionTimestampForUpdatedMacs(vmFullName, transactionTimestamp, releaseOldAllocations)
+	}
 
 	virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces = getVirtualMachineInterfaces(copyVM)
 	logger.V(1).Info("data after update", "macmap", p.macPoolMap, "updated interfaces", getVirtualMachineInterfaces(virtualMachine))
@@ -192,19 +198,21 @@ func getVirtualMachineNetworks(virtualMachine *kubevirt.VirtualMachine) []kubevi
 	return virtualMachine.Spec.Template.Spec.Networks
 }
 
-func (p *PoolManager) allocateFromPoolForVirtualMachine(vmFullName string, iface kubevirt.Interface, parentLogger logr.Logger) (string, error) {
+func (p *PoolManager) allocateFromPoolForVirtualMachine(vmFullName string, iface kubevirt.Interface, isNotDryRun bool, parentLogger logr.Logger) (string, error) {
 	logger := parentLogger.WithName("allocateFromPoolForVirtualMachine")
 	macAddr, err := p.getFreeMac()
 	if err != nil {
 		return "", err
 	}
 
-	p.macPoolMap.createOrUpdateEntry(macAddr.String(), vmFullName, iface.Name)
+	if isNotDryRun {
+		p.macPoolMap.createOrUpdateEntry(macAddr.String(), vmFullName, iface.Name)
+	}
 	logger.V(1).Info("mac from pool was allocated for virtual machine", "allocatedMac", macAddr.String())
 	return macAddr.String(), nil
 }
 
-func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName string, iface kubevirt.Interface, parentLogger logr.Logger) error {
+func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName string, iface kubevirt.Interface, isNotDryRun bool, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("allocateRequestedVirtualMachineInterfaceMac")
 	requestedMac := iface.MacAddress
 	if _, err := net.ParseMAC(requestedMac); err != nil {
@@ -221,10 +229,10 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		}
 	}
 
-	p.macPoolMap.createOrUpdateEntry(requestedMac, vmFullName, iface.Name)
-
+	if isNotDryRun {
+		p.macPoolMap.createOrUpdateEntry(requestedMac, vmFullName, iface.Name)
+	}
 	logger.V(1).Info("requested mac was allocated for virtual machine", "requestedMap", requestedMac)
-
 	return nil
 }
 
@@ -260,7 +268,7 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 		}
 
 		if iface.MacAddress != "" {
-			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, parentLogger); err != nil {
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, true, parentLogger); err != nil {
 				if strings.Contains(err.Error(), "failed to allocate requested mac address") {
 					gauges.DuplicateMacGauge.Inc()
 				}
@@ -393,7 +401,11 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 }
 
 // Revert allocation if one of the requested mac addresses fails to be allocated
-func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string]string) {
+func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string]string, isNotDryRun bool) {
+	if isNotDryRun == false {
+		return
+	}
+
 	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
 	for _, macAddress := range allocations {
 		delete(p.macPoolMap, macAddress)

@@ -108,7 +108,7 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 		return reconcile.Result{}, nil
 	}
 
-	err = r.poolManager.AllocatePodMac(instance)
+	err = r.poolManager.AllocatePodMac(instance, true)
 	if err != nil {
 		logger.Error(err, "failed to allocate mac for pod")
 	}

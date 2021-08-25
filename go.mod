@@ -1,6 +1,6 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
-go 1.15
+go 1.16
 
 require (
 	github.com/go-logr/logr v0.3.0
@@ -9,6 +9,7 @@ require (
 	github.com/onsi/ginkgo v1.15.0
 	github.com/onsi/gomega v1.10.5
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus/client_golang v1.7.1
 	github.com/qinqon/kube-admission-webhook v0.16.0
 	gomodules.xyz/jsonpatch/v2 v2.1.0
 	k8s.io/api v0.20.2

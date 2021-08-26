@@ -27,6 +27,7 @@ require (
 replace (
 	bitbucket.org/ww/goautoneg => github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d
 	github.com/go-logr/zapr => github.com/go-logr/zapr v0.2.0
+	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/openshift/api => github.com/openshift/api v3.9.0+incompatible
 	github.com/openshift/client-go => github.com/openshift/client-go v3.9.0+incompatible
 	golang.org/x/text => golang.org/x/text v0.3.3

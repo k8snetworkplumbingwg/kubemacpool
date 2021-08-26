@@ -148,6 +148,7 @@ github.com/pborman/uuid
 ## explicit
 github.com/pkg/errors
 # github.com/prometheus/client_golang v1.7.1
+## explicit
 github.com/prometheus/client_golang/prometheus
 github.com/prometheus/client_golang/prometheus/internal
 github.com/prometheus/client_golang/prometheus/promhttp

@@ -9,7 +9,8 @@ require (
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
 	github.com/pkg/errors v0.9.1
-	github.com/qinqon/kube-admission-webhook v0.12.0
+	github.com/qinqon/kube-admission-webhook v0.12.1
+	gomodules.xyz/jsonpatch/v2 v2.0.1
 	k8s.io/api v0.19.1
 	k8s.io/apimachinery v0.19.1
 	k8s.io/client-go v12.0.0+incompatible

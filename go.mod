@@ -9,7 +9,7 @@ require (
 	github.com/onsi/ginkgo v1.15.0
 	github.com/onsi/gomega v1.10.5
 	github.com/pkg/errors v0.9.1
-	github.com/qinqon/kube-admission-webhook v0.15.0
+	github.com/qinqon/kube-admission-webhook v0.17.0
 	gomodules.xyz/jsonpatch/v2 v2.1.0
 	k8s.io/api v0.20.2
 	k8s.io/apimachinery v0.20.2

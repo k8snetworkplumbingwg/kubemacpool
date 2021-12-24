@@ -16,11 +16,7 @@ limitations under the License.
 
 package controller
 
-import (
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/virtualmachine"
-)
-
-func init() {
-	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
-	AddToManagerFuncs = append(AddToManagerFuncs, virtualmachine.Add)
-}
+// func init() {
+// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
+// AddToManagerFuncs = append(AddToManagerFuncs, virtualmachine.Add)
+//}

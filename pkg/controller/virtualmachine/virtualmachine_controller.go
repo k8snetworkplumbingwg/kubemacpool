@@ -84,6 +84,7 @@ type ReconcilePolicy struct {
 
 // Reconcile reads that state of the cluster for a virtual machine object and makes changes based on the state
 func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
+	return reconcile.Result{}, nil
 	//used for multi thread log separation
 	reconcileRequestId := rand.Intn(100000)
 	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "vmFullName", fmt.Sprintf("vm/%s/%s", request.Namespace, request.Name))

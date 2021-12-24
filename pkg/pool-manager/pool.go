@@ -124,15 +124,15 @@ func (p *PoolManager) Start() error {
 }
 
 func (p *PoolManager) InitMaps() error {
-	err := p.initPodMap()
-	if err != nil {
-		return err
-	}
+	//err := p.initPodMap()
+	//if err != nil {
+	//	return err
+	//}
 
-	err = p.initVirtualMachineMap()
-	if err != nil {
-		return err
-	}
+	//err := p.initVirtualMachineMap()
+	//if err != nil {
+	//	return err
+	//}
 
 	return nil
 }

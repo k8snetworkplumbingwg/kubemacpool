@@ -20,15 +20,18 @@ import (
 	"github.com/pkg/errors"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 const (
 	WebhookServerPort = 8000
 )
+
+var log = logf.Log.WithName("webhook")
 
 // AddToManagerFuncs is a list of functions to add all Controllers to the Manager
 // +kubebuilder:rbac:groups=admissionregistration.k8s.io,resources=mutatingwebhookconfigurations;validatingwebhookconfigurations,verbs=get;list;watch;create;update;patch;delete
@@ -53,6 +56,8 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 			return err
 		}
 	}
+
+	log.V(1).Info("Adding webhook server to the manager")
 
 	err := mgr.Add(s)
 	if err != nil {

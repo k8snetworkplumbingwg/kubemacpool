@@ -1,6 +1,6 @@
 # Image URL to use all building/pushing image targets
 REGISTRY ?= quay.io
-REPO ?= kubevirt
+REPO ?= ellorent
 IMAGE_TAG ?= latest
 IMAGE_GIT_TAG ?= $(shell git describe --abbrev=8 --tags)
 IMG ?= $(REPO)/kubemacpool

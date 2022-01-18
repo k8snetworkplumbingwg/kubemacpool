@@ -21,7 +21,7 @@ GOVERALLS := $(GOBIN)/goveralls
 
 export KUBECTL ?= cluster/kubectl.sh
 
-all: generate
+all: generate check
 
 $(GO):
 	hack/install-go.sh $(BIN_DIR) > /dev/null
@@ -78,8 +78,10 @@ fmt: $(GOFMT)
 vet: $(GO)
 	$(GO) vet ./pkg/... ./cmd/... ./tests/...
 
+check: fmt vet
+
 # Generate code
-generate-go: $(DEEPCOPY_GEN) fmt vet manifests
+generate-go: $(DEEPCOPY_GEN) manifests
 	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
 generate: generate-go generate-deploy generate-test generate-external
@@ -98,7 +100,9 @@ container: manager
 docker-push:
 	docker push ${REGISTRY}/${IMG}:${IMAGE_TAG}
 	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:partial
 	docker push ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	docker push ${REGISTRY}/${IMG}:partial
 
 cluster-up:
 	./cluster/up.sh

@@ -17,6 +17,7 @@ package manager
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -27,7 +28,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/client-go/api/v1"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
+	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
@@ -93,7 +97,42 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
-		poolManager, err := poolmanager.NewPoolManager(k.clientset, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+
+		log.Info("Constructing cache")
+		cache, err := cache.New(k.config, cache.Options{
+			Scheme: k.runtimeManager.GetScheme(),
+			Mapper: k.runtimeManager.GetRESTMapper(),
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed constructing pool manager cache")
+		}
+		log.Info("Starting cache")
+		go func() {
+			if err = cache.Start(context.TODO()); err != nil {
+				panic(errors.Wrap(err, "failed staring pool manager cache"))
+			}
+		}()
+		log.Info("Waiting for cache sync")
+		ok := cache.WaitForCacheSync(context.TODO())
+		if !ok {
+			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
+		}
+		log.Info("Building client")
+		cachedClient, err := cluster.NewClientBuilder().Build(cache, k.config, client.Options{
+			Scheme: k.runtimeManager.GetScheme(),
+			Mapper: k.runtimeManager.GetRESTMapper(),
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed creating pool manager client")
+		}
+		client, err := client.New(k.config, client.Options{
+			Scheme: k.runtimeManager.GetScheme(),
+			Mapper: k.runtimeManager.GetRESTMapper(),
+		})
+		if err != nil {
+			return errors.Wrap(err, "failed creating pool manager client")
+		}
+		poolManager, err := poolmanager.NewPoolManager(client, cachedClient, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return errors.Wrap(err, "unable to create pool manager")
 		}

@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -78,7 +80,8 @@ func (m *macMap) createOrUpdateDummyEntryWithTimestamp(macAddress string, timest
 
 // getVmMacWaitMap return a config map that contains mac address and the allocation time.
 func (p *PoolManager) getVmMacWaitMap() (map[string]string, error) {
-	configMap, err := p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	configMap := corev1.ConfigMap{}
+	err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Namespace: p.managerNamespace, Name: names.WAITING_VMS_CONFIGMAP}, &configMap)
 	if err != nil {
 		return nil, err
 	}
@@ -87,5 +90,11 @@ func (p *PoolManager) getVmMacWaitMap() (map[string]string, error) {
 }
 
 func (p *PoolManager) deleteVmMacWaitConfigMap() error {
-	return p.kubeClient.CoreV1().ConfigMaps(p.managerNamespace).Delete(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
+	configMap := corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: p.managerNamespace,
+			Name:      names.WAITING_VMS_CONFIGMAP,
+		},
+	}
+	return p.kubeClient.Delete(context.TODO(), &configMap)
 }

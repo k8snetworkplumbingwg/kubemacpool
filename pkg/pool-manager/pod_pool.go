@@ -27,6 +27,7 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const tempPodName = "tempPodName"
@@ -196,12 +197,17 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 func (p *PoolManager) paginatePodsWithLimit(limit int64, f func(pods *corev1.PodList) error) error {
 	continueFlag := ""
 	for {
-		pods, err := p.kubeClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{Limit: limit, Continue: continueFlag})
+		pods := corev1.PodList{}
+		err := p.kubeClient.List(context.TODO(), &pods, &client.ListOptions{
+			Namespace: metav1.NamespaceAll,
+			Limit:     limit,
+			Continue:  continueFlag,
+		})
 		if err != nil {
 			return err
 		}
 
-		err = f(pods)
+		err = f(&pods)
 		if err != nil {
 			return err
 		}

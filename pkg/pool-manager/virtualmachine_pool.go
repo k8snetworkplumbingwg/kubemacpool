@@ -29,6 +29,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubevirt "kubevirt.io/client-go/api/v1"
@@ -291,14 +292,13 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 func (p *PoolManager) paginateVmsWithLimit(limit int64, vmsFunc func(pods *kubevirt.VirtualMachineList) error) error {
 	continueFlag := ""
 	for {
-		//FIXME we should use the internal limit using ListOptions after we implement using the kubevirt client.
-		var result = p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(fmt.Sprintf("apis/kubevirt.io/v1/virtualmachines?limit=%v&continue=%v", limit, continueFlag)).Do(context.TODO())
-		if result.Error() != nil {
-			return result.Error()
-		}
-
+		// Using a unstructured object.
 		vms := &kubevirt.VirtualMachineList{}
-		err := result.Into(vms)
+		err := p.kubeClient.List(context.TODO(), vms, &client.ListOptions{
+			Namespace: metav1.NamespaceAll,
+			Limit:     limit,
+			Continue:  continueFlag,
+		})
 		if err != nil {
 			return err
 		}
@@ -382,12 +382,8 @@ func (p *PoolManager) isRelatedToKubevirt(pod *corev1.Pod) bool {
 
 	for _, ref := range pod.OwnerReferences {
 		if ref.Kind == kubevirt.VirtualMachineInstanceGroupVersionKind.Kind {
-			requestUrl := fmt.Sprintf("apis/kubevirt.io/v1/namespaces/%s/virtualmachines/%s", pod.Namespace, ref.Name)
-			log.V(1).Info("test", "requestURI", requestUrl)
-			result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
-
-			data, err := result.Raw()
-			log.V(1).Info("get kubevirt virtual machine object response", "err", err, "response", string(data))
+			vm := &kubevirt.VirtualMachine{}
+			err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Namespace: pod.Namespace, Name: ref.Name}, vm)
 			if err != nil && apierrors.IsNotFound(err) {
 				log.V(1).Info("this pod is an ephemeral vmi object allocating mac as a regular pod")
 				return false
@@ -533,15 +529,8 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 		return nil, errors.New("failed to extract vm namespace and name")
 	}
 
-	requestUrl := fmt.Sprintf("apis/kubevirt.io/v1/namespaces/%s/virtualmachines/%s", vmNamespace, vmName)
-	log.V(1).Info("getvmInstance", "requestURI", requestUrl)
-
-	result := p.kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI(requestUrl).Do(context.TODO())
-	if result.Error() != nil {
-		return nil, result.Error()
-	}
 	vm := &kubevirt.VirtualMachine{}
-	err := result.Into(vm)
+	err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Namespace: vmName, Name: vmName}, vm)
 	if err != nil {
 		return nil, err
 	}

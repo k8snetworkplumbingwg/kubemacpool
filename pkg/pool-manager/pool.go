@@ -124,6 +124,7 @@ func (p *PoolManager) Start() error {
 }
 
 func (p *PoolManager) InitMaps() error {
+	log.Info("foo-original-client: Start InitMaps")
 	err := p.initPodMap()
 	if err != nil {
 		return err
@@ -134,6 +135,7 @@ func (p *PoolManager) InitMaps() error {
 		return err
 	}
 
+	log.Info("foo-original-client: End InitMaps")
 	return nil
 }
 

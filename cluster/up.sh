@@ -23,7 +23,6 @@ function getLatestPatchVersion {
 
 source ./cluster/cluster.sh
 CNAO_VERSION=v0.58.0
-export KUBEVIRT_DEPLOY_PROMETHEUS=true
 
 #use kubevirt latest z stream release
 KUBEVIRT_VERSION=$(getLatestPatchVersion v0.44)

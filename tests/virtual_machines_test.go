@@ -944,7 +944,10 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err = initKubemacpoolParams()
 					Expect(err).ToNot(HaveOccurred())
 
-					metrics, _, err := getMetrics()
+					token, stderr, err := getPrometheusToken()
+					Expect(err).ToNot(HaveOccurred(), stderr)
+
+					metrics, _, err := getMetrics(token)
 					Expect(err).ToNot(HaveOccurred())
 
 					expectedMetric := "kubevirt_kmp_duplicate_macs"
@@ -963,7 +966,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).ToNot(HaveOccurred())
 
 					By("verifying the conflict has been resolved")
-					metrics, _, err = getMetrics()
+					metrics, _, err = getMetrics(token)
 					Expect(err).ToNot(HaveOccurred())
 
 					expectedValue = "0"
@@ -1036,14 +1039,15 @@ func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 	}, timeout, pollingInterval).Should(BeTrue(), "should eventually fail getting vm with IsNotFound after vm deletion")
 }
 
-func getMetrics() (string, string, error) {
+func getMetrics(token string) (string, string, error) {
 	podList, err := getManagerPods()
 	if err != nil {
 		return "", "", err
 	}
 
+	bearer := "Authorization: Bearer " + token
 	stdout, stderr, err := kubectl.Kubectl("exec", "-n", managerNamespace, podList.Items[0].Name, "--",
-		"curl", "-L", "-k", "-s", "http://127.0.0.1:8080/metrics")
+		"curl", "-s", "-k", "--header", bearer, "https://127.0.0.1:8443/metrics")
 
 	return stdout, stderr, err
 }
@@ -1071,4 +1075,15 @@ func findMetric(metrics string, expectedMetric string) string {
 	}
 
 	return ""
+}
+
+func getPrometheusToken() (string, string, error) {
+	const (
+		monitoringNamespace = "monitoring"
+		prometheusPod       = "prometheus-k8s-0"
+		container           = "prometheus"
+		tokenPath           = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+	)
+
+	return kubectl.Kubectl("exec", "-n", monitoringNamespace, prometheusPod, "-c", container, "--", "cat", tokenPath)
 }

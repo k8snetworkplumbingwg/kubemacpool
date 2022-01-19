@@ -53,7 +53,6 @@ var log = logf.Log.WithName("PoolManager")
 var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
-	cachedKubeClient client.Client
 	kubeClient       client.Client
 	rangeStart       net.HardwareAddr // fist mac in range
 	rangeEnd         net.HardwareAddr // last mac in range
@@ -81,7 +80,7 @@ type macEntry struct {
 
 type macMap map[string]macEntry
 
-func NewPoolManager(cachedKubeClient client.Client, kubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
+func NewPoolManager(kubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
@@ -98,7 +97,6 @@ func NewPoolManager(cachedKubeClient client.Client, kubeClient client.Client, ra
 	currentMac := make(net.HardwareAddr, len(rangeStart))
 	copy(currentMac, rangeStart)
 	poolManger := &PoolManager{
-		cachedKubeClient: cachedKubeClient,
 		kubeClient:       kubeClient,
 		isKubevirt:       kubevirtExist,
 		rangeEnd:         rangeEnd,
@@ -127,7 +125,7 @@ func (p *PoolManager) Start() error {
 }
 
 func (p *PoolManager) InitMaps() error {
-	log.Info("foo-noop-pods: Start InitMaps")
+	log.Info("foo-full-client: Start InitMaps")
 	err := p.initPodMap()
 	if err != nil {
 		return err
@@ -137,7 +135,7 @@ func (p *PoolManager) InitMaps() error {
 	if err != nil {
 		return err
 	}
-	log.Info("foo-noop-pods: End InitMaps")
+	log.Info("foo-full-client: End InitMaps")
 	return nil
 }
 
@@ -237,7 +235,7 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 		return false, errors.Wrap(err, "Failed to check if namespaces are managed by default by opt-mode")
 	}
 	ns := v1.Namespace{}
-	err = p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: namespaceName}, &ns)
+	err = p.kubeClient.Get(context.TODO(), client.ObjectKey{Name: namespaceName}, &ns)
 	if err != nil {
 		return false, errors.Wrap(err, "Failed to get Namespace")
 	}
@@ -262,7 +260,7 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 
 func (p *PoolManager) lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName string) (*admissionregistrationv1.MutatingWebhook, error) {
 	mutatingWebhookConfiguration := admissionregistrationv1.MutatingWebhookConfiguration{}
-	err := p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: mutatingWebhookConfigName}, &mutatingWebhookConfiguration)
+	err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Name: mutatingWebhookConfigName}, &mutatingWebhookConfiguration)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to get mutatingWebhookConfig")
 	}

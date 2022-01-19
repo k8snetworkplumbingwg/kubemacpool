@@ -118,21 +118,14 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
 		}
 		log.Info("Building client")
-		cachedClient, err := cluster.NewClientBuilder().Build(cache, k.config, client.Options{
+		client, err := cluster.NewClientBuilder().Build(cache, k.config, client.Options{
 			Scheme: k.runtimeManager.GetScheme(),
 			Mapper: k.runtimeManager.GetRESTMapper(),
 		})
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
-		client, err := client.New(k.config, client.Options{
-			Scheme: k.runtimeManager.GetScheme(),
-			Mapper: k.runtimeManager.GetRESTMapper(),
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed creating pool manager client")
-		}
-		poolManager, err := poolmanager.NewPoolManager(client, cachedClient, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(client, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return errors.Wrap(err, "unable to create pool manager")
 		}

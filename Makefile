@@ -100,7 +100,9 @@ container: manager
 docker-push:
 	docker push ${REGISTRY}/${IMG}:${IMAGE_TAG}
 	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:full
 	docker push ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	docker push ${REGISTRY}/${IMG}:full
 
 cluster-up:
 	./cluster/up.sh

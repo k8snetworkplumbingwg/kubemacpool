@@ -530,7 +530,7 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 	}
 
 	vm := &kubevirt.VirtualMachine{}
-	err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Namespace: vmName, Name: vmName}, vm)
+	err := p.kubeClient.Get(context.TODO(), client.ObjectKey{Namespace: vmNamespace, Name: vmName}, vm)
 	if err != nil {
 		return nil, err
 	}

@@ -28,7 +28,7 @@ var _ = Describe("migrate legacy vm configMap", func() {
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
+		poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
 		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
 		err = poolManager.Start()
 		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")

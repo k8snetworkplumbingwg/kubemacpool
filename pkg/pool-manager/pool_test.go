@@ -34,7 +34,9 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	kubevirt "kubevirt.io/client-go/api/v1"
@@ -125,7 +127,7 @@ var _ = Describe("Pool", func() {
 	}
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
 		fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
-		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
 		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
@@ -240,7 +242,7 @@ var _ = Describe("Pool", func() {
 		})
 		Context("check NewPoolManager", func() {
 			It("should fail to create pool manager when rangeStart is greater than rangeEnd", func() {
-				fakeClient := fake.NewSimpleClientset()
+				fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 				startPoolRangeEnv, err := net.ParseMAC("0A:00:00:00:00:00")
 				Expect(err).ToNot(HaveOccurred())
 				endPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
@@ -252,7 +254,7 @@ var _ = Describe("Pool", func() {
 			})
 
 			It("should fail to pool manager because of the first octet of RangeStart is not 2, 6, A, E", func() {
-				fakeClient := fake.NewSimpleClientset()
+				fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 				startPoolRangeEnv, err := net.ParseMAC("03:00:00:00:00:00")
 				Expect(err).ToNot(HaveOccurred())
 				endPoolRangeEnv, err := net.ParseMAC("06:00:00:00:00:00")
@@ -264,7 +266,7 @@ var _ = Describe("Pool", func() {
 			})
 
 			It("should fail to create a pool manager object when the first octet of RangeEnd is not 2, 6, A, E", func() {
-				fakeClient := fake.NewSimpleClientset()
+				fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
 				startPoolRangeEnv, err := net.ParseMAC("02:00:00:00:00:00")
 				Expect(err).ToNot(HaveOccurred())
 				endPoolRangeEnv, err := net.ParseMAC("05:00:00:00:00:00")
@@ -696,7 +698,8 @@ var _ = Describe("Pool", func() {
 			})
 			It("should not set a mac in legacy configmap with new mac", func() {
 				By("get configmap")
-				configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+				configMap := v1.ConfigMap{}
+				err := poolManager.kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: poolManager.managerNamespace, Name: names.WAITING_VMS_CONFIGMAP}, &configMap)
 				Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
 
 				By("checking the configmap is not updated with mac allocated")
@@ -748,7 +751,8 @@ var _ = Describe("Pool", func() {
 				})
 				It("should make sure legacy configmap is empty after vm creation", func() {
 					By("check configmap is empty")
-					configMap, err := poolManager.kubeClient.CoreV1().ConfigMaps(poolManager.managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+					configMap := v1.ConfigMap{}
+					err := poolManager.kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: poolManager.managerNamespace, Name: names.WAITING_VMS_CONFIGMAP}, &configMap)
 					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
 					Expect(configMap.Data).To(BeEmpty(), "configmap should hold no more mac addresses for approval")
 				})

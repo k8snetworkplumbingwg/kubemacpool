@@ -348,9 +348,26 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+		duplicateInterfacesVM := kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}, Spec: kubevirt.VirtualMachineSpec{
+			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirt.VirtualMachineInstanceSpec{
+					Domain: kubevirt.DomainSpec{
+						Devices: kubevirt.Devices{
+							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface, multusBridgeInterface}}},
+					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}
+		It("should reject allocation if there are interfaces with the same name", func() {
+			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+			newVM := duplicateInterfacesVM.DeepCopy()
+			newVM.Name = "duplicateInterfacesVM"
+
+			transactionTimestamp := updateTransactionTimestamp(0)
+			err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
+			Expect(err).To(HaveOccurred(), "Should reject an allocation of a vm with duplicate interface names")
+			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate macs if there are duplicate interfaces")
+		})
 		It("should not allocate a new mac for bridge interface on pod network", func() {
 			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			newVM := sampleVM
@@ -424,6 +441,27 @@ var _ = Describe("Pool", func() {
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
+			})
+			It("should reject update allocation if there are interfaces with the same name", func() {
+				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				newVM := multipleInterfacesVM.DeepCopy()
+				newVM.Name = "multipleInterfacesVM"
+
+				transactionTimestamp := updateTransactionTimestamp(0)
+				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
+				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+
+				updateVm := newVM.DeepCopy()
+				newTransactionTimestamp := updateTransactionTimestamp(1)
+				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces = append(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces, multusBridgeInterface)
+				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
+				Expect(err).To(HaveOccurred(), "Should reject an update with duplicate interface names")
+				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
+				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")

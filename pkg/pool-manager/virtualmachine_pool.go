@@ -47,6 +47,13 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		return nil
 	}
 
+	// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
+	if isNotDryRun {
+		if err := checkVmForInterfaceDuplication(virtualMachine); err != nil {
+			return err
+		}
+	}
+
 	vmFullName := VmNamespaced(virtualMachine)
 	if len(getVirtualMachineNetworks(virtualMachine)) == 0 {
 		logger.Info("no networks found for virtual machine, skipping mac allocation",
@@ -126,6 +133,13 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 	}
 	defer p.poolMutex.Unlock()
 
+	// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
+	if isNotDryRun {
+		if err := checkVmForInterfaceDuplication(virtualMachine); err != nil {
+			return err
+		}
+	}
+
 	currentInterfaces := getVirtualMachineInterfaces(previousVirtualMachine)
 	requestInterfaces := getVirtualMachineInterfaces(virtualMachine)
 	logger.V(1).Info("data before update", "macPoolMap", p.macPoolMap, "currentInterfaces", currentInterfaces, "requestInterfaces", requestInterfaces)
@@ -197,6 +211,19 @@ func getVirtualMachineInterfaces(virtualMachine *kubevirt.VirtualMachine) []kube
 
 func getVirtualMachineNetworks(virtualMachine *kubevirt.VirtualMachine) []kubevirt.Network {
 	return virtualMachine.Spec.Template.Spec.Networks
+}
+
+func checkVmForInterfaceDuplication(virtualMachine *kubevirt.VirtualMachine) error {
+	vmInterfaces := getVirtualMachineInterfaces(virtualMachine)
+
+	tmpInterfaceMap := map[string]struct{}{}
+	for _, vmInterface := range vmInterfaces {
+		if _, exists := tmpInterfaceMap[vmInterface.Name]; exists {
+			return fmt.Errorf("Failed to mutate virtual machine: every interface must have a unique name")
+		}
+		tmpInterfaceMap[vmInterface.Name] = struct{}{}
+	}
+	return nil
 }
 
 func (p *PoolManager) allocateFromPoolForVirtualMachine(vmFullName string, iface kubevirt.Interface, isNotDryRun bool, parentLogger logr.Logger) (string, error) {

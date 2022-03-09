@@ -118,7 +118,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
 		}
 		log.Info("Building client")
-		cachedClient, err := cluster.NewClientBuilder().Build(cache, k.config, client.Options{
+		cachedClient, err := cluster.DefaultNewClient(cache, k.config, client.Options{
 			Scheme: k.runtimeManager.GetScheme(),
 			Mapper: k.runtimeManager.GetRESTMapper(),
 		})

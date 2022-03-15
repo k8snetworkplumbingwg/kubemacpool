@@ -49,8 +49,9 @@ var AddToWebhookFuncs []func(*kawwebhook.Server, *pool_manager.PoolManager) erro
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
 	s := &kawwebhook.Server{
-		Port:         WebhookServerPort,
-		CipherSuites: cipherSuites(),
+		Port:          WebhookServerPort,
+		TLSMinVersion: tlsMinVersion(),
+		CipherSuites:  cipherSuites(),
 	}
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
@@ -75,4 +76,10 @@ func cipherSuites() []string {
 		return nil
 	}
 	return strings.Split(cipherSuitesEnv, ",")
+}
+
+// tlsMinVersion read the TLS minimal version from environment a environment
+// variable, if it's empty the webhook server will fallback to "1.0"
+func tlsMinVersion() string {
+	return os.Getenv("TLS_MIN_VERSION")
 }

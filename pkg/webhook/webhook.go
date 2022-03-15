@@ -17,6 +17,9 @@ limitations under the License.
 package webhook
 
 import (
+	"os"
+	"strings"
+
 	"github.com/pkg/errors"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -45,7 +48,10 @@ var AddToWebhookFuncs []func(*kawwebhook.Server, *pool_manager.PoolManager) erro
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
-	s := &kawwebhook.Server{Port: WebhookServerPort}
+	s := &kawwebhook.Server{
+		Port:         WebhookServerPort,
+		CipherSuites: cipherSuites(),
+	}
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {
@@ -59,4 +65,14 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}
 	return nil
+}
+
+// cipherSuites read the TLS handshake ciphers from a environment variable if
+// empty the decision is delegated to go tls package.
+func cipherSuites() []string {
+	cipherSuitesEnv := os.Getenv("TLS_CIPHERS")
+	if cipherSuitesEnv == "" {
+		return nil
+	}
+	return strings.Split(cipherSuitesEnv, ",")
 }

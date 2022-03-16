@@ -35,7 +35,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	kawwebhook "github.com/qinqon/kube-admission-webhook/pkg/webhook"
 )
 
 var log = logf.Log.WithName("Webhook mutatevirtualmachines")
@@ -47,7 +48,7 @@ type virtualMachineAnnotator struct {
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *webhook.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s *kawwebhook.Server, poolManager *pool_manager.PoolManager) error {
 	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
 	s.Register("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator})
 	return nil

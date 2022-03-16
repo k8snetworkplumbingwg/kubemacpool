@@ -21,9 +21,9 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	kawwebhook "github.com/qinqon/kube-admission-webhook/pkg/webhook"
 )
 
 const (
@@ -40,12 +40,12 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*webhook.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(*kawwebhook.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
-	s := &webhook.Server{Port: WebhookServerPort}
+	s := &kawwebhook.Server{Port: WebhookServerPort}
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {

@@ -13,22 +13,22 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 var _ = Describe("migrate legacy vm configMap", func() {
-	legacyVmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
 	waitTimeSeconds := 10
 
 	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
-		fakeClient := fake.NewSimpleClientset(fakeObjectsForClient...)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
 		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
 		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
+		poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
 		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
 		err = poolManager.Start()
 		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
@@ -64,8 +64,11 @@ var _ = Describe("migrate legacy vm configMap", func() {
 			table.DescribeTable("and running initMacMapFromLegacyConfigMapParams",
 				func(i *initMacMapFromLegacyConfigMapParams) {
 					By("updating configMap entries")
-					legacyVmConfigMap.Data = i.configMapEntries
-					_, err := poolManager.kubeClient.CoreV1().ConfigMaps(testManagerNamespace).Create(context.Background(), &legacyVmConfigMap, metav1.CreateOptions{})
+					legacyVmConfigMap := v1.ConfigMap{
+						ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP},
+						Data:       i.configMapEntries,
+					}
+					err := poolManager.kubeClient.Create(context.Background(), &legacyVmConfigMap)
 					Expect(err).ToNot(HaveOccurred(), "should succeed updating the configMap")
 					By("initiating the macPoolMap")
 					Expect(poolManager.initMacMapFromLegacyConfigMap()).To(Succeed(), "should not fail migration if configMap does not exist")

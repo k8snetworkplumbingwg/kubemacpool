@@ -26,9 +26,10 @@ import (
 
 	"github.com/pkg/errors"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
@@ -52,10 +53,11 @@ var log = logf.Log.WithName("PoolManager")
 var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
-	kubeClient       kubernetes.Interface // kubernetes client
-	rangeStart       net.HardwareAddr     // fist mac in range
-	rangeEnd         net.HardwareAddr     // last mac in range
-	currentMac       net.HardwareAddr     // last given mac
+	cachedKubeClient client.Client
+	kubeClient       client.Client
+	rangeStart       net.HardwareAddr // fist mac in range
+	rangeEnd         net.HardwareAddr // last mac in range
+	currentMac       net.HardwareAddr // last given mac
 	managerNamespace string
 	macPoolMap       macMap                       // allocated mac map and macEntry
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
@@ -79,7 +81,7 @@ type macEntry struct {
 
 type macMap map[string]macEntry
 
-func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
+func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
 	if err != nil {
 		return nil, err
@@ -95,8 +97,9 @@ func NewPoolManager(kubeClient kubernetes.Interface, rangeStart, rangeEnd net.Ha
 
 	currentMac := make(net.HardwareAddr, len(rangeStart))
 	copy(currentMac, rangeStart)
-
-	poolManger := &PoolManager{kubeClient: kubeClient,
+	poolManger := &PoolManager{
+		cachedKubeClient: cachedKubeClient,
+		kubeClient:       kubeClient,
 		isKubevirt:       kubevirtExist,
 		rangeEnd:         rangeEnd,
 		rangeStart:       rangeStart,
@@ -232,8 +235,8 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 	if err != nil {
 		return false, errors.Wrap(err, "Failed to check if namespaces are managed by default by opt-mode")
 	}
-
-	ns, err := p.kubeClient.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
+	ns := v1.Namespace{}
+	err = p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: namespaceName}, &ns)
 	if err != nil {
 		return false, errors.Wrap(err, "Failed to get Namespace")
 	}
@@ -257,7 +260,8 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 }
 
 func (p *PoolManager) lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName string) (*admissionregistrationv1.MutatingWebhook, error) {
-	mutatingWebhookConfiguration, err := p.kubeClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfigName, metav1.GetOptions{})
+	mutatingWebhookConfiguration := admissionregistrationv1.MutatingWebhookConfiguration{}
+	err := p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: mutatingWebhookConfigName}, &mutatingWebhookConfiguration)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to get mutatingWebhookConfig")
 	}

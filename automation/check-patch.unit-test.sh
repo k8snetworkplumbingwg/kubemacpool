@@ -11,6 +11,7 @@ main() {
     trap teardown EXIT SIGINT SIGTERM SIGSTOP
 
     make all
+    make check
     make test
 }
 

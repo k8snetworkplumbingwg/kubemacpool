@@ -109,7 +109,7 @@ func runCertManager() {
 		os.Exit(1)
 	}
 
-	certOptions := certificate.Options{
+	certOptions := &certificate.Options{
 		Namespace:           podNamespace,
 		WebhookName:         names.MUTATE_WEBHOOK_CONFIG,
 		WebhookType:         certificate.MutatingWebhook,

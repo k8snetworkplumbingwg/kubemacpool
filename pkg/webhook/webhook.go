@@ -17,13 +17,16 @@ limitations under the License.
 package webhook
 
 import (
+	"os"
+	"strings"
+
 	"github.com/pkg/errors"
 
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	kawwebhook "github.com/qinqon/kube-admission-webhook/pkg/webhook"
 )
 
 const (
@@ -40,12 +43,16 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*webhook.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(*kawwebhook.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
-	s := &webhook.Server{Port: WebhookServerPort}
+	s := &kawwebhook.Server{
+		Port:          WebhookServerPort,
+		TLSMinVersion: tlsMinVersion(),
+		CipherSuites:  cipherSuites(),
+	}
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {
@@ -59,4 +66,20 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}
 	return nil
+}
+
+// cipherSuites read the TLS handshake ciphers from a environment variable if
+// empty the decision is delegated to go tls package.
+func cipherSuites() []string {
+	cipherSuitesEnv := os.Getenv("TLS_CIPHERS")
+	if cipherSuitesEnv == "" {
+		return nil
+	}
+	return strings.Split(cipherSuitesEnv, ",")
+}
+
+// tlsMinVersion read the TLS minimal version from environment a environment
+// variable, if it's empty the webhook server will fallback to "1.0"
+func tlsMinVersion() string {
+	return os.Getenv("TLS_MIN_VERSION")
 }

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2022 Kube Admission Webhook Authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at:
+ *
+ *	  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package certificate
 
 import (
@@ -10,7 +26,7 @@ import (
 	"github.com/go-logr/logr"
 
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/qinqon/kube-admission-webhook/pkg/certificate/triple"
@@ -23,7 +39,7 @@ import (
 // at cluster to monitor expiration time and do rotations.
 type Manager struct {
 	// client contains the controller-runtime client from the manager.
-	client client.Client
+	client crclient.Client
 
 	// webhookName Options.WebhookName
 	webhookName string
@@ -56,7 +72,7 @@ type Manager struct {
 	// serviceOverlapDuration Options.CertOverlapInterval
 	serviceOverlapDuration time.Duration
 
-	// log initialized log that containes the webhook configuration name and
+	// log initialized log that contains the webhook configuration name and
 	// namespace so it's easy to debug.
 	log logr.Logger
 
@@ -82,8 +98,8 @@ type Manager struct {
 // It will also update the webhook caBundle field with the cluster CA cert and
 // approve the generated cert/key with k8s certification approval mechanism
 func NewManager(
-	client client.Client,
-	options Options,
+	client crclient.Client,
+	options *Options,
 ) (*Manager, error) {
 	err := options.setDefaultsAndValidate()
 	if err != nil {
@@ -231,8 +247,7 @@ func (m *Manager) nextRotationDeadlineForServices() time.Time {
 	// Iterate the `services` to find the the certificate with a sooner
 	// expiration time
 	var nextToExpireServiceCert *x509.Certificate
-	for service, _ := range services {
-
+	for service := range services {
 		tlsKeyPair, err := m.getTLSKeyPair(service)
 		if err != nil {
 			m.log.Info(fmt.Sprintf("failed getting TLS keypair from service %s , forcing rotation: %v", service, err))
@@ -319,14 +334,14 @@ func (m *Manager) elapsedToRotateServicesFromLastDeadline() time.Duration {
 	}
 	now := m.now()
 	elapsedToRotate := deadline.Sub(now)
-	m.log.Info(fmt.Sprintf("elapsedToRotateServicesFromLastDeadline{now: %s, deadline: %s, elapsedToRotate: %s}", now, deadline, elapsedToRotate))
+	m.log.Info(fmt.Sprintf("elapsedToRotateServicesFromLastDeadline{now: %s, deadline: %s, elapsedToRotate: %s}",
+		now, deadline, elapsedToRotate))
 	return elapsedToRotate
 }
 
 // verifyTLS will verify that the caBundle and Secret are valid and can
 // be used to verify
 func (m *Manager) verifyTLS() error {
-
 	webhookConf, err := m.readyWebhookConfiguration()
 	if err != nil {
 		return errors.Wrap(err, "failed to reading configuration")

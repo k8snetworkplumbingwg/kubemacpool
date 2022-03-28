@@ -215,20 +215,44 @@ func tlsVersion(version string) (uint16, error) {
 	}
 }
 
-func cipherSuitesIDs(names []string) ([]uint16, error) {
-	idByName := map[string]uint16{}
+func cipherSuitesIDs(names []string) []uint16 {
+	// ref: https://www.iana.org/assignments/tls-parameters/tls-parameters.xml
+	var idByName = map[string]uint16{
+		// TLS 1.2
+		"ECDHE-ECDSA-AES128-GCM-SHA256": tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+		"ECDHE-RSA-AES128-GCM-SHA256":   tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+		"ECDHE-ECDSA-AES256-GCM-SHA384": tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+		"ECDHE-RSA-AES256-GCM-SHA384":   tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+		"ECDHE-ECDSA-CHACHA20-POLY1305": tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+		"ECDHE-RSA-CHACHA20-POLY1305":   tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		"ECDHE-ECDSA-AES128-SHA256":     tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,
+		"ECDHE-RSA-AES128-SHA256":       tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,
+		"AES128-GCM-SHA256":             tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+		"AES256-GCM-SHA384":             tls.TLS_RSA_WITH_AES_256_GCM_SHA384,
+		"AES128-SHA256":                 tls.TLS_RSA_WITH_AES_128_CBC_SHA256,
+
+		// TLS 1
+		"ECDHE-ECDSA-AES128-SHA": tls.TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA,
+		"ECDHE-RSA-AES128-SHA":   tls.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,
+		"ECDHE-ECDSA-AES256-SHA": tls.TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA,
+		"ECDHE-RSA-AES256-SHA":   tls.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA,
+
+		// SSL 3
+		"AES128-SHA":   tls.TLS_RSA_WITH_AES_128_CBC_SHA,
+		"AES256-SHA":   tls.TLS_RSA_WITH_AES_256_CBC_SHA,
+		"DES-CBC3-SHA": tls.TLS_RSA_WITH_3DES_EDE_CBC_SHA,
+	}
 	for _, cipherSuite := range tls.CipherSuites() {
 		idByName[cipherSuite.Name] = cipherSuite.ID
 	}
+
 	ids := []uint16{}
 	for _, name := range names {
-		id, ok := idByName[name]
-		if !ok {
-			return nil, fmt.Errorf("invalid CipherSuite name '%s'", name)
+		if id, ok := idByName[name]; ok {
+			ids = append(ids, id)
 		}
-		ids = append(ids, id)
 	}
-	return ids, nil
+	return ids
 }
 
 // Start runs the server.
@@ -258,10 +282,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 
-	cipherSuites, err := cipherSuitesIDs(s.CipherSuites)
-	if err != nil {
-		return err
-	}
+	cipherSuites := cipherSuitesIDs(s.CipherSuites)
 
 	cfg := &tls.Config{ //nolint:gosec
 		NextProtos:     []string{"h2"},

@@ -9,7 +9,7 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.11.0
+	github.com/prometheus/client_golang v1.11.1
 	github.com/qinqon/kube-admission-webhook v0.20.0
 	gomodules.xyz/jsonpatch/v2 v2.2.0
 	k8s.io/api v0.23.4
@@ -103,6 +103,7 @@ replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/openshift/api => github.com/openshift/api v3.9.0+incompatible
 	github.com/openshift/client-go => github.com/openshift/client-go v3.9.0+incompatible
+	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.11.1
 	golang.org/x/text => golang.org/x/text v0.3.3
 	kubevirt.io/client-go => github.com/kubevirt/client-go v0.37.1
 )

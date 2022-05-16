@@ -4,6 +4,8 @@ REPO ?= kubevirt
 IMAGE_TAG ?= latest
 IMAGE_GIT_TAG ?= $(shell git describe --abbrev=8 --tags)
 IMG ?= $(REPO)/kubemacpool
+OCI_BIN ?= $(shell if podman ps >/dev/null 2>&1; then echo podman; elif docker ps >/dev/null 2>&1; then echo docker; fi)
+TLS_SETTING := $(if $(filter $(OCI_BIN),podman),--tls-verify=false,)
 
 BIN_DIR = $(CURDIR)/build/_output/bin/
 
@@ -92,13 +94,13 @@ manager: $(GO)
 
 # Build the docker image
 container: manager
-	docker build build/ -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
+	$(OCI_BIN) build build/ -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
 
 # Push the docker image
 docker-push:
-	docker push ${REGISTRY}/${IMG}:${IMAGE_TAG}
-	docker tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
-	docker push ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	$(OCI_BIN) push ${TLS_SETTING} ${REGISTRY}/${IMG}:${IMAGE_TAG}
+	$(OCI_BIN) tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	$(OCI_BIN) push ${TLS_SETTING} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
 
 cluster-up:
 	./cluster/up.sh

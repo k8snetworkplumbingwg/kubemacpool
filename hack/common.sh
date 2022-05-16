@@ -56,3 +56,14 @@ function nativelb_version() {
     fi
 }
 MACPOOL_VERSION="$(nativelb_version)"
+
+determine_cri_bin() {
+    if podman ps >/dev/null 2>&1; then
+        echo podman
+    elif docker ps >/dev/null 2>&1; then
+        echo docker
+    else
+        echo "error: no docker or podman found"
+        exit 1
+    fi
+}

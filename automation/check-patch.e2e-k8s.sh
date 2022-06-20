@@ -2,7 +2,6 @@
 
 teardown() {
     make cluster-down
-    cp $(find . -name "*junit*.xml") $ARTIFACTS || true
 }
 
 main() {
@@ -17,7 +16,7 @@ main() {
     make cluster-up
     trap teardown EXIT SIGINT SIGTERM SIGSTOP
     make cluster-sync
-    make E2E_TEST_ARGS="-ginkgo.noColor --junit-output=$ARTIFACTS/junit.functest.xml" functest
+    make E2E_TEST_ARGS="-ginkgo.noColor --output-dir=$ARTIFACTS --junit-report=junit.functest.xml" functest
 }
 
 [[ "${BASH_SOURCE[0]}" == "$0" ]] && main "$@"

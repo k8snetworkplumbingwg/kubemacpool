@@ -5,8 +5,7 @@ import (
 	"net"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
@@ -61,7 +60,7 @@ var _ = Describe("migrate legacy vm configMap", func() {
 				configMapEntries         map[string]string
 				expectedMacsInMacPoolMap []string
 			}
-			table.DescribeTable("and running initMacMapFromLegacyConfigMapParams",
+			DescribeTable("and running initMacMapFromLegacyConfigMapParams",
 				func(i *initMacMapFromLegacyConfigMapParams) {
 					By("updating configMap entries")
 					legacyVmConfigMap := v1.ConfigMap{
@@ -87,12 +86,12 @@ var _ = Describe("migrate legacy vm configMap", func() {
 						Expect(*macEntry.transactionTimestamp).To(Equal(expectedTimestamp), "mac entry should be marked as Dummy")
 					}
 				},
-				table.Entry("Should successfully migrate entries from legacy configMap when configMap is empty",
+				Entry("Should successfully migrate entries from legacy configMap when configMap is empty",
 					&initMacMapFromLegacyConfigMapParams{
 						configMapEntries:         map[string]string{},
 						expectedMacsInMacPoolMap: []string{},
 					}),
-				table.Entry("Should successfully migrate entries from legacy configMap when configMap is not empty",
+				Entry("Should successfully migrate entries from legacy configMap when configMap is not empty",
 					&initMacMapFromLegacyConfigMapParams{
 						configMapEntries:         map[string]string{"02:00:00:00:00:00": timestamp, "02:00:00:FF:00:00": timestamp, "02:00:00:00:00:FF": timestamp},
 						expectedMacsInMacPoolMap: []string{"02:00:00:00:00:00", "02:00:00:FF:00:00", "02:00:00:00:00:FF"},

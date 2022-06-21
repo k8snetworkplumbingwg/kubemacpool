@@ -11,10 +11,9 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +33,7 @@ import (
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 const (
@@ -547,14 +547,4 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 		return errors.Wrap(err, "failed to apply finalizer to vm")
 	}
 	return nil
-}
-
-func BeforeAll(fn func()) {
-	first := true
-	BeforeEach(func() {
-		if first {
-			fn()
-			first = false
-		}
-	})
 }

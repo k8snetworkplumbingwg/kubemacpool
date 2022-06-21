@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
@@ -30,7 +30,7 @@ const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
 
 //TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
-var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", func() {
+var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", Ordered, func() {
 	restoreFailedWebhookChangesTimeout := time.Duration(0)
 	BeforeAll(func() {
 		result := testClient.KubeClient.ExtensionsV1beta1().RESTClient().

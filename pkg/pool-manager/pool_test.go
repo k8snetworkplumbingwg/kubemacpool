@@ -24,8 +24,7 @@ import (
 	"net"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/pkg/errors"
@@ -162,7 +161,7 @@ var _ = Describe("Pool", func() {
 	}
 
 	Describe("Internal Functions", func() {
-		table.DescribeTable("should return the next mac address", func(macAddr, nextMacAddr string) {
+		DescribeTable("should return the next mac address", func(macAddr, nextMacAddr string) {
 			macAddrHW, err := net.ParseMAC(macAddr)
 			Expect(err).ToNot(HaveOccurred())
 			ExpectedMacAddrHW, err := net.ParseMAC(nextMacAddr)
@@ -170,12 +169,12 @@ var _ = Describe("Pool", func() {
 			nextMacAddrHW := getNextMac(macAddrHW)
 			Expect(nextMacAddrHW).To(Equal(ExpectedMacAddrHW))
 		},
-			table.Entry("02:00:00:00:00:00 -> 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:01"),
-			table.Entry("02:00:00:00:00:FF -> 02:00:00:00:01:00", "02:00:00:00:00:FF", "02:00:00:00:01:00"),
-			table.Entry("FF:FF:FF:FF:FF:FF -> 00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF", "00:00:00:00:00:00"),
+			Entry("02:00:00:00:00:00 -> 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:01"),
+			Entry("02:00:00:00:00:FF -> 02:00:00:00:01:00", "02:00:00:00:00:FF", "02:00:00:00:01:00"),
+			Entry("FF:FF:FF:FF:FF:FF -> 00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF", "00:00:00:00:00:00"),
 		)
 
-		table.DescribeTable("should check range", func(startMacAddr, endMacAddr string, needToFail bool) {
+		DescribeTable("should check range", func(startMacAddr, endMacAddr string, needToFail bool) {
 			startMacAddrHW, err := net.ParseMAC(startMacAddr)
 			Expect(err).ToNot(HaveOccurred())
 			endMacAddrHW, err := net.ParseMAC(endMacAddr)
@@ -187,12 +186,12 @@ var _ = Describe("Pool", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 		},
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:01", false),
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:10:00:00:00:00", "02:00:00:00:00:00", "02:10:00:00:00:00", false),
-			table.Entry("Start: 02:FF:00:00:00:00  End: 02:00:00:00:00:00", "02:FF:00:00:00:00", "00:00:00:00:00:00", true),
+			Entry("Start: 02:00:00:00:00:00  End: 02:00:00:00:00:01", "02:00:00:00:00:00", "02:00:00:00:00:01", false),
+			Entry("Start: 02:00:00:00:00:00  End: 02:10:00:00:00:00", "02:00:00:00:00:00", "02:10:00:00:00:00", false),
+			Entry("Start: 02:FF:00:00:00:00  End: 02:00:00:00:00:00", "02:FF:00:00:00:00", "00:00:00:00:00:00", true),
 		)
 
-		table.DescribeTable("should check that the multicast bit is off", func(MacAddr string, shouldFail bool) {
+		DescribeTable("should check that the multicast bit is off", func(MacAddr string, shouldFail bool) {
 			MacAddrHW, err := net.ParseMAC(MacAddr)
 			Expect(err).ToNot(HaveOccurred())
 			err = checkCast(MacAddrHW)
@@ -202,15 +201,15 @@ var _ = Describe("Pool", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 		},
-			table.Entry("Valid address: 02:00:00:00:00:00", "02:00:00:00:00:00", false),
-			table.Entry("Valid address: 06:00:00:00:00:00", "06:00:00:00:00:00", false),
-			table.Entry("Valid address: 0A:00:00:00:00:00", "0A:00:00:00:00:00", false),
-			table.Entry("Valid address: 0E:00:00:00:00:00", "0E:00:00:00:00:00", false),
-			table.Entry("Invalid address: 01:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "01:FF:00:00:00:00", true),
-			table.Entry("Invalid address: FF:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "FF:FF:00:00:00:00", true),
+			Entry("Valid address: 02:00:00:00:00:00", "02:00:00:00:00:00", false),
+			Entry("Valid address: 06:00:00:00:00:00", "06:00:00:00:00:00", false),
+			Entry("Valid address: 0A:00:00:00:00:00", "0A:00:00:00:00:00", false),
+			Entry("Valid address: 0E:00:00:00:00:00", "0E:00:00:00:00:00", false),
+			Entry("Invalid address: 01:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "01:FF:00:00:00:00", true),
+			Entry("Invalid address: FF:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "FF:FF:00:00:00:00", true),
 		)
 
-		table.DescribeTable("should check that a mac pool size is reported correctly", func(startMacAddr, endMacAddr string, expectedSize float64, needToSucceed bool) {
+		DescribeTable("should check that a mac pool size is reported correctly", func(startMacAddr, endMacAddr string, expectedSize float64, needToSucceed bool) {
 			startMacAddrHW, err := net.ParseMAC(startMacAddr)
 			Expect(err).ToNot(HaveOccurred(), "Should succeed parsing startMacAddr")
 			endMacAddrHW, err := net.ParseMAC(endMacAddr)
@@ -223,15 +222,15 @@ var _ = Describe("Pool", func() {
 				Expect(err).To(HaveOccurred(), "Should fail getting Mac Pool size duu to invalid params")
 			}
 		},
-			table.Entry("Start: 40:00:00:00:00:00  End: 50:00:00:00:00:00 should succeed", "40:00:00:00:00:00", "50:00:00:00:00:00", math.Pow(2, 11*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "03:00:00:00:00:00", math.Pow(2, 10*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:01:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:01:00:00:00:00", math.Pow(2, 8*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:00  End: 02:00:00:10:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:10:00:00", math.Pow(2, 5*4)+1, true),
-			table.Entry("Start: 02:00:00:00:00:10  End: 02:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:00:00:10", math.Pow(2, 1*4)+1, true),
-			table.Entry("Start: 00:00:00:00:00:01  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:01", "00:00:00:00:00:00", float64(0), false),
-			table.Entry("Start: 80:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "80:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
-			table.Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF should fail", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
-			table.Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
+			Entry("Start: 40:00:00:00:00:00  End: 50:00:00:00:00:00 should succeed", "40:00:00:00:00:00", "50:00:00:00:00:00", math.Pow(2, 11*4)+1, true),
+			Entry("Start: 02:00:00:00:00:00  End: 03:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "03:00:00:00:00:00", math.Pow(2, 10*4)+1, true),
+			Entry("Start: 02:00:00:00:00:00  End: 02:01:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:01:00:00:00:00", math.Pow(2, 8*4)+1, true),
+			Entry("Start: 02:00:00:00:00:00  End: 02:00:00:10:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:10:00:00", math.Pow(2, 5*4)+1, true),
+			Entry("Start: 02:00:00:00:00:10  End: 02:00:00:00:00:00 should succeed", "02:00:00:00:00:00", "02:00:00:00:00:10", math.Pow(2, 1*4)+1, true),
+			Entry("Start: 00:00:00:00:00:01  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:01", "00:00:00:00:00:00", float64(0), false),
+			Entry("Start: 80:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "80:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
+			Entry("Start: FF:FF:FF:FF:FF:FF  End: FF:FF:FF:FF:FF:FF should fail", "FF:FF:FF:FF:FF:FF", "FF:FF:FF:FF:FF:FF", float64(0), false),
+			Entry("Start: 00:00:00:00:00:00  End: 00:00:00:00:00:00 should fail", "00:00:00:00:00:00", "00:00:00:00:00:00", float64(0), false),
 		)
 	})
 
@@ -862,7 +861,7 @@ var _ = Describe("Pool", func() {
 				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
 			})
 
-			table.DescribeTable("should allocate mac-address correspond to the one specified in the networks annotation",
+			DescribeTable("should allocate mac-address correspond to the one specified in the networks annotation",
 				func(networkRequestAnnotation string) {
 					pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
 					pod.Annotations = map[string]string{NetworksAnnotation: fmt.Sprintf("%s", networkRequestAnnotation)}
@@ -887,11 +886,11 @@ var _ = Describe("Pool", func() {
 						Expect(obtainedNetworksAnnotation).To(ContainElement(expectedNetwork))
 					}
 				},
-				table.Entry("with single ip-address request as string array",
+				Entry("with single ip-address request as string array",
 					`[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1"],"mac":"02:00:00:00:00:00"}]`),
-				table.Entry("with multiple ip-address request as string array",
+				Entry("with multiple ip-address request as string array",
 					`[{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1","10.10.0.2","10.0.0.3"],"mac":"02:00:00:00:00:00"}]`),
-				table.Entry("with multiple networks requsets", `[
+				Entry("with multiple networks requsets", `[
 						{"name":"ovs-conf","namespace":"default","ips":["10.10.0.1","10.10.0.2","10.0.0.3"],"mac":"02:00:00:00:00:00"},
 						{"name":"cnv-bridge","namespace":"openshift-cnv","ips":["192.168.66.100","192.168.66.101"],"mac":"02:F0:F0:F0:F0:F0"}
 				]`),
@@ -1019,7 +1018,7 @@ var _ = Describe("Pool", func() {
 		BeforeEach(func() {
 			poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:01", optOutMutatingWebhookConfiguration, optInMutatingWebhookConfiguration, namespaceWithIncludingLabel, namespaceWithExcludingLabel, namespaceWithNoLabels, namespaceWithIrrelevantLabels)
 		})
-		table.DescribeTable("Should return the expected namespace acceptance outcome according to the opt-mode or return an error",
+		DescribeTable("Should return the expected namespace acceptance outcome according to the opt-mode or return an error",
 			func(n *isNamespaceSelectorCompatibleWithOptModeLabelParams) {
 
 				isNamespaceManaged, err := poolManager.isNamespaceSelectorCompatibleWithOptModeLabel(n.namespaceName, n.mutatingWebhookConfigurationName, webhookName, n.optMode)
@@ -1031,7 +1030,7 @@ var _ = Describe("Pool", func() {
 
 				Expect(isNamespaceManaged).To(Equal(n.expectedResult), n.failureDescription)
 			},
-			table.Entry("when opt-mode is opt-in and using a namespace with including label",
+			Entry("when opt-mode is opt-in and using a namespace with including label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1040,7 +1039,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   true,
 					failureDescription:               "Should include namespace when in opt-in and including label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-in and using a namespace with irrelevant label",
+			Entry("when opt-mode is opt-in and using a namespace with irrelevant label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1049,7 +1048,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-in and using a namespace with no labels",
+			Entry("when opt-mode is opt-in and using a namespace with no labels",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1058,7 +1057,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-in and using a namespace with excluding label",
+			Entry("when opt-mode is opt-in and using a namespace with excluding label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1067,7 +1066,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-out and using a namespace with excluding label",
+			Entry("when opt-mode is opt-out and using a namespace with excluding label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptOutMode,
 					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
@@ -1076,7 +1075,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should exclude namespace when in opt-out and excluding label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-out and using a namespace with irrelevant label",
+			Entry("when opt-mode is opt-out and using a namespace with irrelevant label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptOutMode,
 					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
@@ -1085,7 +1084,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   true,
 					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-out and using a namespace with no labels",
+			Entry("when opt-mode is opt-out and using a namespace with no labels",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptOutMode,
 					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
@@ -1094,7 +1093,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   true,
 					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
 				}),
-			table.Entry("when opt-mode is opt-out and using a namespace with including label",
+			Entry("when opt-mode is opt-out and using a namespace with including label",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptOutMode,
 					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
@@ -1103,7 +1102,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   true,
 					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
 				}),
-			table.Entry("when opt-mode parameter is not valid",
+			Entry("when opt-mode parameter is not valid",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptMode("not-valid"),
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1112,7 +1111,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
 				}),
-			table.Entry("when namespace is not found",
+			Entry("when namespace is not found",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
@@ -1121,7 +1120,7 @@ var _ = Describe("Pool", func() {
 					expectedResult:                   false,
 					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
 				}),
-			table.Entry("when mutatingWebhookConfiguration is not found",
+			Entry("when mutatingWebhookConfiguration is not found",
 				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
 					optMode:                          OptInMode,
 					mutatingWebhookConfigurationName: "non-existing-mutatingWebhookConfiguration-name",

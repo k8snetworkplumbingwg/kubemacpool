@@ -114,6 +114,9 @@ cluster-sync:
 cluster-clean:
 	./cluster/clean.sh
 
+bump-kubevirtci:
+	./hack/bump-kubevirtci.sh
+
 vendor: $(GO)
 	$(GO) mod tidy
 	$(GO) mod vendor

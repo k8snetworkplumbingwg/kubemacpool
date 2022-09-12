@@ -22,11 +22,11 @@ function getLatestPatchVersion {
 }
 
 source ./cluster/cluster.sh
-CNAO_VERSION=v0.58.0
+CNAO_VERSION=v0.76.1
 export KUBEVIRT_DEPLOY_PROMETHEUS=true
 
 #use kubevirt latest z stream release
-KUBEVIRT_VERSION=$(getLatestPatchVersion v0.44)
+KUBEVIRT_VERSION=$(getLatestPatchVersion v0.56)
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

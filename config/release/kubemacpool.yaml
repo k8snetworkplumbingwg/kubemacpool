@@ -419,6 +419,15 @@ spec:
       priorityClassName: system-cluster-critical
       restartPolicy: Always
       terminationGracePeriodSeconds: 5
+      tolerations:
+      - effect: NoExecute
+        key: node.kubernetes.io/unreachable
+        operator: Exists
+        tolerationSeconds: 60
+      - effect: NoExecute
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+        tolerationSeconds: 60
       volumes:
       - name: tls-key-pair
         secret:

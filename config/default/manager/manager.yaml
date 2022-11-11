@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
+    pod-security.kubernetes.io/enforce: "restricted"
     control-plane: mac-controller-manager
     # in case mutatepods is set to opt-out mode,
     # make sure that KubeMacPool pods are also opted-out
@@ -67,12 +68,22 @@ spec:
               topologyKey: kubernetes.io/hostname
             weight: 1
       restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 107
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - command:
         - /manager
         args:
           - "--v=production"
           - "--wait-time=300"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager
@@ -123,6 +134,11 @@ spec:
         - --logtostderr
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         image: quay.io/openshift/origin-kube-rbac-proxy:4.10.0
         imagePullPolicy: IfNotPresent
         name: kube-rbac-proxy
@@ -166,11 +182,21 @@ spec:
         controller-tools.k8s.io: "1.0"
     spec:
       restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 107
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - command:
         - /manager
         args:
           - "--v=production"
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         image: quay.io/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         name: manager

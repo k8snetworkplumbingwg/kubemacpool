@@ -3,6 +3,7 @@ kind: Namespace
 metadata:
   labels:
     control-plane: mac-controller-manager
+    pod-security.kubernetes.io/enforce: restricted
   name: kubemacpool-system
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -307,8 +308,18 @@ spec:
           requests:
             cpu: 30m
             memory: 30Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
       priorityClassName: system-cluster-critical
       restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 107
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 5
 ---
 apiVersion: apps/v1
@@ -396,6 +407,11 @@ spec:
           requests:
             cpu: 100m
             memory: 100Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs/
           name: tls-key-pair
@@ -415,9 +431,19 @@ spec:
           requests:
             cpu: 10m
             memory: 20Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         terminationMessagePolicy: FallbackToLogsOnError
       priorityClassName: system-cluster-critical
       restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 107
+        seccompProfile:
+          type: RuntimeDefault
       terminationGracePeriodSeconds: 5
       tolerations:
       - effect: NoExecute

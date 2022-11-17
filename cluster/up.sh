@@ -26,7 +26,7 @@ CNAO_VERSION=v0.76.1
 export KUBEVIRT_DEPLOY_PROMETHEUS=true
 
 #use kubevirt latest z stream release
-KUBEVIRT_VERSION=$(getLatestPatchVersion v0.56)
+KUBEVIRT_VERSION=$(getLatestPatchVersion v0.58)
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

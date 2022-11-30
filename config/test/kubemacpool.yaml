@@ -7,85 +7,6 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
   name: kubemacpool-system
 ---
-apiVersion: admissionregistration.k8s.io/v1
-kind: MutatingWebhookConfiguration
-metadata:
-  name: kubemacpool-mutator
-webhooks:
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: kubemacpool-service
-      namespace: kubemacpool-system
-      path: /mutate-pods
-  failurePolicy: Fail
-  name: mutatepods.kubemacpool.io
-  namespaceSelector:
-    matchExpressions:
-    - key: runlevel
-      operator: NotIn
-      values:
-      - "0"
-      - "1"
-    - key: openshift.io/run-level
-      operator: NotIn
-      values:
-      - "0"
-      - "1"
-    - key: mutatepods.kubemacpool.io
-      operator: NotIn
-      values:
-      - ignore
-  rules:
-  - apiGroups:
-    - ""
-    apiVersions:
-    - v1
-    operations:
-    - CREATE
-    resources:
-    - pods
-  sideEffects: NoneOnDryRun
-- admissionReviewVersions:
-  - v1
-  - v1beta1
-  clientConfig:
-    service:
-      name: kubemacpool-service
-      namespace: kubemacpool-system
-      path: /mutate-virtualmachines
-  failurePolicy: Fail
-  name: mutatevirtualmachines.kubemacpool.io
-  namespaceSelector:
-    matchExpressions:
-    - key: runlevel
-      operator: NotIn
-      values:
-      - "0"
-      - "1"
-    - key: openshift.io/run-level
-      operator: NotIn
-      values:
-      - "0"
-      - "1"
-    - key: mutatevirtualmachines.kubemacpool.io
-      operator: NotIn
-      values:
-      - ignore
-  rules:
-  - apiGroups:
-    - kubevirt.io
-    apiVersions:
-    - v1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - virtualmachines
-  sideEffects: NoneOnDryRun
----
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -459,3 +380,82 @@ spec:
       - name: tls-key-pair
         secret:
           secretName: kubemacpool-service
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: kubemacpool-mutator
+webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: kubemacpool-service
+      namespace: kubemacpool-system
+      path: /mutate-pods
+  failurePolicy: Fail
+  name: mutatepods.kubemacpool.io
+  namespaceSelector:
+    matchExpressions:
+    - key: runlevel
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: openshift.io/run-level
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: mutatepods.kubemacpool.io
+      operator: NotIn
+      values:
+      - ignore
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: NoneOnDryRun
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: kubemacpool-service
+      namespace: kubemacpool-system
+      path: /mutate-virtualmachines
+  failurePolicy: Fail
+  name: mutatevirtualmachines.kubemacpool.io
+  namespaceSelector:
+    matchExpressions:
+    - key: runlevel
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: openshift.io/run-level
+      operator: NotIn
+      values:
+      - "0"
+      - "1"
+    - key: mutatevirtualmachines.kubemacpool.io
+      operator: NotIn
+      values:
+      - ignore
+  rules:
+  - apiGroups:
+    - kubevirt.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - virtualmachines
+  sideEffects: NoneOnDryRun

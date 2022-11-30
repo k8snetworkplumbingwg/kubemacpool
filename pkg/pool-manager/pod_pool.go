@@ -23,8 +23,8 @@ import (
 	"net"
 	"strings"
 
-	multus "github.com/intel/multus-cni/types"
 	"github.com/pkg/errors"
+	multus "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"

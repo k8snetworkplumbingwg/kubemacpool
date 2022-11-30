@@ -28,8 +28,8 @@ import (
 	"github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 
-	multus "github.com/intel/multus-cni/types"
 	"github.com/pkg/errors"
+	multus "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	kubevirt "kubevirt.io/client-go/api/v1"
+	kubevirt "kubevirt.io/api/core/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )

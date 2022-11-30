@@ -20,6 +20,7 @@ CONTROLLER_GEN := GOFLAGS=-mod=mod $(GO) run sigs.k8s.io/controller-tools/cmd/co
 GOFMT := GOFLAGS=-mod=mod $(GO)fmt
 VET := GOFLAGS=-mod=mod $(GO) vet
 DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
+GO_VERSION = $(shell hack/go-version.sh)
 
 export KUBECTL ?= cluster/kubectl.sh
 
@@ -107,7 +108,7 @@ bump-kubevirtci:
 	./hack/bump-kubevirtci.sh
 
 vendor: $(GO)
-	$(GO) mod tidy
+	$(GO) mod tidy -compat=$(GO_VERSION)
 	$(GO) mod vendor
 
 .PHONY: \

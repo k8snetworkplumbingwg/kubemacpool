@@ -7,7 +7,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	kubevirt "kubevirt.io/client-go/api/v1"
+	kubevirt "kubevirt.io/api/core/v1"
 )
 
 func CreateTransactionTimestamp() time.Time {

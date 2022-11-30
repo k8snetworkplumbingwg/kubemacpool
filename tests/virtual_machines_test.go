@@ -23,7 +23,7 @@ import (
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
 
-	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
 const timeout = 2 * time.Minute

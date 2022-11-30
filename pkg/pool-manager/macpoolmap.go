@@ -6,7 +6,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 
-	kubevirt "kubevirt.io/client-go/api/v1"
+	kubevirt "kubevirt.io/api/core/v1"
 )
 
 // clearMacTransactionFromMacEntry clears mac entry's transactionTimestamp, signalling that no further update is needed

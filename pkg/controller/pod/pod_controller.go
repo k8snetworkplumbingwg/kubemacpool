@@ -20,7 +20,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/intel/multus-cni/logging"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	kuberneteserror "k8s.io/apimachinery/pkg/api/errors"
@@ -95,7 +94,7 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 		if kuberneteserror.IsNotFound(err) {
 			err := r.poolManager.ReleaseAllPodMacs(fmt.Sprintf("pod/%s/%s", request.Namespace, request.Name))
 			if err != nil {
-				logging.Errorf("%v, failed to release mac for pod %s: %v", logging.ErrorLevel, request.NamespacedName, err)
+				logger.Error(err, "failed to release mac for pod %s", request.NamespacedName)
 			}
 			return reconcile.Result{}, nil
 		}

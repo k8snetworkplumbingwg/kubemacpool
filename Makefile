@@ -14,12 +14,12 @@ export GO111MODULE=on
 export GOROOT=$(BIN_DIR)/go/
 export GOBIN=$(GOROOT)/bin/
 export PATH := $(GOBIN):$(PATH)
-GOFMT := $(GOBIN)/gofmt
 export GO := $(GOBIN)/go
-KUSTOMIZE := $(GOBIN)/kustomize
-CONTROLLER_GEN := $(GOBIN)/controller-gen
-DEEPCOPY_GEN := $(GOBIN)/deepcopy-gen
-GOVERALLS := $(GOBIN)/goveralls
+KUSTOMIZE := GOFLAGS=-mod=mod $(GO) run sigs.k8s.io/kustomize/kustomize/v4@v4.5.2
+CONTROLLER_GEN := GOFLAGS=-mod=mod $(GO) run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0
+GOFMT := GOFLAGS=-mod=mod $(GO)fmt
+VET := GOFLAGS=-mod=mod $(GO) vet
+DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
 
 export KUBECTL ?= cluster/kubectl.sh
 
@@ -27,20 +27,6 @@ all: generate
 
 $(GO):
 	hack/install-go.sh $(BIN_DIR) > /dev/null
-
-$(KUSTOMIZE): go.mod
-	$(MAKE) tools
-
-$(CONTROLLER_GEN): go.mod
-	$(MAKE) tools
-
-$(DEEPCOPY_GEN): go.mod
-	$(MAKE) tools
-
-$(GOVERALLS): go.mod
-	$(MAKE) tools
-
-$(GOFMT): $(GO)
 
 # Run tests
 test: $(GO)
@@ -56,37 +42,40 @@ deploy: generate-deploy
 deploy-test: generate-test
 	$(KUBECTL) apply -f config/test/kubemacpool.yaml
 
-generate-deploy: $(KUSTOMIZE) manifests
+generate-deploy: $(GO) manifests
 	$(KUSTOMIZE) build config/release > config/release/kubemacpool.yaml
 
-generate-test: $(KUSTOMIZE) manifests
+generate-test: $(GO) manifests
 	$(KUSTOMIZE) build config/test > config/test/kubemacpool.yaml
 
-generate-external: $(KUSTOMIZE) manifests
+generate-external: $(GO) manifests
 	cp -r config/test config/external
 	cd config/external && \
 		$(KUSTOMIZE) edit set image quay.io/kubevirt/kubemacpool=$(REGISTRY)/$(IMG)
 	$(KUSTOMIZE) build config/external > config/external/kubemacpool.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
-manifests: $(CONTROLLER_GEN)
+manifests: $(GO)
 	$(CONTROLLER_GEN) crd rbac:roleName=kubemacpool paths=./pkg/... output:crd:dir=config/ output:stdout
 
 # Run go fmt against code
-fmt: $(GOFMT)
+fmt: $(GO)
 	$(GOFMT) -d pkg/ cmd/ tests/
 
 # Run go vet against code
 vet: $(GO)
-	$(GO) vet ./pkg/... ./cmd/... ./tests/...
+	$(VET) ./pkg/... ./cmd/... ./tests/...
+
+install-deep-copy: $(GO)
+	$(DEEPCOPY_GEN)
 
 # Generate code
-generate-go: $(DEEPCOPY_GEN) fmt vet manifests
+generate-go: install-deep-copy fmt vet manifests
 	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
 generate: generate-go generate-deploy generate-test generate-external
 
-check: $(KUSTOMIZE)
+check: $(GO)
 	./hack/check.sh
 
 manager: $(GO)
@@ -121,9 +110,6 @@ vendor: $(GO)
 	$(GO) mod tidy
 	$(GO) mod vendor
 
-tools: $(GO)
-	GO=$(GO) GOBIN=$(GOBIN) ./hack/install-tools.sh $$(pwd)/tools.go
-
 .PHONY: \
 	vendor \
 	test \
@@ -136,12 +122,10 @@ tools: $(GO)
 	manifests \
 	fmt \
 	vet \
-	goveralls \
 	check \
 	manager \
 	container \
 	push \
 	cluster-up \
 	cluster-down \
-	cluster-sync \
-	tools
+	cluster-sync

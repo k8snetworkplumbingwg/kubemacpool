@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -22,18 +22,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
-
-	kubevirtv1 "kubevirt.io/client-go/api/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 const (
@@ -56,39 +52,17 @@ var (
 )
 
 type TestClient struct {
-	VirtClient client.Client
-	KubeClient *kubernetes.Clientset
+	VirtClient kubecli.KubevirtClient
 }
 
 func NewTestClient() (*TestClient, error) {
-	trueBoolean := true
-	t := &envtest.Environment{
-		UseExistingCluster: &trueBoolean,
-	}
-
-	var cfg *rest.Config
-	var err error
-
-	if cfg, err = t.Start(); err != nil {
-		return nil, err
-	}
-
-	kubeClient, err := kubernetes.NewForConfig(cfg)
+	var newVirtClient kubecli.KubevirtClient
+	newVirtClient, err := kubecli.GetKubevirtClientFromFlags("", os.Getenv("KUBECONFIG"))
 	if err != nil {
 		return nil, err
 	}
 
-	err = kubevirtv1.AddToScheme(scheme.Scheme)
-	if err != nil {
-		return nil, err
-	}
-
-	var c client.Client
-	if c, err = client.New(cfg, client.Options{Scheme: scheme.Scheme}); err != nil {
-		return nil, err
-	}
-
-	return &TestClient{VirtClient: c, KubeClient: kubeClient}, nil
+	return &TestClient{VirtClient: newVirtClient}, nil
 }
 
 func createTestNamespaces() error {

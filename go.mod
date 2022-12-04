@@ -17,7 +17,6 @@ require (
 	kubevirt.io/api v0.0.0-20221013011232-17665f214e18
 	kubevirt.io/client-go v0.58.0
 	kubevirt.io/kubevirt v0.58.0
-	kubevirt.io/qe-tools v0.1.8
 	sigs.k8s.io/controller-runtime v0.11.1
 )
 
@@ -30,7 +29,6 @@ require (
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
-	github.com/onsi/ginkgo/v2 v2.1.3 // indirect
 	github.com/openshift/api v0.0.0 // indirect
 	github.com/openshift/client-go v0.0.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

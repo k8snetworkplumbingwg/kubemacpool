@@ -22,6 +22,10 @@ VET := GOFLAGS=-mod=mod $(GO) vet
 DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
 GO_VERSION = $(shell hack/go-version.sh)
 
+E2E_TEST_EXTRA_ARGS ?=
+export E2E_TEST_TIMEOUT ?= 1h
+E2E_TEST_ARGS ?= $(strip -test.v -test.timeout=$(E2E_TEST_TIMEOUT) -ginkgo.v $(E2E_TEST_EXTRA_ARGS))
+
 export KUBECTL ?= cluster/kubectl.sh
 
 all: generate
@@ -34,7 +38,7 @@ test: $(GO)
 	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
 
 functest: $(GO)
-	GO=$(GO) ./hack/functest.sh
+	GO=$(GO) TEST_ARGS="$(E2E_TEST_ARGS)" ./hack/functest.sh
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy

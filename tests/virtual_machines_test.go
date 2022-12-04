@@ -112,7 +112,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				})
 
-				It("should not allocate the Mac assigned in the dryRun request into the pool", func() {
+				//TODO Add dry-run functionality in kubevirt/client-go's VirtualMachine().Create()
+				PIt("should not allocate the Mac assigned in the dryRun request into the pool", func() {
 					By("creating a vm with the same mac to make sure the dryRun assigned mac is not occupied on the macpool")
 					var err error
 					vmDryRunOverlap := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("brDryRunOverlap", macAddress)}, []kubevirtv1.Network{newNetwork("brDryRunOverlap")})

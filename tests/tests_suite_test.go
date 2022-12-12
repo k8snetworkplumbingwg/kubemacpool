@@ -3,30 +3,20 @@ package tests
 import (
 	"context"
 	"fmt"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	ginkgo_reporters "kubevirt.io/qe-tools/pkg/ginkgo-reporters"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 func TestTests(t *testing.T) {
 	RegisterFailHandler(KubemacPoolFailedFunction)
-
-	reporters := make([]Reporter, 0)
-	if ginkgo_reporters.Polarion.Run {
-		reporters = append(reporters, &ginkgo_reporters.Polarion)
-	}
-	if ginkgo_reporters.JunitOutput != "" {
-		reporters = append(reporters, ginkgo_reporters.NewJunitReporter())
-	}
-
-	RunSpecsWithDefaultAndCustomReporters(t, "E2E Test Suite", reporters)
+	RunSpecs(t, "E2E Test Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -46,16 +36,16 @@ var _ = AfterSuite(func() {
 })
 
 func KubemacPoolFailedFunction(message string, callerSkip ...int) {
-	podList, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{})
+	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		fmt.Println(err)
 		Fail(message, callerSkip...)
 	}
 
 	for _, pod := range podList.Items {
-		podYaml, err := testClient.KubeClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		podYaml, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 
-		req := testClient.KubeClient.CoreV1().Pods(managerNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{})
+		req := testClient.VirtClient.CoreV1().Pods(managerNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{})
 		output, err := req.DoRaw(context.TODO())
 		if err != nil {
 			fmt.Println(err)
@@ -67,7 +57,7 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 		fmt.Println(string(output))
 	}
 
-	service, err := testClient.KubeClient.CoreV1().Services(managerNamespace).Get(context.TODO(), names.WEBHOOK_SERVICE, metav1.GetOptions{})
+	service, err := testClient.VirtClient.CoreV1().Services(managerNamespace).Get(context.TODO(), names.WEBHOOK_SERVICE, metav1.GetOptions{})
 	if err != nil {
 		fmt.Println(err)
 		Fail(message, callerSkip...)
@@ -75,7 +65,7 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 
 	fmt.Printf("Service: %v", service)
 
-	endpoint, err := testClient.KubeClient.CoreV1().Endpoints(managerNamespace).Get(context.TODO(), names.WEBHOOK_SERVICE, metav1.GetOptions{})
+	endpoint, err := testClient.VirtClient.CoreV1().Endpoints(managerNamespace).Get(context.TODO(), names.WEBHOOK_SERVICE, metav1.GetOptions{})
 	if err != nil {
 		fmt.Println(err)
 		Fail(message, callerSkip...)

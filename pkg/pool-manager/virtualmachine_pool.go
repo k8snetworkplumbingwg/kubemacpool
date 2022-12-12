@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	kubevirt "kubevirt.io/client-go/api/v1"
+	kubevirt "kubevirt.io/api/core/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/gauges"
 )

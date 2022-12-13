@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/pkg/errors"
@@ -521,14 +521,4 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 		return errors.Wrap(err, "failed to apply finalizer to vm")
 	}
 	return nil
-}
-
-func BeforeAll(fn func()) {
-	first := true
-	BeforeEach(func() {
-		if first {
-			fn()
-			first = false
-		}
-	})
 }

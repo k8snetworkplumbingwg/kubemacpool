@@ -9,6 +9,8 @@ tmp_dir=/tmp/kubemacpool/
 rm -rf $tmp_dir
 mkdir -p $tmp_dir
 
+hack/install-go-gvm.sh
+
 export TMP_PROJECT_PATH=$tmp_dir/kubemacpool
 export ARTIFACTS=${ARTIFACTS-$TMP_PROJECT_PATH}
 mkdir -p $ARTIFACTS

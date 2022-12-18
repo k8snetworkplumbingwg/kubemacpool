@@ -83,12 +83,9 @@ generate: generate-go generate-deploy generate-test generate-external
 check: $(GO)
 	./hack/check.sh
 
-manager: $(GO)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build -o $(BIN_DIR)/manager github.com/k8snetworkplumbingwg/kubemacpool/cmd/manager
-
 # Build the docker image
-container: manager
-	$(OCI_BIN) build build/ -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
+container:
+	$(OCI_BIN) build --build-arg GO_VERSION=$(GO_VERSION) . -t ${REGISTRY}/${IMG}:${IMAGE_TAG}
 
 # Push the docker image
 docker-push:
@@ -128,7 +125,6 @@ vendor: $(GO)
 	fmt \
 	vet \
 	check \
-	manager \
 	container \
 	push \
 	cluster-up \

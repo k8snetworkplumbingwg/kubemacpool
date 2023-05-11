@@ -7,77 +7,45 @@ rules:
 - apiGroups:
   - admissionregistration.k8s.io
   resources:
-  - mutatingwebhookconfigurations
   - validatingwebhookconfigurations
   verbs:
-  - '*'
+  - list
+  - watch
+- apiGroups:
+  - admissionregistration.k8s.io
+  resources:
+  - mutatingwebhookconfigurations
+  verbs:
+  - list
+  - update
+  - watch
 - apiGroups:
   - ""
   resources:
   - secrets
   verbs:
-  - get
   - list
   - watch
   - create
   - update
-  - patch
-  - delete
-- apiGroups:
-  - ""
-  resources:
-  - configmaps
-  verbs:
-  - "*"
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - get
-  - list
-  - create
-  - update
-- apiGroups:
-  - ""
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  - pods/status
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
 - apiGroups:
   - apiextensions.k8s.io
   resources:
   - customresourcedefinitions
   verbs:
   - get
-  - list
 - apiGroups:
-  - apps
+  - ""
   resources:
-  - deployments
+  - pods
   verbs:
-  - get
-  - create
-  - update
-  - patch
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
   - list
   - watch
 - apiGroups:
@@ -88,17 +56,14 @@ rules:
   - get
   - list
   - watch
-  - create
   - update
-  - patch
 - apiGroups:
-    - ""
+  - ""
   resources:
-    - namespaces
+  - configmaps
   verbs:
-    - get
-    - list
-    - watch
+  - get
+  - delete
 - apiGroups:
   - authentication.k8s.io
   resources:

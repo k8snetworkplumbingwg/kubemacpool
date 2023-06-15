@@ -327,7 +327,6 @@ spec:
       restartPolicy: Always
       securityContext:
         runAsNonRoot: true
-        runAsUser: 107
         seccompProfile:
           type: RuntimeDefault
       terminationGracePeriodSeconds: 5

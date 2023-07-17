@@ -3,7 +3,6 @@ kind: Namespace
 metadata:
   labels:
     pod-security.kubernetes.io/enforce: "restricted"
-    control-plane: mac-controller-manager
     # in case mutatepods is set to opt-out mode,
     # make sure that KubeMacPool pods are also opted-out
     # to prevent dead-lock.

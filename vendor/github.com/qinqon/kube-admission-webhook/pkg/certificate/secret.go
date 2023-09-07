@@ -278,7 +278,7 @@ func (m *Manager) getTLSCerts(secretKey types.NamespacedName) ([]*x509.Certifica
 	return certs, nil
 }
 
-//FIXME: Is this default/webhookname good key for ca secret
+// FIXME: Is this default/webhookname good key for ca secret
 func (m *Manager) caSecretKey() types.NamespacedName {
 	return types.NamespacedName{Namespace: m.namespace, Name: m.webhookName + "-ca"}
 }

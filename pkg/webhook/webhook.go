@@ -17,6 +17,7 @@ limitations under the License.
 package webhook
 
 import (
+	"crypto/tls"
 	"os"
 	"strings"
 
@@ -26,7 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	kawwebhook "github.com/qinqon/kube-admission-webhook/pkg/webhook"
+	kawtls "github.com/qinqon/kube-admission-webhook/pkg/tls"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 const (
@@ -43,15 +45,22 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*kawwebhook.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(*crwebhook.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
-	s := &kawwebhook.Server{
-		Port:          WebhookServerPort,
-		TLSMinVersion: tlsMinVersion(),
-		CipherSuites:  cipherSuites(),
+	tlsMinVersion, err := kawtls.TLSVersion(tlsMinVersion())
+	if err != nil {
+		return err
+	}
+
+	s := &crwebhook.Server{
+		Port: WebhookServerPort,
+		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
+			tlsConfig.CipherSuites = kawtls.CipherSuitesIDs(cipherSuites())
+			tlsConfig.MinVersion = tlsMinVersion
+		}},
 	}
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
@@ -61,7 +70,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	err := mgr.Add(s)
+	err = mgr.Add(s)
 	if err != nil {
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}

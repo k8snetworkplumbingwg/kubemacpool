@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	kawwebhook "github.com/qinqon/kube-admission-webhook/pkg/webhook"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 var log = logf.Log.WithName("Webhook mutatepods")
@@ -41,7 +41,7 @@ type podAnnotator struct {
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *kawwebhook.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s *crwebhook.Server, poolManager *pool_manager.PoolManager) error {
 	podAnnotator := &podAnnotator{poolManager: poolManager}
 	s.Register("/mutate-pods", &webhook.Admission{Handler: podAnnotator})
 	return nil

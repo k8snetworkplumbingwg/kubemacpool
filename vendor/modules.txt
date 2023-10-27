@@ -181,7 +181,7 @@ go.uber.org/zap/internal/bufferpool
 go.uber.org/zap/internal/color
 go.uber.org/zap/internal/exit
 go.uber.org/zap/zapcore
-# golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f
+# golang.org/x/crypto v0.0.0-20201002170205-7f63de1d35b0
 golang.org/x/crypto/ssh/terminal
 # golang.org/x/mod v0.3.0
 golang.org/x/mod/module
@@ -201,11 +201,8 @@ golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sys v0.0.0-20210112080510-489259a85091
 golang.org/x/sys/internal/unsafeheader
-golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.0.0-20201117132131-f5c789dd3221
-golang.org/x/term
 # golang.org/x/text v0.3.4 => golang.org/x/text v0.3.3
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -507,7 +504,8 @@ k8s.io/klog/v2
 # k8s.io/kube-openapi v0.0.0-20201113171705-d219536bb9fd
 k8s.io/kube-openapi/pkg/common
 k8s.io/kube-openapi/pkg/util/proto
-# k8s.io/utils v0.0.0-20210111153108-fddb29f9d009
+# k8s.io/utils v0.0.0-20211116205334-6203023598ed
+## explicit
 k8s.io/utils/buffer
 k8s.io/utils/integer
 k8s.io/utils/pointer
@@ -521,9 +519,6 @@ kubevirt.io/containerized-data-importer/pkg/apis/core
 kubevirt.io/containerized-data-importer/pkg/apis/core/v1alpha1
 # kubevirt.io/controller-lifecycle-operator-sdk v0.1.1
 kubevirt.io/controller-lifecycle-operator-sdk/pkg/sdk/api
-# kubevirt.io/kubevirt v0.37.1
-## explicit
-kubevirt.io/kubevirt/tools/vms-generator/utils
 # kubevirt.io/qe-tools v0.1.6
 ## explicit
 kubevirt.io/qe-tools/pkg/ginkgo-reporters

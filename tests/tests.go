@@ -14,11 +14,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/rand"
@@ -26,14 +26,15 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
 	kubevirtv1 "kubevirt.io/client-go/api/v1"
-	kubevirtutils "kubevirt.io/kubevirt/tools/vms-generator/utils"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
 const (
@@ -115,7 +116,7 @@ func removeTestNamespaces() {
 }
 
 func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
-	vm := kubevirtutils.GetVMCirros()
+	vm := getVMCirros()
 	vm.Name = randName("testvm")
 	vm.Namespace = namespace
 	vm.Spec.Running = &running
@@ -547,6 +548,79 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 		return errors.Wrap(err, "failed to apply finalizer to vm")
 	}
 	return nil
+}
+
+func getVMCirros() *kubevirtv1.VirtualMachine {
+	return &kubevirtv1.VirtualMachine{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "VirtualMachine",
+			APIVersion: kubevirtv1.GroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "vm-cirros",
+			Labels: map[string]string{
+				"kubevirt.io/vm": "vm-cirros",
+			},
+		},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Running: pointer.Bool(false),
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"kubevirt.io/vm": "vm-cirros",
+					},
+				},
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Domain: kubevirtv1.DomainSpec{
+						Resources: kubevirtv1.ResourceRequirements{
+							Requests: map[corev1.ResourceName]resource.Quantity{
+								corev1.ResourceMemory: resource.MustParse("128Mi"),
+							},
+						},
+						Devices: kubevirtv1.Devices{
+							Disks: []kubevirtv1.Disk{
+								{
+									Name: "containerdisk",
+									DiskDevice: kubevirtv1.DiskDevice{
+										Disk: &kubevirtv1.DiskTarget{
+											Bus: "virtio",
+										},
+									},
+								},
+								{
+									Name: "cloudinitdisk",
+									DiskDevice: kubevirtv1.DiskDevice{
+										Disk: &kubevirtv1.DiskTarget{
+											Bus: "virtio",
+										},
+									},
+								},
+							},
+						},
+					},
+					TerminationGracePeriodSeconds: pointer.Int64(0),
+					Volumes: []kubevirtv1.Volume{
+						{
+							Name: "containerdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								ContainerDisk: &kubevirtv1.ContainerDiskSource{
+									Image: "registry:5000/kubevirt/cirros-container-disk-demo:devel",
+								},
+							},
+						},
+						{
+							Name: "cloudinitdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
+									UserData: "#!/bin/sh\n\necho 'printed from cloud-init userdata'\n",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func BeforeAll(fn func()) {

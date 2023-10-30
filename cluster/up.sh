@@ -16,16 +16,11 @@
 
 set -ex pipefail
 
-function getLatestPatchVersion {
-  local major_minors=$1
-  curl -s https://api.github.com/repos/kubevirt/kubevirt/releases | grep .tag_name | grep ${major_minors} | sort -V | tail -1 | awk -F':' '{print $2}' | sed 's/,//' | xargs
-}
-
 source ./cluster/cluster.sh
 CNAO_VERSION=v0.58.0
 
-#use kubevirt latest z stream release
-KUBEVIRT_VERSION=$(getLatestPatchVersion v0.44)
+#use kubevirt latest z stream release for v0.44
+KUBEVIRT_VERSION=v0.44.3
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

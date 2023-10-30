@@ -304,7 +304,7 @@ func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[
 
 	log.V(1).Info("Revert vm allocation", "podFullName", podFullName, "allocations", allocations)
 	for _, macAddress := range allocations {
-		delete(p.macPoolMap, macAddress)
+		p.macPoolMap.removeMacEntry(macAddress)
 	}
 }
 

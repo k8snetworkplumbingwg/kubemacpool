@@ -147,7 +147,7 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 		}
 		return nil
 	}
-	if macEntry, exist := p.macPoolMap[requestedMac]; exist {
+	if macEntry, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
 		if !macAlreadyBelongsToPodAndNetwork(podFullName, network.Name, macEntry) {
 			err := fmt.Errorf("failed to allocate requested mac address")
 			log.Error(err, "mac address already allocated")

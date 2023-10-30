@@ -22,47 +22,25 @@ import (
 	"os"
 
 	"github.com/containernetworking/cni/pkg/types"
-	convert "github.com/containernetworking/cni/pkg/types/internal"
 )
 
 const ImplementedSpecVersion string = "0.2.0"
 
-var supportedVersions = []string{"", "0.1.0", ImplementedSpecVersion}
-
-// Register converters for all versions less than the implemented spec version
-func init() {
-	convert.RegisterConverter("0.1.0", []string{ImplementedSpecVersion}, convertFrom010)
-	convert.RegisterConverter(ImplementedSpecVersion, []string{"0.1.0"}, convertTo010)
-
-	// Creator
-	convert.RegisterCreator(supportedVersions, NewResult)
-}
+var SupportedVersions = []string{"", "0.1.0", ImplementedSpecVersion}
 
 // Compatibility types for CNI version 0.1.0 and 0.2.0
 
-// NewResult creates a new Result object from JSON data. The JSON data
-// must be compatible with the CNI versions implemented by this type.
 func NewResult(data []byte) (types.Result, error) {
 	result := &Result{}
 	if err := json.Unmarshal(data, result); err != nil {
 		return nil, err
 	}
-	for _, v := range supportedVersions {
-		if result.CNIVersion == v {
-			if result.CNIVersion == "" {
-				result.CNIVersion = "0.1.0"
-			}
-			return result, nil
-		}
-	}
-	return nil, fmt.Errorf("result type supports %v but unmarshalled CNIVersion is %q",
-		supportedVersions, result.CNIVersion)
+	return result, nil
 }
 
-// GetResult converts the given Result object to the ImplementedSpecVersion
-// and returns the concrete type or an error
 func GetResult(r types.Result) (*Result, error) {
-	result020, err := convert.Convert(r, ImplementedSpecVersion)
+	// We expect version 0.1.0/0.2.0 results
+	result020, err := r.GetAsVersion(ImplementedSpecVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -71,32 +49,6 @@ func GetResult(r types.Result) (*Result, error) {
 		return nil, fmt.Errorf("failed to convert result")
 	}
 	return result, nil
-}
-
-func convertFrom010(from types.Result, toVersion string) (types.Result, error) {
-	if toVersion != "0.2.0" {
-		panic("only converts to version 0.2.0")
-	}
-	fromResult := from.(*Result)
-	return &Result{
-		CNIVersion: ImplementedSpecVersion,
-		IP4:        fromResult.IP4.Copy(),
-		IP6:        fromResult.IP6.Copy(),
-		DNS:        *fromResult.DNS.Copy(),
-	}, nil
-}
-
-func convertTo010(from types.Result, toVersion string) (types.Result, error) {
-	if toVersion != "0.1.0" {
-		panic("only converts to version 0.1.0")
-	}
-	fromResult := from.(*Result)
-	return &Result{
-		CNIVersion: "0.1.0",
-		IP4:        fromResult.IP4.Copy(),
-		IP6:        fromResult.IP6.Copy(),
-		DNS:        *fromResult.DNS.Copy(),
-	}, nil
 }
 
 // Result is what gets returned from the plugin (via stdout) to the caller
@@ -108,16 +60,17 @@ type Result struct {
 }
 
 func (r *Result) Version() string {
-	return r.CNIVersion
+	return ImplementedSpecVersion
 }
 
 func (r *Result) GetAsVersion(version string) (types.Result, error) {
-	// If the creator of the result did not set the CNIVersion, assume it
-	// should be the highest spec version implemented by this Result
-	if r.CNIVersion == "" {
-		r.CNIVersion = ImplementedSpecVersion
+	for _, supportedVersion := range SupportedVersions {
+		if version == supportedVersion {
+			r.CNIVersion = version
+			return r, nil
+		}
 	}
-	return convert.Convert(r, version)
+	return nil, fmt.Errorf("cannot convert version %q to %s", SupportedVersions, version)
 }
 
 func (r *Result) Print() error {
@@ -138,22 +91,6 @@ type IPConfig struct {
 	IP      net.IPNet
 	Gateway net.IP
 	Routes  []types.Route
-}
-
-func (i *IPConfig) Copy() *IPConfig {
-	if i == nil {
-		return nil
-	}
-
-	var routes []types.Route
-	for _, fromRoute := range i.Routes {
-		routes = append(routes, *fromRoute.Copy())
-	}
-	return &IPConfig{
-		IP:      i.IP,
-		Gateway: i.Gateway,
-		Routes:  routes,
-	}
 }
 
 // net.IPNet is not JSON (un)marshallable so this duality is needed

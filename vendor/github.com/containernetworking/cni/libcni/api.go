@@ -14,12 +14,6 @@
 
 package libcni
 
-// Note this is the actual implementation of the CNI specification, which
-// is reflected in the https://github.com/containernetworking/cni/blob/master/SPEC.md file
-// it is typically bundled into runtime providers (i.e. containerd or cri-o would use this
-// before calling runc or hcsshim).  It is also bundled into CNI providers as well, for example,
-// to add an IP to a container, to parse the configuration of the CNI and so on.
-
 import (
 	"context"
 	"encoding/json"
@@ -31,7 +25,6 @@ import (
 
 	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/types/create"
 	"github.com/containernetworking/cni/pkg/utils"
 	"github.com/containernetworking/cni/pkg/version"
 )
@@ -285,7 +278,7 @@ func (c *CNIConfig) getCachedConfig(netName string, rt *RuntimeConf) ([]byte, *R
 
 	unmarshaled := cachedInfo{}
 	if err := json.Unmarshal(bytes, &unmarshaled); err != nil {
-		return nil, nil, fmt.Errorf("failed to unmarshal cached network %q config: %w", netName, err)
+		return nil, nil, fmt.Errorf("failed to unmarshal cached network %q config: %v", netName, err)
 	}
 	if unmarshaled.Kind != CNICacheV1 {
 		return nil, nil, fmt.Errorf("read cached network %q config has wrong kind: %v", netName, unmarshaled.Kind)
@@ -311,8 +304,15 @@ func (c *CNIConfig) getLegacyCachedResult(netName, cniVersion string, rt *Runtim
 		return nil, nil
 	}
 
-	// Load the cached result
-	result, err := create.CreateFromBytes(data)
+	// Read the version of the cached result
+	decoder := version.ConfigDecoder{}
+	resultCniVersion, err := decoder.Decode(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure we can understand the result
+	result, err := version.NewResult(resultCniVersion, data)
 	if err != nil {
 		return nil, err
 	}
@@ -322,10 +322,10 @@ func (c *CNIConfig) getLegacyCachedResult(netName, cniVersion string, rt *Runtim
 	// should match the config version unless the config was changed
 	// while the container was running.
 	result, err = result.GetAsVersion(cniVersion)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert cached result to config version %q: %w", cniVersion, err)
+	if err != nil && resultCniVersion != cniVersion {
+		return nil, fmt.Errorf("failed to convert cached result version %q to config version %q: %v", resultCniVersion, cniVersion, err)
 	}
-	return result, nil
+	return result, err
 }
 
 func (c *CNIConfig) getCachedResult(netName, cniVersion string, rt *RuntimeConf) (types.Result, error) {
@@ -346,11 +346,18 @@ func (c *CNIConfig) getCachedResult(netName, cniVersion string, rt *RuntimeConf)
 
 	newBytes, err := json.Marshal(&cachedInfo.RawResult)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal cached network %q config: %w", netName, err)
+		return nil, fmt.Errorf("failed to marshal cached network %q config: %v", netName, err)
 	}
 
-	// Load the cached result
-	result, err := create.CreateFromBytes(newBytes)
+	// Read the version of the cached result
+	decoder := version.ConfigDecoder{}
+	resultCniVersion, err := decoder.Decode(newBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Ensure we can understand the result
+	result, err := version.NewResult(resultCniVersion, newBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -360,10 +367,10 @@ func (c *CNIConfig) getCachedResult(netName, cniVersion string, rt *RuntimeConf)
 	// should match the config version unless the config was changed
 	// while the container was running.
 	result, err = result.GetAsVersion(cniVersion)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert cached result to config version %q: %w", cniVersion, err)
+	if err != nil && resultCniVersion != cniVersion {
+		return nil, fmt.Errorf("failed to convert cached result version %q to config version %q: %v", resultCniVersion, cniVersion, err)
 	}
-	return result, nil
+	return result, err
 }
 
 // GetNetworkListCachedResult returns the cached Result of the previous
@@ -421,12 +428,12 @@ func (c *CNIConfig) AddNetworkList(ctx context.Context, list *NetworkConfigList,
 	for _, net := range list.Plugins {
 		result, err = c.addNetwork(ctx, list.Name, list.CNIVersion, net, result, rt)
 		if err != nil {
-			return nil, fmt.Errorf("plugin %s failed (add): %w", pluginDescription(net.Network), err)
+			return nil, err
 		}
 	}
 
 	if err = c.cacheAdd(result, list.Bytes, list.Name, rt); err != nil {
-		return nil, fmt.Errorf("failed to set network %q cached result: %w", list.Name, err)
+		return nil, fmt.Errorf("failed to set network %q cached result: %v", list.Name, err)
 	}
 
 	return result, nil
@@ -462,7 +469,7 @@ func (c *CNIConfig) CheckNetworkList(ctx context.Context, list *NetworkConfigLis
 
 	cachedResult, err := c.getCachedResult(list.Name, list.CNIVersion, rt)
 	if err != nil {
-		return fmt.Errorf("failed to get network %q cached result: %w", list.Name, err)
+		return fmt.Errorf("failed to get network %q cached result: %v", list.Name, err)
 	}
 
 	for _, net := range list.Plugins {
@@ -499,32 +506,19 @@ func (c *CNIConfig) DelNetworkList(ctx context.Context, list *NetworkConfigList,
 	} else if gtet {
 		cachedResult, err = c.getCachedResult(list.Name, list.CNIVersion, rt)
 		if err != nil {
-			return fmt.Errorf("failed to get network %q cached result: %w", list.Name, err)
+			return fmt.Errorf("failed to get network %q cached result: %v", list.Name, err)
 		}
 	}
 
 	for i := len(list.Plugins) - 1; i >= 0; i-- {
 		net := list.Plugins[i]
 		if err := c.delNetwork(ctx, list.Name, list.CNIVersion, net, cachedResult, rt); err != nil {
-			return fmt.Errorf("plugin %s failed (delete): %w", pluginDescription(net.Network), err)
+			return err
 		}
 	}
 	_ = c.cacheDel(list.Name, rt)
 
 	return nil
-}
-
-func pluginDescription(net *types.NetConf) string {
-	if net == nil {
-		return "<missing>"
-	}
-	pluginType := net.Type
-	out := fmt.Sprintf("type=%q", pluginType)
-	name := net.Name
-	if name != "" {
-		out += fmt.Sprintf(" name=%q", name)
-	}
-	return out
 }
 
 // AddNetwork executes the plugin with the ADD command
@@ -535,7 +529,7 @@ func (c *CNIConfig) AddNetwork(ctx context.Context, net *NetworkConfig, rt *Runt
 	}
 
 	if err = c.cacheAdd(result, net.Bytes, net.Network.Name, rt); err != nil {
-		return nil, fmt.Errorf("failed to set network %q cached result: %w", net.Network.Name, err)
+		return nil, fmt.Errorf("failed to set network %q cached result: %v", net.Network.Name, err)
 	}
 
 	return result, nil
@@ -552,7 +546,7 @@ func (c *CNIConfig) CheckNetwork(ctx context.Context, net *NetworkConfig, rt *Ru
 
 	cachedResult, err := c.getCachedResult(net.Network.Name, net.Network.CNIVersion, rt)
 	if err != nil {
-		return fmt.Errorf("failed to get network %q cached result: %w", net.Network.Name, err)
+		return fmt.Errorf("failed to get network %q cached result: %v", net.Network.Name, err)
 	}
 	return c.checkNetwork(ctx, net.Network.Name, net.Network.CNIVersion, net, cachedResult, rt)
 }
@@ -567,7 +561,7 @@ func (c *CNIConfig) DelNetwork(ctx context.Context, net *NetworkConfig, rt *Runt
 	} else if gtet {
 		cachedResult, err = c.getCachedResult(net.Network.Name, net.Network.CNIVersion, rt)
 		if err != nil {
-			return fmt.Errorf("failed to get network %q cached result: %w", net.Network.Name, err)
+			return fmt.Errorf("failed to get network %q cached result: %v", net.Network.Name, err)
 		}
 	}
 

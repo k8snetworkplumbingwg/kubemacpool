@@ -162,7 +162,7 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 			if requestIface.MacAddress == "" {
 				copyVM.Spec.Template.Spec.Domain.Devices.Interfaces[idx].MacAddress = currentlyAllocatedMacAddress
 				newAllocations[requestIface.Name] = currentlyAllocatedMacAddress
-			} else if requestIface.MacAddress != currentlyAllocatedMacAddress {
+			} else if NewMacKey(requestIface.MacAddress).String() != currentlyAllocatedMacAddress {
 				// Specific mac address was requested
 				err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, requestIface, isNotDryRun, logger)
 				if err != nil {
@@ -247,7 +247,7 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		return err
 	}
 
-	if macEntry, exist := p.macPoolMap[requestedMac]; exist {
+	if macEntry, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
 		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, macEntry) {
 			err := fmt.Errorf("failed to allocate requested mac address")
 			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %s, %s, conflict with: %s, %s",
@@ -488,20 +488,20 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 			var vm *kubevirt.VirtualMachine
 			var err error
 			if macEntry.isDummyEntry() {
-				vm, err = p.recoverVmFromCluster(macAddress)
+				vm, err = p.recoverVmFromCluster(macAddress.String())
 			} else {
 				vm, err = p.getvmInstance(macEntry.instanceName)
 			}
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
-					macsToRemove = append(macsToRemove, macAddress)
+					macsToRemove = append(macsToRemove, macAddress.String())
 					continue
 				} else {
 					return err
 				}
 			}
-			macsToAlign[macAddress] = vm
+			macsToAlign[macAddress.String()] = vm
 		}
 	}
 
@@ -528,7 +528,7 @@ func (p *PoolManager) recoverVmFromCluster(macAddress string) (*kubevirt.Virtual
 			return nil
 		}
 
-		if iface.MacAddress != "" && iface.MacAddress == macAddress {
+		if iface.MacAddress != "" && NewMacKey(iface.MacAddress).String() == macAddress {
 			foundVmName = vmFullName
 		}
 		return nil

@@ -13,12 +13,12 @@ import (
 func (m *macMap) clearMacTransactionFromMacEntry(macAddress string) {
 	macEntry, exist := m.findByMacAddress(macAddress)
 	if exist {
-		(*m)[macAddress] = macEntry.resetTransaction()
+		(*m)[NewMacKey(macAddress)] = macEntry.resetTransaction()
 	}
 }
 
 func (m macMap) findByMacAddress(macAddress string) (macEntry, bool) {
-	macEntry, exist := m[macAddress]
+	macEntry, exist := m[NewMacKey(macAddress)]
 	return macEntry, exist
 }
 
@@ -40,7 +40,7 @@ func (m macMap) findByMacAddressAndInstanceName(macAddress, instanceFullName str
 
 // removeMacEntry deletes a macEntry from macPoolMap
 func (m *macMap) removeMacEntry(macAddress string) {
-	delete(*m, macAddress)
+	delete(*m, NewMacKey(macAddress))
 }
 
 // filterInByInstanceName creates a subset map from macPoolMap, holding only macs that belongs to a specific instance (pod/vm)
@@ -56,7 +56,7 @@ func (m macMap) filterInByInstanceName(instanceName string) (*macMap, error) {
 }
 
 func (m *macMap) createOrUpdateEntry(macAddress, instanceFullName, macInstanceKey string) {
-	(*m)[macAddress] = macEntry{
+	(*m)[NewMacKey(macAddress)] = macEntry{
 		instanceName:         instanceFullName,
 		macInstanceKey:       macInstanceKey,
 		transactionTimestamp: nil,
@@ -70,7 +70,7 @@ func (m *macMap) updateMacTransactionTimestampForUpdatedMacs(instanceFullName st
 		if err != nil {
 			return err
 		}
-		(*m)[macAddress] = entry.setTransaction(transactionTimestamp)
+		(*m)[NewMacKey(macAddress)] = entry.setTransaction(transactionTimestamp)
 	}
 	return nil
 }
@@ -98,7 +98,7 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 	logger := log.WithName("alignMacEntryAccordingToVmInterface")
 	macEntry, _ := m.findByMacAddress(macAddress)
 	for _, iface := range vmInterfaces {
-		if iface.MacAddress == macAddress {
+		if NewMacKey(iface.MacAddress).String() == macAddress {
 			if iface.Name == macEntry.macInstanceKey {
 				logger.Info("marked mac as allocated", "macAddress", macAddress)
 				m.clearMacTransactionFromMacEntry(macAddress)

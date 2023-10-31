@@ -21,33 +21,33 @@ var _ = Describe("mac-entry", func() {
 		newTimestamp := now.Add(time.Second)
 		BeforeEach(func() {
 			poolManager.waitTime = waitTimeSeconds
-			poolManager.macPoolMap = map[string]macEntry{
-				"02:00:00:00:00:00": macEntry{
+			poolManager.macPoolMap = map[macKey]macEntry{
+				NewMacKey("02:00:00:00:00:00"): macEntry{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
 				},
-				"02:00:00:00:00:01": macEntry{
+				NewMacKey("02:00:00:00:00:01"): macEntry{
 					instanceName:         "vm/ns0/vm1",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
 				},
-				"02:00:00:00:00:02": macEntry{
+				NewMacKey("02:00:00:00:00:02"): macEntry{
 					instanceName:         "vm/ns2/vm2",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
 				},
-				"02:00:00:00:00:03": macEntry{
+				NewMacKey("02:00:00:00:00:03"): macEntry{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
 				},
-				"02:00:00:00:00:04": macEntry{
+				NewMacKey("02:00:00:00:00:04"): macEntry{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
 				},
-				"02:00:00:00:00:05": macEntry{
+				NewMacKey("02:00:00:00:00:05"): macEntry{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: nil,
@@ -61,7 +61,7 @@ var _ = Describe("mac-entry", func() {
 		}
 		DescribeTable("and performing hasExpiredTransaction on macPoolMap entry",
 			func(i *hasExpiredTransactionParams) {
-				entry := poolManager.macPoolMap[i.macAddress]
+				entry := poolManager.macPoolMap[NewMacKey(i.macAddress)]
 				isStale, err := entry.hasExpiredTransaction(poolManager.waitTime)
 				Expect(err).ToNot(HaveOccurred(), "hasExpiredTransaction should not return error")
 				Expect(isStale).To(Equal(i.shouldSucceed), fmt.Sprintf("mac entry %s staleness status is not as expected", i.macAddress))
@@ -104,7 +104,7 @@ var _ = Describe("mac-entry", func() {
 		}
 		DescribeTable("and performing hasPendingTransaction on macPoolMap entry",
 			func(i *hasPendingTransactionParams) {
-				entry := poolManager.macPoolMap[i.macAddress]
+				entry := poolManager.macPoolMap[NewMacKey(i.macAddress)]
 				hasPendingTransaction := entry.hasPendingTransaction()
 				Expect(hasPendingTransaction).To(Equal(i.shouldSucceed), fmt.Sprintf("mac entry %s update required status is not as expected", i.macAddress))
 			},
@@ -147,7 +147,7 @@ var _ = Describe("mac-entry", func() {
 		}
 		DescribeTable("and performing hasReadyTransaction on macPoolMap",
 			func(i *hasReadyTransactionParams) {
-				entry := poolManager.macPoolMap[i.macAddress]
+				entry := poolManager.macPoolMap[NewMacKey(i.macAddress)]
 				isUpdated := entry.hasReadyTransaction(i.latestPersistedTimestamp)
 				Expect(isUpdated).To(Equal(i.expectedEntryReadiness), fmt.Sprintf("should get expected readiness on mac %s", i.macAddress))
 			},

@@ -28,7 +28,7 @@ import (
 const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
 
-//TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
+// TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", Ordered, func() {
 	restoreFailedWebhookChangesTimeout := time.Duration(0)
 	BeforeAll(func() {
@@ -129,7 +129,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
-					It("[test_id:2166]should reject a vm creation with an already allocated MAC address", func() {
+					DescribeTable("[test_id:2166]should reject a vm creation with an already allocated MAC address", func(separator string) {
 						var err error
 						vm := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm)
@@ -138,11 +138,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						vmOverlap := CreateVmObject(TestNamespace, false, []kubevirtv1.Interface{newInterface("brOverlap", "")}, []kubevirtv1.Network{newNetwork("brOverlap")})
 						// Allocated the same MAC address that was registered to the first vm
-						vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+						vmOverlapMacAddress := strings.Replace(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress, ":", separator, 5)
+						vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = vmOverlapMacAddress
 						vmOverlap, err = testClient.VirtClient.VirtualMachine(vmOverlap.Namespace).Create(context.TODO(), vmOverlap)
 						Expect(err).To(HaveOccurred())
 						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
-					})
+					},
+						Entry("with the same mac format", ":"),
+						Entry("with different mac format", "-"),
+					)
 				})
 				Context("and the MAC address is out of range", func() {
 					It("[test_id:2167]should reject a vm creation with an already allocated MAC address", func() {

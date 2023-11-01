@@ -78,7 +78,7 @@ var _ = Describe("migrate legacy vm configMap", func() {
 					By("checking entries migrated to macPoolMap")
 					Expect(poolManager.macPoolMap).To(HaveLen(len(i.expectedMacsInMacPoolMap)))
 					for _, macAddress := range i.expectedMacsInMacPoolMap {
-						macEntry, exist := poolManager.macPoolMap[macAddress]
+						macEntry, exist := poolManager.macPoolMap[NewMacKey(macAddress)]
 						Expect(exist).To(BeTrue(), "mac should be migrated to macPoolMap")
 						Expect(macEntry.isDummyEntry()).To(BeTrue(), "mac entry should be marked as Dummy")
 						expectedTimestamp, err := time.Parse(time.RFC3339Nano, timestamp)

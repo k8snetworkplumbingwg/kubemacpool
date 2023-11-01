@@ -2,7 +2,6 @@ package pool_manager
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -51,8 +50,7 @@ func (p *PoolManager) migrateMacsFromConfigMap(waitingMacData map[string]string)
 		return nil
 	}
 	var recreatedMacs []string
-	for macAddressDashes, transactionTimestampString := range waitingMacData {
-		macAddress := strings.Replace(macAddressDashes, "-", ":", 5)
+	for macAddress, transactionTimestampString := range waitingMacData {
 		if _, exist := p.macPoolMap.findByMacAddress(macAddress); !exist {
 			// configMap timestamps are in RFC3339 format, but it is also applicable in the new RFC3339Nano format
 			transactionTimestamp, err := parseTransactionTimestamp(transactionTimestampString)
@@ -71,7 +69,7 @@ func (p *PoolManager) migrateMacsFromConfigMap(waitingMacData map[string]string)
 // createOrUpdateDummyEntryWithTimestamp adds/updates a Dummy entry in the macPollMap. Since the transaction timestamp,
 // is migrated we also copy the timestamp, to signal that the transaction is still pending.
 func (m *macMap) createOrUpdateDummyEntryWithTimestamp(macAddress string, timestamp *time.Time) {
-	(*m)[macAddress] = macEntry{
+	(*m)[NewMacKey(macAddress)] = macEntry{
 		instanceName:         tempVmName,
 		macInstanceKey:       tempVmInterface,
 		transactionTimestamp: timestamp,

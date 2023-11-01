@@ -18,6 +18,7 @@ package pool_manager
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -79,7 +80,16 @@ type macEntry struct {
 	transactionTimestamp *time.Time
 }
 
-type macMap map[string]macEntry
+type macMap map[macKey]macEntry
+
+func (m macMap) MarshalJSON() ([]byte, error) {
+	mm := make(map[string]macEntry, len(m))
+	for k, v := range m {
+		mm[k.String()] = v
+	}
+
+	return json.Marshal(mm)
+}
 
 func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	err := checkRange(rangeStart, rangeEnd)
@@ -177,7 +187,7 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 
 		// This loop runs from the current mac to the last one in the range
 		for {
-			if _, ok := p.macPoolMap[p.currentMac.String()]; !ok {
+			if _, ok := p.macPoolMap[NewMacKey(p.currentMac.String())]; !ok {
 				log.V(1).Info("found unused mac", "mac", p.currentMac)
 				freeMac := make(net.HardwareAddr, len(p.currentMac))
 				copy(freeMac, p.currentMac)

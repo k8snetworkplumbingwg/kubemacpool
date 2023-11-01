@@ -39,6 +39,6 @@ func (p *PoolManager) commitChangesToMacPoolMap(macsMapToCommit *macMap, vm *kub
 	vmPersistedInterfaceList := getVirtualMachineInterfaces(vm)
 	parentLogger.Info("committing macs to macPoolMap according to the current vm interfaces", "macsMapToCommit", macsMapToCommit, "vmPersistedInterfaceList", vmPersistedInterfaceList)
 	for macAddress, _ := range *macsMapToCommit {
-		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), vmPersistedInterfaceList)
+		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress.String(), VmNamespaced(vm), vmPersistedInterfaceList)
 	}
 }

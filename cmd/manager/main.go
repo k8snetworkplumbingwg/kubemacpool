@@ -77,7 +77,8 @@ func runCertManager() {
 	}
 
 	mgrOptions := ctrlmanager.Options{
-		MetricsBindAddress: "0", // disable metrics
+		MetricsBindAddress: "0",          // disable metrics
+		Namespace:          podNamespace, // cache only the secrets from kubemacpool namespace
 	}
 
 	mgr, err := ctrlmanager.New(config.GetConfigOrDie(), mgrOptions)

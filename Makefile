@@ -67,7 +67,7 @@ manifests: $(GO)
 fmt: $(GO)
 	$(GOFMT) -d pkg/ cmd/ tests/
 
-# Run go vet against code
+# Run go vet against code 1
 vet: $(GO)
 	$(VET) ./pkg/... ./cmd/... ./tests/...
 

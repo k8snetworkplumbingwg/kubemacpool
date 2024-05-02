@@ -1,4 +1,4 @@
-# Image URL to use all building/pushing image targets
+#1 Image URL to use all building/pushing image targets
 REGISTRY ?= quay.io
 REPO ?= kubevirt
 IMAGE_TAG ?= latest

@@ -1,4 +1,10 @@
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sa
+  namespace: system
+---
+apiVersion: v1
 kind: Namespace
 metadata:
   labels:
@@ -45,6 +51,7 @@ spec:
       annotations:
         description: KubeMacPool manages MAC allocation to Pods and VMs
     spec:
+      serviceAccountName: sa
       tolerations:
         - key: node.kubernetes.io/unreachable
           operator: Exists
@@ -180,6 +187,7 @@ spec:
         control-plane: cert-manager
         controller-tools.k8s.io: "1.0"
     spec:
+      serviceAccountName: sa
       restartPolicy: Always
       securityContext:
         runAsNonRoot: true

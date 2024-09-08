@@ -1,6 +1,6 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
-go 1.21.9
+go 1.22.0
 
 require (
 	github.com/go-logr/logr v1.2.4

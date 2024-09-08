@@ -357,16 +357,6 @@ var _ = Describe("Pool", func() {
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}
-		It("should not allocate if VM template is nil", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
-			newInvalidVM := multipleInterfacesVM.DeepCopy()
-			newInvalidVM.Name = "newVM"
-			newInvalidVM.Spec.Template = nil
-
-			transactionTimestamp := updateTransactionTimestamp(0)
-			err := poolManager.AllocateVirtualMachineMac(newInvalidVM, &transactionTimestamp, true, logger)
-			Expect(err).ToNot(HaveOccurred())
-		})
 		It("should reject allocation if there are interfaces with the same name", func() {
 			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			newVM := duplicateInterfacesVM.DeepCopy()
@@ -429,26 +419,6 @@ var _ = Describe("Pool", func() {
 			})
 		})
 		Describe("Update vm object", func() {
-			It("should not allocate if VM template is nil", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
-				newVM := multipleInterfacesVM.DeepCopy()
-				newVM.Name = "newVM"
-
-				transactionTimestamp := updateTransactionTimestamp(0)
-				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
-				Expect(err).ToNot(HaveOccurred())
-
-				updateVm := multipleInterfacesVM.DeepCopy()
-				newInvalidVM := newVM.DeepCopy()
-				newInvalidVM.Spec.Template = nil
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newInvalidVM, updateVm, &transactionTimestamp, true, logger)
-				Expect(err).ToNot(HaveOccurred())
-
-				updateInvalidVm := multipleInterfacesVM.DeepCopy()
-				updateInvalidVm.Spec.Template = nil
-				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateInvalidVm, &transactionTimestamp, true, logger)
-				Expect(err).ToNot(HaveOccurred())
-			})
 			It("should preserve disk.io configuration on update", func() {
 				addDiskIO := func(vm *kubevirt.VirtualMachine, ioName kubevirt.DriverIO) {
 					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)

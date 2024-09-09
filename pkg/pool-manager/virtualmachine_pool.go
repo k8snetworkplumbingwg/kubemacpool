@@ -42,10 +42,6 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("AllocateVirtualMachineMac")
 
-	if virtualMachine.Spec.Template == nil {
-		logger.Info("virtual machine template is nil, skipping mac allocation", "virtualMachine", virtualMachine)
-		return nil
-	}
 	if len(virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces) == 0 {
 		logger.Info("no interfaces found for virtual machine, skipping mac allocation", "virtualMachine", virtualMachine)
 		return nil
@@ -136,15 +132,6 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 		return p.AllocateVirtualMachineMac(virtualMachine, transactionTimestamp, isNotDryRun, logger)
 	}
 	defer p.poolMutex.Unlock()
-
-	if previousVirtualMachine.Spec.Template == nil {
-		logger.Info("virtual machine template is nil, skipping mac allocation", "virtualMachine", virtualMachine)
-		return nil
-	}
-	if virtualMachine.Spec.Template == nil {
-		logger.Info("virtual machine template is nil, skipping mac allocation", "virtualMachine", virtualMachine)
-		return nil
-	}
 
 	// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
 	if isNotDryRun {

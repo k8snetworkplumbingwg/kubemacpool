@@ -6,6 +6,12 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
   name: kubemacpool-system
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kubemacpool-sa
+  namespace: kubemacpool-system
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -96,7 +102,7 @@ roleRef:
   name: kubemacpool-manager-role
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: kubemacpool-sa
   namespace: kubemacpool-system
 ---
 apiVersion: v1
@@ -206,6 +212,7 @@ spec:
         runAsUser: 107
         seccompProfile:
           type: RuntimeDefault
+      serviceAccountName: kubemacpool-sa
       terminationGracePeriodSeconds: 5
 ---
 apiVersion: apps/v1
@@ -330,6 +337,7 @@ spec:
         runAsUser: 107
         seccompProfile:
           type: RuntimeDefault
+      serviceAccountName: kubemacpool-sa
       terminationGracePeriodSeconds: 5
       tolerations:
       - effect: NoExecute

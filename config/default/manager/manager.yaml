@@ -145,7 +145,7 @@ spec:
           capabilities:
             drop:
             - ALL
-        image: quay.io/openshift/origin-kube-rbac-proxy:4.15.0
+        image: quay.io/brancz/kube-rbac-proxy:v0.18.1
         imagePullPolicy: IfNotPresent
         name: kube-rbac-proxy
         ports:

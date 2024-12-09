@@ -18,8 +18,10 @@ package pool_manager
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"reflect"
 	"sync"
@@ -71,6 +73,8 @@ const (
 	OptInMode  OptMode = "Opt-in"
 	OptOutMode OptMode = "Opt-out"
 )
+
+var ErrFull = errors.New("the range is full")
 
 type macEntry struct {
 	instanceName         string
@@ -177,41 +181,85 @@ func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
 	return endInt - startInt + 1, nil
 }
 
-func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
-	// this look will ensure that we check all the range
-	// first iteration from current mac to last mac in the range
-	// second iteration from first mac in the range to the latest one
-	for idx := 0; idx <= 1; idx++ {
-
-		// This loop runs from the current mac to the last one in the range
-		for {
-			if _, ok := p.macPoolMap[NewMacKey(p.currentMac.String())]; !ok {
-				log.V(1).Info("found unused mac", "mac", p.currentMac)
-				freeMac := make(net.HardwareAddr, len(p.currentMac))
-				copy(freeMac, p.currentMac)
-
-				// move to the next mac after we found a free one
-				// If we allocate a mac address then release it and immediately allocate the same one to another object
-				// we can have issues with dhcp and arp discovery
-				if p.currentMac.String() == p.rangeEnd.String() {
-					copy(p.currentMac, p.rangeStart)
-				} else {
-					p.currentMac = getNextMac(p.currentMac)
-				}
-
-				return freeMac, nil
-			}
-
-			if p.currentMac.String() == p.rangeEnd.String() {
-				break
-			}
-			p.currentMac = getNextMac(p.currentMac)
-		}
-
-		copy(p.currentMac, p.rangeStart)
+// generateRandomMac generates a random MAC address within the specified range using GetMacPoolSize.
+func generateRandomMac(rangeStart, rangeEnd net.HardwareAddr) (net.HardwareAddr, error) {
+	poolSize, err := GetMacPoolSize(rangeStart, rangeEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate MAC pool size: %w", err)
+	}
+	if poolSize <= 0 {
+		return nil, fmt.Errorf("invalid MAC pool size: %d", poolSize)
 	}
 
-	return nil, fmt.Errorf("the range is full")
+	randomOffset, err := rand.Int(rand.Reader, big.NewInt(poolSize))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random number: %w", err)
+	}
+
+	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert rangeStart to int64: %w", err)
+	}
+
+	randomMacInt := startInt + randomOffset.Int64()
+
+	macString := fmt.Sprintf("%012X", randomMacInt)
+	macFormatted := fmt.Sprintf("%s:%s:%s:%s:%s:%s",
+		macString[0:2], macString[2:4], macString[4:6],
+		macString[6:8], macString[8:10], macString[10:12])
+
+	randomMac, err := net.ParseMAC(macFormatted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert to MAC: %w", err)
+	}
+
+	return randomMac, nil
+}
+func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
+	if p.isMacPoolFull() {
+		return nil, ErrFull
+	}
+
+	for {
+		randomMac, err := generateRandomMac(p.rangeStart, p.rangeEnd)
+		if err != nil {
+			return nil, err
+		}
+
+		if err := checkCast(randomMac); err != nil {
+			continue
+		}
+		if _, used := p.macPoolMap[NewMacKey(randomMac.String())]; !used {
+			return randomMac, nil
+		}
+	}
+}
+
+// isMacPoolFull checks if the MAC pool is full based on the range and used MACs.
+func (p *PoolManager) isMacPoolFull() bool {
+	usedMacsInRange := 0
+	for mac := range p.macPoolMap {
+		macAddr, _ := net.ParseMAC(mac.String())
+		if isWithinRange(macAddr, p.rangeStart, p.rangeEnd) {
+			usedMacsInRange++
+		}
+	}
+
+	poolSize, err := GetMacPoolSize(p.rangeStart, p.rangeEnd)
+	if err != nil {
+		return true
+	}
+
+	return int64(usedMacsInRange) >= poolSize
+}
+
+// isWithinRange checks if a MAC address is within the specified range.
+func isWithinRange(mac, start, end net.HardwareAddr) bool {
+	macInt, _ := utils.ConvertHwAddrToInt64(mac)
+	startInt, _ := utils.ConvertHwAddrToInt64(start)
+	endInt, _ := utils.ConvertHwAddrToInt64(end)
+
+	return macInt >= startInt && macInt <= endInt
 }
 
 func checkCast(mac net.HardwareAddr) error {

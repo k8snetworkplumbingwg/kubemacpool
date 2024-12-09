@@ -70,7 +70,7 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	copyVM := virtualMachine.DeepCopy()
 	newAllocations := map[string]string{}
 	for idx, iface := range copyVM.Spec.Template.Spec.Domain.Devices.Interfaces {
-		if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
+		if iface.Masquerade == nil && networks[iface.Name].Multus == nil {
 			logger.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 			continue
 		}
@@ -566,7 +566,7 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 }
 
 func validateInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
-	if iface.Masquerade == nil && iface.Slirp == nil && networks[iface.Name].Multus == nil {
+	if iface.Masquerade == nil && networks[iface.Name].Multus == nil {
 		log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 		return false
 	}

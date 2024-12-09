@@ -72,6 +72,7 @@ const (
 	OptOutMode OptMode = "Opt-out"
 )
 
+var ErrFull = errors.New("the range is full")
 type macEntry struct {
 	instanceName         string
 	macInstanceKey       string // for vms, it holds the interface Name, for pods, it holds the network Name
@@ -211,7 +212,7 @@ func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
 		copy(p.currentMac, p.rangeStart)
 	}
 
-	return nil, fmt.Errorf("the range is full")
+	return nil, ErrFull
 }
 
 func checkCast(mac net.HardwareAddr) error {

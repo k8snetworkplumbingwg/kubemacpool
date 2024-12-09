@@ -27,10 +27,12 @@ import (
 	"github.com/qinqon/kube-admission-webhook/pkg/certificate"
 
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlmanager "sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -77,8 +79,14 @@ func runCertManager() {
 	}
 
 	mgrOptions := ctrlmanager.Options{
-		MetricsBindAddress: "0",          // disable metrics
-		Namespace:          podNamespace, // cache only the secrets from kubemacpool namespace
+		Metrics: metricsserver.Options{
+			BindAddress: "0", // disable metrics
+		},
+		Cache: cache.Options{
+			DefaultNamespaces: map[string]cache.Config{
+				podNamespace: {}, // cache only the secrets from kubemacpool namespace
+			},
+		},
 	}
 
 	mgr, err := ctrlmanager.New(config.GetConfigOrDie(), mgrOptions)

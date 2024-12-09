@@ -38,12 +38,12 @@ var log = logf.Log.WithName("Webhook mutatepods")
 
 type podAnnotator struct {
 	client      client.Client
-	decoder     *admission.Decoder
+	decoder     admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *crwebhook.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s crwebhook.Server, poolManager *pool_manager.PoolManager) error {
 	podAnnotator := &podAnnotator{poolManager: poolManager}
 	s.Register("/mutate-pods", &webhook.Admission{Handler: podAnnotator})
 	return nil
@@ -112,7 +112,7 @@ func (a *podAnnotator) InjectClient(c client.Client) error {
 }
 
 // InjectDecoder injects the decoder.
-func (a *podAnnotator) InjectDecoder(d *admission.Decoder) error {
+func (a *podAnnotator) InjectDecoder(d admission.Decoder) error {
 	a.decoder = d
 	return nil
 }

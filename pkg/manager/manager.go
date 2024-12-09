@@ -31,9 +31,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
-	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
@@ -118,10 +118,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
 		}
 		log.Info("Building client")
-		cachedClient, err := cluster.DefaultNewClient(cache, k.config, client.Options{
-			Scheme: k.runtimeManager.GetScheme(),
-			Mapper: k.runtimeManager.GetRESTMapper(),
-		})
+
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
@@ -132,7 +129,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
-		poolManager, err := poolmanager.NewPoolManager(client, cachedClient, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(client, client, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return errors.Wrap(err, "unable to create pool manager")
 		}
@@ -186,8 +183,11 @@ func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
 func (k *KubeMacPoolManager) initRuntimeManager() error {
 	log.Info("Setting up Manager")
 	var err error
+
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
-		MetricsBindAddress: k.metricsAddr,
+		Metrics: metricsserver.Options{
+			BindAddress: k.metricsAddr,
+		},
 	})
 	return err
 }

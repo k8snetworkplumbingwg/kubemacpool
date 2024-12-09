@@ -45,7 +45,7 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*crwebhook.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(crwebhook.Server, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
@@ -55,13 +55,14 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		return err
 	}
 
-	s := &crwebhook.Server{
+	s := crwebhook.NewServer(crwebhook.Options{
 		Port: WebhookServerPort,
 		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
 			tlsConfig.CipherSuites = kawtls.CipherSuitesIDs(cipherSuites())
 			tlsConfig.MinVersion = tlsMinVersion
 		}},
-	}
+	})
+
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {

@@ -58,16 +58,19 @@ func newReconciler(mgr manager.Manager, poolManager *pool_manager.PoolManager) r
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r reconcile.Reconciler) error {
-	// Create a new controller
 	c, err := controller.New("virtualmachine-controller", mgr, controller.Options{Reconciler: r})
 	if err != nil {
 		return err
 	}
 
-	// Watch for changes to Pod
-	err = c.Watch(&source.Kind{Type: &kubevirt.VirtualMachine{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
+	if err := c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&kubevirt.VirtualMachine{},
+			&handler.TypedEnqueueRequestForObject[*kubevirt.VirtualMachine]{},
+		),
+	); err != nil {
+		return fmt.Errorf("unable to watch VMs: %w", err)
 	}
 
 	return nil

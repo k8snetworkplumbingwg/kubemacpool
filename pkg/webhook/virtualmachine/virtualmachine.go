@@ -43,12 +43,12 @@ var log = logf.Log.WithName("Webhook mutatevirtualmachines")
 
 type virtualMachineAnnotator struct {
 	client      client.Client
-	decoder     *admission.Decoder
+	decoder     admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *crwebhook.Server, poolManager *pool_manager.PoolManager) error {
+func Add(s crwebhook.Server, poolManager *pool_manager.PoolManager) error {
 	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
 	s.Register("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator})
 	return nil
@@ -261,7 +261,7 @@ func (a *virtualMachineAnnotator) InjectClient(c client.Client) error {
 }
 
 // InjectDecoder injects the decoder.
-func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
+func (a *virtualMachineAnnotator) InjectDecoder(d admission.Decoder) error {
 	a.decoder = d
 	return nil
 }

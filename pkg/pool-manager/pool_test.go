@@ -302,6 +302,27 @@ var _ = Describe("Pool", func() {
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}
+		It("should reject allocation MAC pool is full", func() {
+			const (
+				minRangeMACSmallPool = "02:00:00:00:00:00"
+				maxRangeMACSmallPool = "02:00:00:00:00:01"
+				smallMACPoolSize     = 2
+			)
+
+			poolManager := createPoolManager(minRangeMACSmallPool, maxRangeMACSmallPool)
+			transactionTimestamp := updateTransactionTimestamp(0)
+
+			for i := 0; i < smallMACPoolSize; i++ {
+				vm := masqueradeVM.DeepCopy()
+				vm.Name = fmt.Sprintf("newVM%d", i)
+				Expect(poolManager.AllocateVirtualMachineMac(vm, &transactionTimestamp, true, logger)).To(Succeed())
+			}
+
+			vm := masqueradeVM.DeepCopy()
+			vm.Name = fmt.Sprintf("newVM-full")
+			Expect(poolManager.AllocateVirtualMachineMac(vm, &transactionTimestamp, true, logger)).To(MatchError(ErrFull))
+
+		})
 		It("should reject allocation if there are interfaces with the same name", func() {
 			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
 			newVM := duplicateInterfacesVM.DeepCopy()

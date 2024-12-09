@@ -56,10 +56,15 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// Watch for changes to Pod
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{})
-	if err != nil {
-		return err
+	// Watch Pods and enqueue Pod object key
+	if err := c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&corev1.Pod{},
+			&handler.TypedEnqueueRequestForObject[*corev1.Pod]{},
+		),
+	); err != nil {
+		return fmt.Errorf("unable to watch Pods: %w", err)
 	}
 
 	return nil

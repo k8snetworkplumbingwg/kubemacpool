@@ -3,7 +3,7 @@ kind: VirtualMachine
 metadata:
   name: simplevm
 spec:
-  running: false
+  runStrategy: Halted
   template:
     spec:
       domain:

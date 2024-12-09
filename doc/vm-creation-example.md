@@ -43,7 +43,7 @@ kind: VirtualMachine
 metadata:
   name: samplevm
 spec:
-  running: false
+  runStrategy: Halted
   template:
     spec:
       domain:

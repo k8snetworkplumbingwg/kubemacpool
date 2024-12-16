@@ -93,8 +93,19 @@ container: manager
 # Push the docker image
 docker-push:
 	$(OCI_BIN) push ${TLS_SETTING} ${REGISTRY}/${IMG}:${IMAGE_TAG}
-	$(OCI_BIN) tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
-	$(OCI_BIN) push ${TLS_SETTING} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}
+	@if [[ "${REGISTRY}" == localhost* || "${REGISTRY}" == 127.0.0.1* ]]; then \
+	    echo "Local registry detected (${REGISTRY}). Skipping IMAGE_GIT_TAG handling."; \
+	else \
+	    if skopeo inspect docker://${REGISTRY}/${IMG}:${IMAGE_GIT_TAG} >/dev/null 2>&1; then \
+	        echo "Tag '${IMAGE_GIT_TAG}' already exists. Skipping tagging and push."; \
+	    elif skopeo inspect docker://${REGISTRY}/${IMG}:${IMAGE_GIT_TAG} 2>&1 | grep -q "manifest unknown"; then \
+	        $(OCI_BIN) tag ${REGISTRY}/${IMG}:${IMAGE_TAG} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}; \
+	        $(OCI_BIN) push ${TLS_SETTING} ${REGISTRY}/${IMG}:${IMAGE_GIT_TAG}; \
+	    else \
+	        echo "Error checking for tag '${IMAGE_GIT_TAG}'. Aborting to avoid potential overwrite."; \
+	        exit 1; \
+	    fi; \
+	fi
 
 cluster-up:
 	./cluster/up.sh

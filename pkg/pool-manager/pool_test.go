@@ -27,7 +27,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/pkg/errors"
 	multus "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
@@ -293,7 +292,6 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(poolManager.macPoolMap).To(HaveLen(2))
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
@@ -310,7 +308,6 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(poolManager.macPoolMap).To(HaveLen(3))
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01", "02:00:00:00:00:02"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
@@ -318,7 +315,6 @@ var _ = Describe("Pool", func() {
 
 				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(newVM), logf.Log.WithName("VirtualMachine Controller"))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(poolManager.macPoolMap).To(HaveLen(1), "Should keep the pod mac in the macMap")
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 			})
 		})
@@ -727,7 +723,6 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			preAllocatedPodMac := managedNamespaceMAC
 			expectedAllocatedMac := "02:00:00:00:00:01"
-			Expect(poolManager.macPoolMap).To(HaveLen(2))
 			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac, expectedAllocatedMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[networkv1.NetworkAttachmentAnnot]))
@@ -740,7 +735,6 @@ var _ = Describe("Pool", func() {
 
 			err = poolManager.ReleaseAllPodMacs(podNamespaced(&newPod))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(poolManager.macPoolMap).To(HaveLen(1))
 			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			_, exist := poolManager.macPoolMap[NewMacKey(expectedAllocatedMac)]
 			Expect(exist).To(BeFalse())
@@ -1119,22 +1113,25 @@ func createPoolManager(startMacAddr, endMacAddr string, fakeObjectsForClient ...
 }
 
 func checkMacPoolMapEntries(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
+	if len(macPoolMap) != len(updatedMacs)+len(notUpdatedMacs) {
+		return fmt.Errorf("mac pool size %d is not as expected %d, should only contain MACs %v, macPoolMap %+v", len(macPoolMap), len(updatedMacs)+len(notUpdatedMacs), append(updatedMacs, notUpdatedMacs...), macPoolMap)
+	}
 	for _, macAddress := range updatedMacs {
 		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
 		if !exist {
-			return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
+			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
 		}
 		if macEntry.transactionTimestamp != updatedTransactionTimestamp {
-			return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
 		}
 	}
 	for _, macAddress := range notUpdatedMacs {
 		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
 		if !exist {
-			return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
+			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
 		}
 		if macEntry.transactionTimestamp == updatedTransactionTimestamp {
-			return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
 		}
 	}
 	return nil

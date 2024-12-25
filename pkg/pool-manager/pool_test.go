@@ -63,108 +63,6 @@ var _ = Describe("Pool", func() {
 	managedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: managedNamespaceName, Annotations: afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)}}
 	unmanagedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "unmanagedPod", Namespace: notManagedNamespaceName, Annotations: afterAllocationAnnotation(notManagedNamespaceName, unmanagedNamespaceMAC)}}
 	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
-	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
-	waitTimeSeconds := 10
-
-	appendOptOutModes := func(fakeObjectsForClient []runtime.Object) []runtime.Object {
-		mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: mutatingWebhookConfigName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    virtualMachnesWebhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      virtualMachnesWebhookName,
-								Operator: "NotIn",
-								Values:   []string{"ignore"},
-							},
-						},
-					},
-				},
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    podsWebhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      podsWebhookName,
-								Operator: "NotIn",
-								Values:   []string{"ignore"},
-							},
-						},
-					},
-				},
-			},
-		}
-		managedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedNamespaceName}}
-		notManagedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: notManagedNamespaceName, Labels: map[string]string{podsWebhookName: "ignore", virtualMachnesWebhookName: "ignore"}}}
-		By("Setting kubemacpool MutatingWebhookConfigurations to opt-out mode on vms and pods")
-		fakeObjectsForClient = append(fakeObjectsForClient, mutatingWebhookConfiguration)
-		By("Setting managed and non-managed namespaces")
-		fakeObjectsForClient = append(fakeObjectsForClient, managedNamespace, notManagedNamespace)
-		return fakeObjectsForClient
-	}
-	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
-		fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
-		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
-		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
-		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
-		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
-		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
-		err = poolManager.Start()
-		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
-		return poolManager
-	}
-
-	checkMacPoolMapEntries := func(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
-		for _, macAddress := range updatedMacs {
-			macEntry, exist := macPoolMap[NewMacKey(macAddress)]
-			if !exist {
-				return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
-			}
-			if macEntry.transactionTimestamp != updatedTransactionTimestamp {
-				return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
-			}
-		}
-		for _, macAddress := range notUpdatedMacs {
-			macEntry, exist := macPoolMap[NewMacKey(macAddress)]
-			if !exist {
-				return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
-			}
-			if macEntry.transactionTimestamp == updatedTransactionTimestamp {
-				return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
-			}
-		}
-		return nil
-	}
 
 	Describe("Internal Functions", func() {
 		DescribeTable("should return the next mac address", func(macAddr, nextMacAddr string) {
@@ -1138,3 +1036,106 @@ var _ = Describe("Pool", func() {
 		)
 	})
 })
+
+func appendOptOutModes(fakeObjectsForClient []runtime.Object) []runtime.Object {
+	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
+	mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mutatingWebhookConfigName,
+		},
+		Webhooks: []admissionregistrationv1.MutatingWebhook{
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    virtualMachnesWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      virtualMachnesWebhookName,
+							Operator: "NotIn",
+							Values:   []string{"ignore"},
+						},
+					},
+				},
+			},
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    podsWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      podsWebhookName,
+							Operator: "NotIn",
+							Values:   []string{"ignore"},
+						},
+					},
+				},
+			},
+		},
+	}
+	managedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedNamespaceName}}
+	notManagedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: notManagedNamespaceName, Labels: map[string]string{podsWebhookName: "ignore", virtualMachnesWebhookName: "ignore"}}}
+	By("Setting kubemacpool MutatingWebhookConfigurations to opt-out mode on vms and pods")
+	fakeObjectsForClient = append(fakeObjectsForClient, mutatingWebhookConfiguration)
+	By("Setting managed and non-managed namespaces")
+	fakeObjectsForClient = append(fakeObjectsForClient, managedNamespace, notManagedNamespace)
+	return fakeObjectsForClient
+}
+
+func createPoolManager(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
+	waitTimeSeconds := 10
+	fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
+	startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
+	Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
+	endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
+	Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
+	poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
+	Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
+	err = poolManager.Start()
+	Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
+	return poolManager
+}
+
+func checkMacPoolMapEntries(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
+	for _, macAddress := range updatedMacs {
+		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		if !exist {
+			return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
+		}
+		if macEntry.transactionTimestamp != updatedTransactionTimestamp {
+			return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
+		}
+	}
+	for _, macAddress := range notUpdatedMacs {
+		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		if !exist {
+			return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
+		}
+		if macEntry.transactionTimestamp == updatedTransactionTimestamp {
+			return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
+		}
+	}
+	return nil
+}

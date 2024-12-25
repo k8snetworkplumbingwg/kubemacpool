@@ -56,8 +56,11 @@ var _ = Describe("Pool", func() {
 		return map[string]string{networkv1.NetworkAttachmentAnnot: `[{"name":"ovs-conf","namespace":"` + namespace + `","mac":"` + macAddress + `","cni-args":null}]`}
 	}
 	const (
-		managedNamespaceMAC   = "02:00:00:00:00:00"
-		unmanagedNamespaceMAC = "02:00:00:00:00:FF"
+		managedNamespaceMAC   = "03:00:00:00:00:00"
+		unmanagedNamespaceMAC = "03:00:00:00:00:FF"
+
+		minRangeMACPool = "02:00:00:00:00:00"
+		maxRangeMACPool = "02:FF:FF:FF:FF:FF"
 	)
 	managedPodWithMacAllocated := v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +161,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager General Functions ", func() {
 		It("should create a pool manager", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF")
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 			Expect(poolManager).ToNot(BeNil())
 		})
 		Context("check NewPoolManager", func() {
@@ -200,7 +203,7 @@ var _ = Describe("Pool", func() {
 			Context("When poolManager is initialized when there are pods on managed and unmanaged namespaces", func() {
 				var poolManager *PoolManager
 				BeforeEach(func() {
-					poolManager = createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF", &managedPodWithMacAllocated, &unmanagedPodWithMacAllocated)
+					poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated, &unmanagedPodWithMacAllocated)
 					Expect(poolManager).ToNot(BeNil())
 				})
 				It("Should initialize the macPoolmap only with macs on the mananged pods", func() {
@@ -324,7 +327,7 @@ var _ = Describe("Pool", func() {
 
 		})
 		It("should reject allocation if there are interfaces with the same name", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 			newVM := duplicateInterfacesVM.DeepCopy()
 			newVM.Name = "duplicateInterfacesVM"
 
@@ -334,7 +337,7 @@ var _ = Describe("Pool", func() {
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate macs if there are duplicate interfaces")
 		})
 		It("should not allocate a new mac for bridge interface on pod network", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 			newVM := sampleVM
 			newVM.Name = "newVM"
 
@@ -346,7 +349,7 @@ var _ = Describe("Pool", func() {
 		Context("and there is a pre-existing pod with mac allocated to it", func() {
 			var poolManager *PoolManager
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &managedPodWithMacAllocated)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated)
 			})
 			It("should allocate a new mac and release it for masquerade", func() {
 				newVM := masqueradeVM
@@ -385,7 +388,7 @@ var _ = Describe("Pool", func() {
 					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)
 					vm.Spec.Template.Spec.Domain.Devices.Disks[0].IO = ioName
 				}
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -403,7 +406,7 @@ var _ = Describe("Pool", func() {
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
 			})
 			It("should reject update allocation if there are interfaces with the same name", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "multipleInterfacesVM"
 
@@ -422,7 +425,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedMACsAfterRejection, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				transactionTimestamp := updateTransactionTimestamp(0)
@@ -440,7 +443,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses and allocate a requested one on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -466,7 +469,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to add a new interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -489,7 +492,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMacs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove an interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				newVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(newVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
@@ -513,7 +516,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMACs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove and add an interface on update", func() {
-				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -550,7 +553,7 @@ var _ = Describe("Pool", func() {
 			vmFirstUpdateTimestamp := now.Add(time.Duration(1) * time.Second)
 			vmSecondUpdateTimestamp := now.Add(time.Duration(2) * time.Second)
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool)
 			})
 			var vm, vmFirstUpdate, vmSecondUpdate *kubevirt.VirtualMachine
 			var vmLastPersistedTransactionTimestampAnnotation *time.Time
@@ -669,7 +672,7 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp time.Time
 			)
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:01", &vmConfigMap)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &vmConfigMap)
 				newVM = masqueradeVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -762,7 +765,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager Functions For pod", func() {
 		It("should allocate a new mac and release it", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02", &managedPodWithMacAllocated)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated)
 			newPod := managedPodWithMacAllocated
 			newPod.Name = "newPod"
 			newPod.Annotations = beforeAllocationAnnotation
@@ -794,7 +797,7 @@ var _ = Describe("Pool", func() {
 			Expect(exist).To(BeFalse())
 		})
 		It("should allocate requested mac when empty", func() {
-			poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
 			newPod := managedPodWithMacAllocated
 			newPod.Name = "newPod"
 
@@ -809,7 +812,7 @@ var _ = Describe("Pool", func() {
 			poolManager := &PoolManager{}
 
 			BeforeEach(func() {
-				poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool)
 				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
 			})
 
@@ -968,7 +971,7 @@ var _ = Describe("Pool", func() {
 		}
 		var poolManager *PoolManager
 		BeforeEach(func() {
-			poolManager = createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:01", optOutMutatingWebhookConfiguration, optInMutatingWebhookConfiguration, namespaceWithIncludingLabel, namespaceWithExcludingLabel, namespaceWithNoLabels, namespaceWithIrrelevantLabels)
+			poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, optOutMutatingWebhookConfiguration, optInMutatingWebhookConfiguration, namespaceWithIncludingLabel, namespaceWithExcludingLabel, namespaceWithNoLabels, namespaceWithIrrelevantLabels)
 		})
 		DescribeTable("Should return the expected namespace acceptance outcome according to the opt-mode or return an error",
 			func(n *isNamespaceSelectorCompatibleWithOptModeLabelParams) {

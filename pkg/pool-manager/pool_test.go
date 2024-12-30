@@ -38,6 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+
 	kubevirt "kubevirt.io/api/core/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -50,9 +52,9 @@ const (
 )
 
 var _ = Describe("Pool", func() {
-	beforeAllocationAnnotation := map[string]string{NetworksAnnotation: `[{ "name": "ovs-conf"}]`}
+	beforeAllocationAnnotation := map[string]string{networkv1.NetworkAttachmentAnnot: `[{ "name": "ovs-conf"}]`}
 	afterAllocationAnnotation := func(namespace, macAddress string) map[string]string {
-		return map[string]string{NetworksAnnotation: `[{"name":"ovs-conf","namespace":"` + namespace + `","mac":"` + macAddress + `","cni-args":null}]`}
+		return map[string]string{networkv1.NetworkAttachmentAnnot: `[{"name":"ovs-conf","namespace":"` + namespace + `","mac":"` + macAddress + `","cni-args":null}]`}
 	}
 	const (
 		managedNamespaceMAC   = "02:00:00:00:00:00"
@@ -830,7 +832,7 @@ var _ = Describe("Pool", func() {
 			Expect(poolManager.macPoolMap).To(HaveLen(2))
 			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac, expectedAllocatedMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
-			Expect(newPod.Annotations[NetworksAnnotation]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[NetworksAnnotation]))
+			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[networkv1.NetworkAttachmentAnnot]))
 			expectedMacEntry := macEntry{
 				transactionTimestamp: nil,
 				instanceName:         podNamespaced(&newPod),
@@ -852,7 +854,7 @@ var _ = Describe("Pool", func() {
 
 			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(newPod.Annotations[NetworksAnnotation]).To(Equal(afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)[NetworksAnnotation]))
+			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)[networkv1.NetworkAttachmentAnnot]))
 		})
 	})
 
@@ -868,14 +870,14 @@ var _ = Describe("Pool", func() {
 			DescribeTable("should allocate mac-address correspond to the one specified in the networks annotation",
 				func(networkRequestAnnotation string) {
 					pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
-					pod.Annotations = map[string]string{NetworksAnnotation: fmt.Sprintf("%s", networkRequestAnnotation)}
+					pod.Annotations = map[string]string{networkv1.NetworkAttachmentAnnot: fmt.Sprintf("%s", networkRequestAnnotation)}
 
 					By("Request specific mac-address by adding the address to the networks pod annotation")
 					err := poolManager.AllocatePodMac(&pod, true)
 					Expect(err).ToNot(HaveOccurred(), "should allocate mac address and ip address correspond to networks annotation")
 
 					By("Convert obtained networks annotation JSON to multus.NetworkSelectionElement array")
-					obtainedNetworksAnnotationJson := pod.Annotations[NetworksAnnotation]
+					obtainedNetworksAnnotationJson := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 					obtainedNetworksAnnotation := []multus.NetworkSelectionElement{}
 					err = json.Unmarshal([]byte(obtainedNetworksAnnotationJson), &obtainedNetworksAnnotation)
 					Expect(err).ToNot(HaveOccurred(), "should convert obtained annotation as json to multus.NetworkSelectionElement")
@@ -902,7 +904,7 @@ var _ = Describe("Pool", func() {
 			It("should fail to allocate requested mac-address, with ip-address request as string instead of string array", func() {
 				pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
 				pod.Annotations = map[string]string{
-					NetworksAnnotation: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
+					networkv1.NetworkAttachmentAnnot: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
 
 				By("Request specific mac-address by adding the address to the networks pod annotation")
 				err := poolManager.AllocatePodMac(&pod, true)

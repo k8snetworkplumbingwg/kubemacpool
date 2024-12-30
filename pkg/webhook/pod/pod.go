@@ -28,6 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
@@ -78,8 +80,8 @@ func (a *podAnnotator) Handle(ctx context.Context, req admission.Request) admiss
 func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
 	kubemapcoolJsonPatches := []jsonpatch.Operation{}
 
-	currentNetworkAnnotation := currentPod.GetAnnotations()[pool_manager.NetworksAnnotation]
-	originalPodNetworkAnnotation := originalPod.GetAnnotations()[pool_manager.NetworksAnnotation]
+	currentNetworkAnnotation := currentPod.GetAnnotations()[networkv1.NetworkAttachmentAnnot]
+	originalPodNetworkAnnotation := originalPod.GetAnnotations()[networkv1.NetworkAttachmentAnnot]
 	if originalPodNetworkAnnotation != currentNetworkAnnotation {
 		annotationPatch := jsonpatch.NewOperation("replace", "/metadata/annotations", currentPod.GetAnnotations())
 		kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, annotationPatch)

@@ -59,9 +59,28 @@ var _ = Describe("Pool", func() {
 		managedNamespaceMAC   = "02:00:00:00:00:00"
 		unmanagedNamespaceMAC = "02:00:00:00:00:FF"
 	)
-	managedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: managedNamespaceName, Annotations: afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)}}
-	unmanagedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "unmanagedPod", Namespace: notManagedNamespaceName, Annotations: afterAllocationAnnotation(notManagedNamespaceName, unmanagedNamespaceMAC)}}
-	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
+	managedPodWithMacAllocated := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "podpod",
+			Namespace:   managedNamespaceName,
+			Annotations: afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC),
+		},
+	}
+
+	unmanagedPodWithMacAllocated := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "unmanagedPod",
+			Namespace:   notManagedNamespaceName,
+			Annotations: afterAllocationAnnotation(notManagedNamespaceName, unmanagedNamespaceMAC),
+		},
+	}
+
+	vmConfigMap := v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testManagerNamespace,
+			Name:      names.WAITING_VMS_CONFIGMAP,
+		},
+	}
 
 	Describe("Internal Functions", func() {
 		DescribeTable("should return the next mac address", func(macAddr, nextMacAddr string) {
@@ -223,9 +242,30 @@ var _ = Describe("Pool", func() {
 			InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{
 				Bridge: &kubevirt.InterfaceBridge{}}}
 
-		podNetwork := kubevirt.Network{Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}
-		multusNetwork := kubevirt.Network{Name: "multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "multus"}}}
-		anotherMultusNetwork := kubevirt.Network{Name: "another-multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "another-multus"}}}
+		podNetwork := kubevirt.Network{
+			Name: "pod",
+			NetworkSource: kubevirt.NetworkSource{
+				Pod: &kubevirt.PodNetwork{},
+			},
+		}
+
+		multusNetwork := kubevirt.Network{
+			Name: "multus",
+			NetworkSource: kubevirt.NetworkSource{
+				Multus: &kubevirt.MultusNetwork{
+					NetworkName: "multus",
+				},
+			},
+		}
+
+		anotherMultusNetwork := kubevirt.Network{
+			Name: "another-multus",
+			NetworkSource: kubevirt.NetworkSource{
+				Multus: &kubevirt.MultusNetwork{
+					NetworkName: "another-multus",
+				},
+			},
+		}
 
 		sampleVM := kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}, Spec: kubevirt.VirtualMachineSpec{
 			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
@@ -250,6 +290,7 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+
 		duplicateInterfacesVM := kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}, Spec: kubevirt.VirtualMachineSpec{
 			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirt.VirtualMachineInstanceSpec{
@@ -257,6 +298,7 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+		
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}

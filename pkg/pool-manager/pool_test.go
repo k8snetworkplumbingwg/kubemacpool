@@ -27,7 +27,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/pkg/errors"
 	multus "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	v1 "k8s.io/api/core/v1"
@@ -37,6 +36,8 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	kubevirt "kubevirt.io/api/core/v1"
 
@@ -50,114 +51,35 @@ const (
 )
 
 var _ = Describe("Pool", func() {
-	beforeAllocationAnnotation := map[string]string{NetworksAnnotation: `[{ "name": "ovs-conf"}]`}
+	beforeAllocationAnnotation := map[string]string{networkv1.NetworkAttachmentAnnot: `[{ "name": "ovs-conf"}]`}
 	afterAllocationAnnotation := func(namespace, macAddress string) map[string]string {
-		return map[string]string{NetworksAnnotation: `[{"name":"ovs-conf","namespace":"` + namespace + `","mac":"` + macAddress + `","cni-args":null}]`}
+		return map[string]string{networkv1.NetworkAttachmentAnnot: `[{"name":"ovs-conf","namespace":"` + namespace + `","mac":"` + macAddress + `","cni-args":null}]`}
 	}
-	managedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "podpod", Namespace: managedNamespaceName, Annotations: afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:00")}}
-	unmanagedPodWithMacAllocated := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "unmanagedPod", Namespace: notManagedNamespaceName, Annotations: afterAllocationAnnotation(notManagedNamespaceName, "02:00:00:00:00:FF")}}
-	vmConfigMap := v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Namespace: testManagerNamespace, Name: names.WAITING_VMS_CONFIGMAP}}
-	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
-	waitTimeSeconds := 10
-
-	appendOptOutModes := func(fakeObjectsForClient []runtime.Object) []runtime.Object {
-		mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: mutatingWebhookConfigName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    virtualMachnesWebhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      virtualMachnesWebhookName,
-								Operator: "NotIn",
-								Values:   []string{"ignore"},
-							},
-						},
-					},
-				},
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    podsWebhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      podsWebhookName,
-								Operator: "NotIn",
-								Values:   []string{"ignore"},
-							},
-						},
-					},
-				},
-			},
-		}
-		managedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedNamespaceName}}
-		notManagedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: notManagedNamespaceName, Labels: map[string]string{podsWebhookName: "ignore", virtualMachnesWebhookName: "ignore"}}}
-		By("Setting kubemacpool MutatingWebhookConfigurations to opt-out mode on vms and pods")
-		fakeObjectsForClient = append(fakeObjectsForClient, mutatingWebhookConfiguration)
-		By("Setting managed and non-managed namespaces")
-		fakeObjectsForClient = append(fakeObjectsForClient, managedNamespace, notManagedNamespace)
-		return fakeObjectsForClient
-	}
-	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
-		fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
-		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
-		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
-		endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
-		Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
-		poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
-		Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
-		err = poolManager.Start()
-		Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
-		return poolManager
+	const (
+		managedNamespaceMAC   = "02:00:00:00:00:00"
+		unmanagedNamespaceMAC = "02:00:00:00:00:FF"
+	)
+	managedPodWithMacAllocated := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "podpod",
+			Namespace:   managedNamespaceName,
+			Annotations: afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC),
+		},
 	}
 
-	checkMacPoolMapEntries := func(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
-		for _, macAddress := range updatedMacs {
-			macEntry, exist := macPoolMap[NewMacKey(macAddress)]
-			if !exist {
-				return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
-			}
-			if macEntry.transactionTimestamp != updatedTransactionTimestamp {
-				return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
-			}
-		}
-		for _, macAddress := range notUpdatedMacs {
-			macEntry, exist := macPoolMap[NewMacKey(macAddress)]
-			if !exist {
-				return errors.New(fmt.Sprintf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap))
-			}
-			if macEntry.transactionTimestamp == updatedTransactionTimestamp {
-				return errors.New(fmt.Sprintf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp))
-			}
-		}
-		return nil
+	unmanagedPodWithMacAllocated := v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "unmanagedPod",
+			Namespace:   notManagedNamespaceName,
+			Annotations: afterAllocationAnnotation(notManagedNamespaceName, unmanagedNamespaceMAC),
+		},
+	}
+
+	vmConfigMap := v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: testManagerNamespace,
+			Name:      names.WAITING_VMS_CONFIGMAP,
+		},
 	}
 
 	Describe("Internal Functions", func() {
@@ -283,7 +205,7 @@ var _ = Describe("Pool", func() {
 				})
 				It("Should initialize the macPoolmap only with macs on the mananged pods", func() {
 					Expect(poolManager.macPoolMap).To(HaveLen(1))
-					entry, exist := poolManager.macPoolMap[NewMacKey("02:00:00:00:00:00")]
+					entry, exist := poolManager.macPoolMap[NewMacKey(managedNamespaceMAC)]
 					Expect(exist).To(BeTrue(), "should include the mac allocated by the managed pod")
 					expectMacEntry := macEntry{
 						instanceName:         fmt.Sprintf("pod/%s/%s", managedPodWithMacAllocated.Namespace, managedPodWithMacAllocated.Name),
@@ -320,9 +242,30 @@ var _ = Describe("Pool", func() {
 			InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{
 				Bridge: &kubevirt.InterfaceBridge{}}}
 
-		podNetwork := kubevirt.Network{Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}
-		multusNetwork := kubevirt.Network{Name: "multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "multus"}}}
-		anotherMultusNetwork := kubevirt.Network{Name: "another-multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "another-multus"}}}
+		podNetwork := kubevirt.Network{
+			Name: "pod",
+			NetworkSource: kubevirt.NetworkSource{
+				Pod: &kubevirt.PodNetwork{},
+			},
+		}
+
+		multusNetwork := kubevirt.Network{
+			Name: "multus",
+			NetworkSource: kubevirt.NetworkSource{
+				Multus: &kubevirt.MultusNetwork{
+					NetworkName: "multus",
+				},
+			},
+		}
+
+		anotherMultusNetwork := kubevirt.Network{
+			Name: "another-multus",
+			NetworkSource: kubevirt.NetworkSource{
+				Multus: &kubevirt.MultusNetwork{
+					NetworkName: "another-multus",
+				},
+			},
+		}
 
 		sampleVM := kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}, Spec: kubevirt.VirtualMachineSpec{
 			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
@@ -347,6 +290,7 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+
 		duplicateInterfacesVM := kubevirt.VirtualMachine{ObjectMeta: metav1.ObjectMeta{Namespace: "default"}, Spec: kubevirt.VirtualMachineSpec{
 			Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
 				Spec: kubevirt.VirtualMachineInstanceSpec{
@@ -354,6 +298,7 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+		
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}
@@ -389,14 +334,13 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(poolManager.macPoolMap).To(HaveLen(2))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01"}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 
 				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(&newVM), logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "Should keep the pod mac in the macMap")
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allocate a new mac and release it for multiple interfaces", func() {
 				newVM := multipleInterfacesVM.DeepCopy()
@@ -406,16 +350,14 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(poolManager.macPoolMap).To(HaveLen(3))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01", "02:00:00:00:00:02"}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01", "02:00:00:00:00:02"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
 				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 
 				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(newVM), logf.Log.WithName("VirtualMachine Controller"))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(poolManager.macPoolMap).To(HaveLen(1), "Should keep the pod mac in the macMap")
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{"02:00:00:00:00:00"})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 			})
 		})
 		Describe("Update vm object", func() {
@@ -821,12 +763,11 @@ var _ = Describe("Pool", func() {
 
 			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
-			preAllocatedPodMac := "02:00:00:00:00:00"
+			preAllocatedPodMac := managedNamespaceMAC
 			expectedAllocatedMac := "02:00:00:00:00:01"
-			Expect(poolManager.macPoolMap).To(HaveLen(2))
 			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac, expectedAllocatedMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
-			Expect(newPod.Annotations[NetworksAnnotation]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[NetworksAnnotation]))
+			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[networkv1.NetworkAttachmentAnnot]))
 			expectedMacEntry := macEntry{
 				transactionTimestamp: nil,
 				instanceName:         podNamespaced(&newPod),
@@ -836,7 +777,6 @@ var _ = Describe("Pool", func() {
 
 			err = poolManager.ReleaseAllPodMacs(podNamespaced(&newPod))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(poolManager.macPoolMap).To(HaveLen(1))
 			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			_, exist := poolManager.macPoolMap[NewMacKey(expectedAllocatedMac)]
 			Expect(exist).To(BeFalse())
@@ -848,7 +788,7 @@ var _ = Describe("Pool", func() {
 
 			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(newPod.Annotations[NetworksAnnotation]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:00")[NetworksAnnotation]))
+			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)[networkv1.NetworkAttachmentAnnot]))
 		})
 	})
 
@@ -864,14 +804,14 @@ var _ = Describe("Pool", func() {
 			DescribeTable("should allocate mac-address correspond to the one specified in the networks annotation",
 				func(networkRequestAnnotation string) {
 					pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
-					pod.Annotations = map[string]string{NetworksAnnotation: fmt.Sprintf("%s", networkRequestAnnotation)}
+					pod.Annotations = map[string]string{networkv1.NetworkAttachmentAnnot: fmt.Sprintf("%s", networkRequestAnnotation)}
 
 					By("Request specific mac-address by adding the address to the networks pod annotation")
 					err := poolManager.AllocatePodMac(&pod, true)
 					Expect(err).ToNot(HaveOccurred(), "should allocate mac address and ip address correspond to networks annotation")
 
 					By("Convert obtained networks annotation JSON to multus.NetworkSelectionElement array")
-					obtainedNetworksAnnotationJson := pod.Annotations[NetworksAnnotation]
+					obtainedNetworksAnnotationJson := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 					obtainedNetworksAnnotation := []multus.NetworkSelectionElement{}
 					err = json.Unmarshal([]byte(obtainedNetworksAnnotationJson), &obtainedNetworksAnnotation)
 					Expect(err).ToNot(HaveOccurred(), "should convert obtained annotation as json to multus.NetworkSelectionElement")
@@ -898,7 +838,7 @@ var _ = Describe("Pool", func() {
 			It("should fail to allocate requested mac-address, with ip-address request as string instead of string array", func() {
 				pod := v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "testPod", Namespace: "default"}}
 				pod.Annotations = map[string]string{
-					NetworksAnnotation: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
+					networkv1.NetworkAttachmentAnnot: `[{"name":"ovs-conf","namespace":"default","ips":"10.10.0.1","mac":"02:00:00:00:00:00"}]`}
 
 				By("Request specific mac-address by adding the address to the networks pod annotation")
 				err := poolManager.AllocatePodMac(&pod, true)
@@ -1132,3 +1072,109 @@ var _ = Describe("Pool", func() {
 		)
 	})
 })
+
+func appendOptOutModes(fakeObjectsForClient []runtime.Object) []runtime.Object {
+	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
+	mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mutatingWebhookConfigName,
+		},
+		Webhooks: []admissionregistrationv1.MutatingWebhook{
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    virtualMachnesWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      virtualMachnesWebhookName,
+							Operator: "NotIn",
+							Values:   []string{"ignore"},
+						},
+					},
+				},
+			},
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    podsWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      podsWebhookName,
+							Operator: "NotIn",
+							Values:   []string{"ignore"},
+						},
+					},
+				},
+			},
+		},
+	}
+	managedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedNamespaceName}}
+	notManagedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: notManagedNamespaceName, Labels: map[string]string{podsWebhookName: "ignore", virtualMachnesWebhookName: "ignore"}}}
+	By("Setting kubemacpool MutatingWebhookConfigurations to opt-out mode on vms and pods")
+	fakeObjectsForClient = append(fakeObjectsForClient, mutatingWebhookConfiguration)
+	By("Setting managed and non-managed namespaces")
+	fakeObjectsForClient = append(fakeObjectsForClient, managedNamespace, notManagedNamespace)
+	return fakeObjectsForClient
+}
+
+func createPoolManager(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
+	waitTimeSeconds := 10
+	fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
+	startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
+	Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
+	endPoolRangeEnv, err := net.ParseMAC(endMacAddr)
+	Expect(err).ToNot(HaveOccurred(), "should successfully parse ending mac address range")
+	poolManager, err := NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, waitTimeSeconds)
+	Expect(err).ToNot(HaveOccurred(), "should successfully initialize poolManager")
+	err = poolManager.Start()
+	Expect(err).ToNot(HaveOccurred(), "should successfully start poolManager routines")
+	return poolManager
+}
+
+func checkMacPoolMapEntries(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
+	if len(macPoolMap) != len(updatedMacs)+len(notUpdatedMacs) {
+		return fmt.Errorf("mac pool size %d is not as expected %d, should only contain MACs %v, macPoolMap %+v", len(macPoolMap), len(updatedMacs)+len(notUpdatedMacs), append(updatedMacs, notUpdatedMacs...), macPoolMap)
+	}
+	for _, macAddress := range updatedMacs {
+		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		if !exist {
+			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
+		}
+		if macEntry.transactionTimestamp != updatedTransactionTimestamp {
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
+		}
+	}
+	for _, macAddress := range notUpdatedMacs {
+		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		if !exist {
+			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
+		}
+		if macEntry.transactionTimestamp == updatedTransactionTimestamp {
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
+		}
+	}
+	return nil
+}

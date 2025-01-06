@@ -28,6 +28,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
 
 const tempPodName = "tempPodName"
@@ -40,7 +42,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod, isNotDryRun bool) error {
 		"macmap", p.macPoolMap,
 		"currentMac", p.currentMac.String())
 
-	networkValue, ok := pod.Annotations[NetworksAnnotation]
+	networkValue, ok := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 	if !ok {
 		return nil
 	}
@@ -49,7 +51,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod, isNotDryRun bool) error {
 	// we want to connect the allocated mac from the webhook to a pod object in the podToMacPoolMap
 	// run it before multus added the status annotation
 	// this mean the pod is not ready
-	if _, ok := pod.Annotations[networksStatusAnnotation]; ok {
+	if _, ok := pod.Annotations[networkv1.NetworkStatusAnnot]; ok {
 		return nil
 	}
 
@@ -97,7 +99,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod, isNotDryRun bool) error {
 	if err != nil {
 		return err
 	}
-	pod.Annotations[NetworksAnnotation] = string(networkListJson)
+	pod.Annotations[networkv1.NetworkAttachmentAnnot] = string(networkListJson)
 
 	return nil
 }
@@ -238,7 +240,7 @@ func (p *PoolManager) initPodMap() error {
 				continue
 			}
 
-			networkValue, ok := pod.Annotations[NetworksAnnotation]
+			networkValue, ok := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 			if !ok {
 				continue
 			}

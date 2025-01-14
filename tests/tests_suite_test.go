@@ -63,7 +63,8 @@ func getPodContainerLogs(podName, containerName string) (string, error) {
 }
 
 func KubemacPoolFailedFunction(message string, callerSkip ...int) {
-	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{})
+	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
+		metav1.ListOptions{LabelSelector: "app=kubemacpool"})
 	if err != nil {
 		fmt.Println(err)
 		Fail(message, callerSkip...)

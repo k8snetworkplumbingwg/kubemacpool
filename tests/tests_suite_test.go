@@ -44,6 +44,10 @@ func KubemacPoolFailedFunction(message string, callerSkip ...int) {
 
 	for _, pod := range podList.Items {
 		podYaml, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		if err != nil {
+			fmt.Println(err)
+			Fail(message, callerSkip...)
+		}
 
 		req := testClient.VirtClient.CoreV1().Pods(managerNamespace).GetLogs(pod.Name, &corev1.PodLogOptions{})
 		output, err := req.DoRaw(context.TODO())

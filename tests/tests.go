@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -91,11 +92,10 @@ func removeTestNamespaces() {
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
-func CreateVmObject(namespace string, running bool, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
+func CreateVmObject(namespace string, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
 	vm := getVMCirros()
 	vm.Name = randName("testvm")
 	vm.Namespace = namespace
-	vm.Spec.Running = &running
 	vm.Spec.Template.Spec.Domain.Devices.Interfaces = interfaces
 	vm.Spec.Template.Spec.Networks = networks
 
@@ -537,7 +537,7 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 			},
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
-			Running: pointer.Bool(false),
+			RunStrategy: ptr.To(kubevirtv1.RunStrategyHalted),
 			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: map[string]string{

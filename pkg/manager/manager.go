@@ -19,12 +19,14 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/api/core/v1"
@@ -34,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
@@ -118,10 +121,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
 		}
 		log.Info("Building client")
-		cachedClient, err := cluster.DefaultNewClient(cache, k.config, client.Options{
-			Scheme: k.runtimeManager.GetScheme(),
-			Mapper: k.runtimeManager.GetRESTMapper(),
+		cachedClient, err := cluster.New(k.config, func(clusterOptions *cluster.Options) {
+			clusterOptions.Scheme = k.runtimeManager.GetScheme()
+			clusterOptions.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
+				return k.runtimeManager.GetRESTMapper(), nil
+			}
 		})
+
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
@@ -132,7 +138,7 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
-		poolManager, err := poolmanager.NewPoolManager(client, cachedClient, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(client, cachedClient.GetClient(), rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
 		if err != nil {
 			return errors.Wrap(err, "unable to create pool manager")
 		}
@@ -186,8 +192,11 @@ func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
 func (k *KubeMacPoolManager) initRuntimeManager() error {
 	log.Info("Setting up Manager")
 	var err error
+
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
-		MetricsBindAddress: k.metricsAddr,
+		Metrics: metricsserver.Options{
+			BindAddress: k.metricsAddr,
+		},
 	})
 	return err
 }

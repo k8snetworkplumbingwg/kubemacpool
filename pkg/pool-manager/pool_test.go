@@ -298,7 +298,7 @@ var _ = Describe("Pool", func() {
 						Devices: kubevirt.Devices{
 							Interfaces: []kubevirt.Interface{masqueradeInterface, multusBridgeInterface, multusBridgeInterface}}},
 					Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
-		
+
 		updateTransactionTimestamp := func(secondsPassed time.Duration) time.Time {
 			return time.Now().Add(secondsPassed * time.Second)
 		}

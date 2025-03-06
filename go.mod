@@ -2,6 +2,8 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 
 go 1.22.0
 
+toolchain go1.22.11
+
 require (
 	github.com/go-logr/logr v1.2.4
 	github.com/onsi/ginkgo/v2 v2.9.4

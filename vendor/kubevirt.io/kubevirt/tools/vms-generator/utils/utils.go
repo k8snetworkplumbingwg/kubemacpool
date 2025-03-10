@@ -25,6 +25,10 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/rand"
+	"kubevirt.io/api/migrations/v1alpha1"
+	"kubevirt.io/client-go/kubecli"
+
 	k8sv1 "k8s.io/api/core/v1"
 	schedulingv1 "k8s.io/api/scheduling/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -35,9 +39,11 @@ import (
 	"k8s.io/utils/pointer"
 
 	v1 "kubevirt.io/api/core/v1"
-	instancetypev1alpha2 "kubevirt.io/api/instancetype/v1alpha2"
+	instancetypev1beta1 "kubevirt.io/api/instancetype/v1beta1"
 	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
+
+	k6tpointer "kubevirt.io/kubevirt/pkg/pointer"
 )
 
 const (
@@ -51,30 +57,33 @@ const (
 )
 
 const (
-	VmiEphemeral         = "vmi-ephemeral"
-	VmiMigratable        = "vmi-migratable"
-	VmiInstancetypeSmall = "vmi-instancetype-small"
-	VmiSata              = "vmi-sata"
-	VmiFedora            = "vmi-fedora"
-	VmiSecureBoot        = "vmi-secureboot"
-	VmiAlpineEFI         = "vmi-alpine-efi"
-	VmiNoCloud           = "vmi-nocloud"
-	VmiPVC               = "vmi-pvc"
-	VmiWindows           = "vmi-windows"
-	VmiKernelBoot        = "vmi-kernel-boot"
-	VmiSlirp             = "vmi-slirp"
-	VmiMasquerade        = "vmi-masquerade"
-	VmiSRIOV             = "vmi-sriov"
-	VmiWithHookSidecar   = "vmi-with-sidecar-hook"
-	VmiMultusPtp         = "vmi-multus-ptp"
-	VmiMultusMultipleNet = "vmi-multus-multiple-net"
-	VmiHostDisk          = "vmi-host-disk"
-	VmiGPU               = "vmi-gpu"
-	VmiARM               = "vmi-arm"
-	VmiMacvtap           = "vmi-macvtap"
-	VmTemplateFedora     = "vm-template-fedora"
-	VmTemplateRHEL7      = "vm-template-rhel7"
-	VmTemplateWindows    = "vm-template-windows2012r2"
+	VmiEphemeral                = "vmi-ephemeral"
+	VmiMigratable               = "vmi-migratable"
+	VmiInstancetypeSmall        = "vmi-instancetype-small"
+	VmiSata                     = "vmi-sata"
+	VmiFedora                   = "vmi-fedora"
+	VmiFedoraIsolated           = "vmi-fedora-isolated"
+	VmiSecureBoot               = "vmi-secureboot"
+	VmiAlpineEFI                = "vmi-alpine-efi"
+	VmiNoCloud                  = "vmi-nocloud"
+	VmiPVC                      = "vmi-pvc"
+	VmiWindows                  = "vmi-windows"
+	VmiKernelBoot               = "vmi-kernel-boot"
+	VmiSlirp                    = "vmi-slirp"
+	VmiMasquerade               = "vmi-masquerade"
+	VmiSRIOV                    = "vmi-sriov"
+	VmiWithHookSidecar          = "vmi-with-sidecar-hook"
+	VmiWithHookSidecarConfigMap = "vmi-with-sidecar-hook-configmap"
+	VmiMultusPtp                = "vmi-multus-ptp"
+	VmiMultusMultipleNet        = "vmi-multus-multiple-net"
+	VmiHostDisk                 = "vmi-host-disk"
+	VmiGPU                      = "vmi-gpu"
+	VmiARM                      = "vmi-arm"
+	VmiMacvtap                  = "vmi-macvtap"
+	VmiUSB                      = "vmi-usb"
+	VmTemplateFedora            = "vm-template-fedora"
+	VmTemplateRHEL7             = "vm-template-rhel7"
+	VmTemplateWindows           = "vm-template-windows2012r2"
 )
 
 const (
@@ -86,7 +95,7 @@ const (
 	VirtualMachineInstancetypeComputeSmall              = "csmall"
 	VirtualMachineClusterInstancetypeComputeSmall       = "cluster-csmall"
 	VirtualMachineInstancetypeComputeLarge              = "clarge"
-	VirtualMachinePreferenceVirtio                      = "virtio"
+	VirtualMachinePreferenceVirtio                      = v1.VirtIO
 	VirtualMachinePreferenceWindows                     = "windows"
 	VmCirrosInstancetypeComputeSmall                    = "vm-cirros-csmall"
 	VmCirrosClusterInstancetypeComputeSmall             = "vm-cirros-cluster-csmall"
@@ -112,6 +121,8 @@ const VmiPresetSmall = "vmi-preset-small"
 
 const VmiMigration = "migration-job"
 
+const MigrationPolicyName = "example-migration-policy"
+
 const (
 	imageAlpine     = "alpine-container-disk-demo"
 	imageCirros     = "cirros-container-disk-demo"
@@ -121,7 +132,7 @@ const (
 const windowsFirmware = "5d307ca9-b3ef-428c-8861-06e72d69f223"
 const defaultInterfaceName = "default"
 const enableNetworkInterfaceMultiqueueForTemplate = true
-const EthernetAdaptorModelToEnableMultiqueue = "virtio"
+const EthernetAdaptorModelToEnableMultiqueue = v1.VirtIO
 
 const (
 	cloudConfigHeader = "#cloud-config"
@@ -186,6 +197,13 @@ func initFedora(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceS
 	addRNG(spec) // without RNG, newer fedora images may hang waiting for entropy sources
 	return spec
 }
+func initFedoraIsolated(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceSpec {
+	addContainerDisk(spec, fmt.Sprintf(strFmt, DockerPrefix, imageFedora, DockerTag), v1.DiskBusVirtio)
+	addRNG(spec) // without RNG, newer fedora images may hang waiting for entropy sources
+
+	addDedicatedAndIsolatedCPU(spec)
+	return spec
+}
 func enableNetworkInterfaceMultiqueue(spec *v1.VirtualMachineInstanceSpec, enable bool) {
 	spec.Domain.Devices.NetworkInterfaceMultiQueue = &enable
 }
@@ -203,6 +221,16 @@ func setDefaultNetworkAndInterface(spec *v1.VirtualMachineInstanceSpec, bindingM
 			NetworkSource: networkSource},
 	}
 
+	return spec
+}
+
+func addDedicatedAndIsolatedCPU(spec *v1.VirtualMachineInstanceSpec) *v1.VirtualMachineInstanceSpec {
+	cpu := &v1.CPU{
+		IsolateEmulatorThread: true,
+		DedicatedCPUPlacement: true,
+		Cores:                 1,
+	}
+	spec.Domain.CPU = cpu
 	return spec
 }
 
@@ -422,10 +450,7 @@ func addHostDisk(spec *v1.VirtualMachineInstanceSpec, path string, hostDiskType 
 
 func GetVMIMigratable() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiMigratable)
-	// having no network leads to adding a default interface that may be of type bridge on
-	// the pod network and that would make the VMI non-migratable. Therefore, adding a network.
-	vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
-	vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}
+	makeMigratable(vmi)
 
 	addContainerDisk(&vmi.Spec, fmt.Sprintf(strFmt, DockerPrefix, imageAlpine, DockerTag), v1.DiskBusVirtio)
 	return vmi
@@ -448,7 +473,16 @@ func GetVMISata() *v1.VirtualMachineInstance {
 func GetVMIEphemeralFedora() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiFedora)
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	makeMigratable(vmi)
 	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword))
+	return vmi
+}
+
+func GetVMIEphemeralFedoraIsolated() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiFedora)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	initFedoraIsolated(&vmi.Spec)
 	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword))
 	return vmi
 }
@@ -650,6 +684,13 @@ func GetVMIKernelBoot() *v1.VirtualMachineInstance {
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1Gi")
 
 	AddKernelBootToVMI(vmi)
+	return vmi
+}
+
+func GetVMIKernelBootWithRandName() *v1.VirtualMachineInstance {
+	vmi := GetVMIKernelBoot()
+	vmi.Name += "-" + rand.String(5)
+
 	return vmi
 }
 
@@ -955,14 +996,15 @@ func GetVMDataVolume() *v1.VirtualMachine {
 		panic(err)
 	}
 	storageClassName := "local"
+	url := fmt.Sprintf("docker://%s/%s:%s", DockerPrefix, imageAlpine, DockerTag)
 	dataVolumeSpec := v1.DataVolumeTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "alpine-dv",
 		},
 		Spec: cdiv1.DataVolumeSpec{
 			Source: &cdiv1.DataVolumeSource{
-				HTTP: &cdiv1.DataVolumeSourceHTTP{
-					URL: fmt.Sprintf("docker://%s/%s:%s", DockerPrefix, imageAlpine, DockerTag),
+				Registry: &cdiv1.DataVolumeSourceRegistry{
+					URL: &url,
 				},
 			},
 			PVC: &k8sv1.PersistentVolumeClaimSpec{
@@ -1108,6 +1150,22 @@ func GetVMIMigration() *v1.VirtualMachineInstanceMigration {
 	}
 }
 
+func GetMigrationPolicy() *v1alpha1.MigrationPolicy {
+	policy := kubecli.NewMinimalMigrationPolicy(MigrationPolicyName)
+	policy.Spec = v1alpha1.MigrationPolicySpec{
+		AllowAutoConverge:       k6tpointer.P(false),
+		BandwidthPerMigration:   k6tpointer.P(resource.MustParse("2000Mi")),
+		CompletionTimeoutPerGiB: k6tpointer.P(int64(123456789)),
+		AllowPostCopy:           k6tpointer.P(false),
+		Selectors: &v1alpha1.Selectors{
+			NamespaceSelector:              map[string]string{"namespace-key": "namespace-value"},
+			VirtualMachineInstanceSelector: map[string]string{"vmi-key": "vmi-value"},
+		},
+	}
+
+	return policy
+}
+
 func GetVMIPresetSmall() *v1.VirtualMachineInstancePreset {
 	vmPreset := getBaseVMIPreset(VmiPresetSmall, map[string]string{
 		"kubevirt.io/vmPreset": VmiPresetSmall,
@@ -1134,6 +1192,24 @@ func GetVMIWithHookSidecar() *v1.VirtualMachineInstance {
 		"hooks.kubevirt.io/hookSidecars":              fmt.Sprintf("[{\"args\": [\"--version\", \"v1alpha2\"], \"image\": \"%s/example-hook-sidecar:%s\"}]", DockerPrefix, DockerTag),
 		"smbios.vm.kubevirt.io/baseBoardManufacturer": "Radical Edward",
 	}
+	return vmi
+}
+
+func GetVmiWithHookSidecarConfigMap() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiWithHookSidecarConfigMap)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+
+	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword))
+
+	annotation := `[{"args": ["--version", "v1alpha2"], "image":` +
+		`"registry:5000/kubevirt/sidecar-shim:devel", "configMap": {"name": "my-config-map",` +
+		`"key": "my_script.sh", "hookPath": "/usr/bin/onDefineDomain"}}]`
+
+	vmi.ObjectMeta.Annotations = map[string]string{
+		"hooks.kubevirt.io/hookSidecars": annotation,
+	}
+	// TODO: also add the ConfigMap in generated example. Refer https://github.com/kubevirt/kubevirt/pull/10479#discussion_r1362021721
 	return vmi
 }
 
@@ -1175,26 +1251,40 @@ func GetVMIARM() *v1.VirtualMachineInstance {
 	return vmi
 }
 
+func GetVMIUSB() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiUSB)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword, cloudConfigInstallAndStartService))
+
+	vmi.Spec.Domain.Devices.HostDevices = append(vmi.Spec.Domain.Devices.HostDevices,
+		v1.HostDevice{
+			Name:       "node-usb-to-vmi-storage",
+			DeviceName: "kubevirt.io/storage",
+		})
+	return vmi
+}
+
 func generateCloudConfigString(cloudConfigElement ...string) string {
 	return strings.Join(
 		append([]string{cloudConfigHeader}, cloudConfigElement...), "\n")
 }
 
-func GetComputeSmallInstancetypeSpec() instancetypev1alpha2.VirtualMachineInstancetypeSpec {
-	return instancetypev1alpha2.VirtualMachineInstancetypeSpec{
-		CPU: instancetypev1alpha2.CPUInstancetype{
+func GetComputeSmallInstancetypeSpec() instancetypev1beta1.VirtualMachineInstancetypeSpec {
+	return instancetypev1beta1.VirtualMachineInstancetypeSpec{
+		CPU: instancetypev1beta1.CPUInstancetype{
 			Guest: uint32(1),
 		},
-		Memory: instancetypev1alpha2.MemoryInstancetype{
+		Memory: instancetypev1beta1.MemoryInstancetype{
 			Guest: resource.MustParse("128Mi"),
 		},
 	}
 }
 
-func GetVirtualMachineInstancetypeComputeSmall() *instancetypev1alpha2.VirtualMachineInstancetype {
-	return &instancetypev1alpha2.VirtualMachineInstancetype{
+func GetVirtualMachineInstancetypeComputeSmall() *instancetypev1beta1.VirtualMachineInstancetype {
+	return &instancetypev1beta1.VirtualMachineInstancetype{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: instancetypev1alpha2.SchemeGroupVersion.String(),
+			APIVersion: instancetypev1beta1.SchemeGroupVersion.String(),
 			Kind:       "VirtualMachineInstancetype",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -1204,10 +1294,10 @@ func GetVirtualMachineInstancetypeComputeSmall() *instancetypev1alpha2.VirtualMa
 	}
 }
 
-func GetVirtualMachineClusterInstancetypeComputeSmall() *instancetypev1alpha2.VirtualMachineClusterInstancetype {
-	return &instancetypev1alpha2.VirtualMachineClusterInstancetype{
+func GetVirtualMachineClusterInstancetypeComputeSmall() *instancetypev1beta1.VirtualMachineClusterInstancetype {
+	return &instancetypev1beta1.VirtualMachineClusterInstancetype{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: instancetypev1alpha2.SchemeGroupVersion.String(),
+			APIVersion: instancetypev1beta1.SchemeGroupVersion.String(),
 			Kind:       "VirtualMachineClusterInstancetype",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -1217,20 +1307,20 @@ func GetVirtualMachineClusterInstancetypeComputeSmall() *instancetypev1alpha2.Vi
 	}
 }
 
-func GetVirtualMachineInstancetypeComputeLarge() *instancetypev1alpha2.VirtualMachineInstancetype {
-	return &instancetypev1alpha2.VirtualMachineInstancetype{
+func GetVirtualMachineInstancetypeComputeLarge() *instancetypev1beta1.VirtualMachineInstancetype {
+	return &instancetypev1beta1.VirtualMachineInstancetype{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: instancetypev1alpha2.SchemeGroupVersion.String(),
+			APIVersion: instancetypev1beta1.SchemeGroupVersion.String(),
 			Kind:       "VirtualMachineInstancetype",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: VirtualMachineInstancetypeComputeLarge,
 		},
-		Spec: instancetypev1alpha2.VirtualMachineInstancetypeSpec{
-			CPU: instancetypev1alpha2.CPUInstancetype{
+		Spec: instancetypev1beta1.VirtualMachineInstancetypeSpec{
+			CPU: instancetypev1beta1.CPUInstancetype{
 				Guest: uint32(4),
 			},
-			Memory: instancetypev1alpha2.MemoryInstancetype{
+			Memory: instancetypev1beta1.MemoryInstancetype{
 				Guest: resource.MustParse("2048Mi"),
 			},
 		},
@@ -1254,12 +1344,12 @@ func GetVmCirrosInstancetypeComputeSmall() *v1.VirtualMachine {
 }
 
 func GetVmCirrosClusterInstancetypeComputeSmall() *v1.VirtualMachine {
-	vm := getBaseVM(VmCirrosInstancetypeComputeSmall, map[string]string{
-		kubevirtIoVM: VmCirrosInstancetypeComputeSmall,
+	vm := getBaseVM(VmCirrosClusterInstancetypeComputeSmall, map[string]string{
+		kubevirtIoVM: VmCirrosClusterInstancetypeComputeSmall,
 	})
 
 	vm.Spec.Instancetype = &v1.InstancetypeMatcher{
-		Name: VirtualMachineInstancetypeComputeSmall,
+		Name: VirtualMachineClusterInstancetypeComputeSmall,
 		Kind: "VirtualMachineClusterInstancetype",
 	}
 
@@ -1287,39 +1377,40 @@ func GetVmCirrosInstancetypeComputeLarge() *v1.VirtualMachine {
 	return vm
 }
 
-func GetVirtualMachinePreferenceVirtio() *instancetypev1alpha2.VirtualMachinePreference {
-	return &instancetypev1alpha2.VirtualMachinePreference{
+func GetVirtualMachinePreferenceVirtio() *instancetypev1beta1.VirtualMachinePreference {
+	return &instancetypev1beta1.VirtualMachinePreference{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: instancetypev1alpha2.SchemeGroupVersion.String(),
+			APIVersion: instancetypev1beta1.SchemeGroupVersion.String(),
 			Kind:       "VirtualMachinePreference",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: VirtualMachinePreferenceVirtio,
 		},
-		Spec: instancetypev1alpha2.VirtualMachinePreferenceSpec{
-			Devices: &instancetypev1alpha2.DevicePreferences{
-				PreferredDiskBus:        "virtio",
-				PreferredInterfaceModel: "virtio",
+		Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+			Devices: &instancetypev1beta1.DevicePreferences{
+				PreferredDiskBus:        v1.VirtIO,
+				PreferredInterfaceModel: v1.VirtIO,
 			},
 		},
 	}
 }
 
-func GetVirtualMachinePreferenceWindows() *instancetypev1alpha2.VirtualMachinePreference {
+func GetVirtualMachinePreferenceWindows() *instancetypev1beta1.VirtualMachinePreference {
 	spinlocks := uint32(8191)
-	return &instancetypev1alpha2.VirtualMachinePreference{
+	preferredCPUTopology := instancetypev1beta1.PreferSockets
+	return &instancetypev1beta1.VirtualMachinePreference{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: instancetypev1alpha2.SchemeGroupVersion.String(),
+			APIVersion: instancetypev1beta1.SchemeGroupVersion.String(),
 			Kind:       "VirtualMachinePreference",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: VirtualMachinePreferenceWindows,
 		},
-		Spec: instancetypev1alpha2.VirtualMachinePreferenceSpec{
-			CPU: &instancetypev1alpha2.CPUPreferences{
-				PreferredCPUTopology: instancetypev1alpha2.PreferSockets,
+		Spec: instancetypev1beta1.VirtualMachinePreferenceSpec{
+			CPU: &instancetypev1beta1.CPUPreferences{
+				PreferredCPUTopology: &preferredCPUTopology,
 			},
-			Clock: &instancetypev1alpha2.ClockPreferences{
+			Clock: &instancetypev1beta1.ClockPreferences{
 				PreferredClockOffset: &v1.ClockOffset{UTC: &v1.ClockOffsetUTC{}},
 				PreferredTimer: &v1.Timer{
 					HPET:   &v1.HPETTimer{Enabled: pointer.Bool(false)},
@@ -1328,12 +1419,12 @@ func GetVirtualMachinePreferenceWindows() *instancetypev1alpha2.VirtualMachinePr
 					Hyperv: &v1.HypervTimer{},
 				},
 			},
-			Devices: &instancetypev1alpha2.DevicePreferences{
+			Devices: &instancetypev1beta1.DevicePreferences{
 				PreferredDiskBus:        "sata",
 				PreferredInterfaceModel: "e1000",
 				PreferredTPM:            &v1.TPMDevice{},
 			},
-			Features: &instancetypev1alpha2.FeaturePreferences{
+			Features: &instancetypev1beta1.FeaturePreferences{
 				PreferredAcpi: &v1.FeatureState{},
 				PreferredApic: &v1.FeatureAPIC{},
 				PreferredHyperv: &v1.FeatureHyperv{
@@ -1343,7 +1434,7 @@ func GetVirtualMachinePreferenceWindows() *instancetypev1alpha2.VirtualMachinePr
 				},
 				PreferredSmm: &v1.FeatureState{},
 			},
-			Firmware: &instancetypev1alpha2.FirmwarePreferences{
+			Firmware: &instancetypev1beta1.FirmwarePreferences{
 				PreferredUseEfi:        pointer.Bool(true),
 				PreferredUseSecureBoot: pointer.Bool(true),
 			},
@@ -1418,4 +1509,11 @@ func GetVmWindowsInstancetypeComputeLargePreferencesWindows() *v1.VirtualMachine
 	vm.Spec.Template.Spec.Domain.Resources = v1.ResourceRequirements{}
 
 	return vm
+}
+
+func makeMigratable(vmi *v1.VirtualMachineInstance) {
+	// having no network leads to adding a default interface that may be of type bridge on
+	// the pod network and that would make the VMI non-migratable. Therefore, adding a network.
+	vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
+	vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}
 }

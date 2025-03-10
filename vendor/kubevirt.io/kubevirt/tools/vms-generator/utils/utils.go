@@ -25,6 +25,7 @@ import (
 	"os"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/util/rand"
 	"kubevirt.io/api/migrations/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 
@@ -56,31 +57,33 @@ const (
 )
 
 const (
-	VmiEphemeral         = "vmi-ephemeral"
-	VmiMigratable        = "vmi-migratable"
-	VmiInstancetypeSmall = "vmi-instancetype-small"
-	VmiSata              = "vmi-sata"
-	VmiFedora            = "vmi-fedora"
-	VmiFedoraIsolated    = "vmi-fedora-isolated"
-	VmiSecureBoot        = "vmi-secureboot"
-	VmiAlpineEFI         = "vmi-alpine-efi"
-	VmiNoCloud           = "vmi-nocloud"
-	VmiPVC               = "vmi-pvc"
-	VmiWindows           = "vmi-windows"
-	VmiKernelBoot        = "vmi-kernel-boot"
-	VmiSlirp             = "vmi-slirp"
-	VmiMasquerade        = "vmi-masquerade"
-	VmiSRIOV             = "vmi-sriov"
-	VmiWithHookSidecar   = "vmi-with-sidecar-hook"
-	VmiMultusPtp         = "vmi-multus-ptp"
-	VmiMultusMultipleNet = "vmi-multus-multiple-net"
-	VmiHostDisk          = "vmi-host-disk"
-	VmiGPU               = "vmi-gpu"
-	VmiARM               = "vmi-arm"
-	VmiMacvtap           = "vmi-macvtap"
-	VmTemplateFedora     = "vm-template-fedora"
-	VmTemplateRHEL7      = "vm-template-rhel7"
-	VmTemplateWindows    = "vm-template-windows2012r2"
+	VmiEphemeral                = "vmi-ephemeral"
+	VmiMigratable               = "vmi-migratable"
+	VmiInstancetypeSmall        = "vmi-instancetype-small"
+	VmiSata                     = "vmi-sata"
+	VmiFedora                   = "vmi-fedora"
+	VmiFedoraIsolated           = "vmi-fedora-isolated"
+	VmiSecureBoot               = "vmi-secureboot"
+	VmiAlpineEFI                = "vmi-alpine-efi"
+	VmiNoCloud                  = "vmi-nocloud"
+	VmiPVC                      = "vmi-pvc"
+	VmiWindows                  = "vmi-windows"
+	VmiKernelBoot               = "vmi-kernel-boot"
+	VmiSlirp                    = "vmi-slirp"
+	VmiMasquerade               = "vmi-masquerade"
+	VmiSRIOV                    = "vmi-sriov"
+	VmiWithHookSidecar          = "vmi-with-sidecar-hook"
+	VmiWithHookSidecarConfigMap = "vmi-with-sidecar-hook-configmap"
+	VmiMultusPtp                = "vmi-multus-ptp"
+	VmiMultusMultipleNet        = "vmi-multus-multiple-net"
+	VmiHostDisk                 = "vmi-host-disk"
+	VmiGPU                      = "vmi-gpu"
+	VmiARM                      = "vmi-arm"
+	VmiMacvtap                  = "vmi-macvtap"
+	VmiUSB                      = "vmi-usb"
+	VmTemplateFedora            = "vm-template-fedora"
+	VmTemplateRHEL7             = "vm-template-rhel7"
+	VmTemplateWindows           = "vm-template-windows2012r2"
 )
 
 const (
@@ -447,10 +450,7 @@ func addHostDisk(spec *v1.VirtualMachineInstanceSpec, path string, hostDiskType 
 
 func GetVMIMigratable() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiMigratable)
-	// having no network leads to adding a default interface that may be of type bridge on
-	// the pod network and that would make the VMI non-migratable. Therefore, adding a network.
-	vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
-	vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}
+	makeMigratable(vmi)
 
 	addContainerDisk(&vmi.Spec, fmt.Sprintf(strFmt, DockerPrefix, imageAlpine, DockerTag), v1.DiskBusVirtio)
 	return vmi
@@ -473,6 +473,7 @@ func GetVMISata() *v1.VirtualMachineInstance {
 func GetVMIEphemeralFedora() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiFedora)
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	makeMigratable(vmi)
 	initFedora(&vmi.Spec)
 	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword))
 	return vmi
@@ -683,6 +684,13 @@ func GetVMIKernelBoot() *v1.VirtualMachineInstance {
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1Gi")
 
 	AddKernelBootToVMI(vmi)
+	return vmi
+}
+
+func GetVMIKernelBootWithRandName() *v1.VirtualMachineInstance {
+	vmi := GetVMIKernelBoot()
+	vmi.Name += "-" + rand.String(5)
+
 	return vmi
 }
 
@@ -1187,6 +1195,24 @@ func GetVMIWithHookSidecar() *v1.VirtualMachineInstance {
 	return vmi
 }
 
+func GetVmiWithHookSidecarConfigMap() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiWithHookSidecarConfigMap)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+
+	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword))
+
+	annotation := `[{"args": ["--version", "v1alpha2"], "image":` +
+		`"registry:5000/kubevirt/sidecar-shim:devel", "configMap": {"name": "my-config-map",` +
+		`"key": "my_script.sh", "hookPath": "/usr/bin/onDefineDomain"}}]`
+
+	vmi.ObjectMeta.Annotations = map[string]string{
+		"hooks.kubevirt.io/hookSidecars": annotation,
+	}
+	// TODO: also add the ConfigMap in generated example. Refer https://github.com/kubevirt/kubevirt/pull/10479#discussion_r1362021721
+	return vmi
+}
+
 func GetVMIGPU() *v1.VirtualMachineInstance {
 	vmi := getBaseVMI(VmiGPU)
 	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
@@ -1222,6 +1248,20 @@ func GetVMIARM() *v1.VirtualMachineInstance {
 	addContainerDisk(&vmi.Spec, fmt.Sprintf(strFmt, DockerPrefix, imageCirros, DockerTag), v1.DiskBusVirtio)
 	addNoCloudDisk(&vmi.Spec)
 	addEmptyDisk(&vmi.Spec, "2Gi")
+	return vmi
+}
+
+func GetVMIUSB() *v1.VirtualMachineInstance {
+	vmi := getBaseVMI(VmiUSB)
+	vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1024M")
+	initFedora(&vmi.Spec)
+	addNoCloudDiskWitUserData(&vmi.Spec, generateCloudConfigString(cloudConfigUserPassword, cloudConfigInstallAndStartService))
+
+	vmi.Spec.Domain.Devices.HostDevices = append(vmi.Spec.Domain.Devices.HostDevices,
+		v1.HostDevice{
+			Name:       "node-usb-to-vmi-storage",
+			DeviceName: "kubevirt.io/storage",
+		})
 	return vmi
 }
 
@@ -1469,4 +1509,11 @@ func GetVmWindowsInstancetypeComputeLargePreferencesWindows() *v1.VirtualMachine
 	vm.Spec.Template.Spec.Domain.Resources = v1.ResourceRequirements{}
 
 	return vm
+}
+
+func makeMigratable(vmi *v1.VirtualMachineInstance) {
+	// having no network leads to adding a default interface that may be of type bridge on
+	// the pod network and that would make the VMI non-migratable. Therefore, adding a network.
+	vmi.Spec.Networks = []v1.Network{*v1.DefaultPodNetwork()}
+	vmi.Spec.Domain.Devices.Interfaces = []v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}
 }

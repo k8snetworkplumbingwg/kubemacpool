@@ -18,7 +18,7 @@ set -ex pipefail
 
 function getLatestPatchVersion {
   local major_minors=$1
-  curl -s https://api.github.com/repos/kubevirt/kubevirt/releases | grep .tag_name | grep ${major_minors} | sort -V | tail -1 | awk -F':' '{print $2}' | sed 's/,//' | xargs
+  curl -s https://api.github.com/repos/kubevirt/kubevirt/releases?per_page=100 | grep .tag_name | grep ${major_minors} | sort -V | tail -1 | awk -F':' '{print $2}' | sed 's/,//' | xargs
 }
 
 source ./cluster/cluster.sh

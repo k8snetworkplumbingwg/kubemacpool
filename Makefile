@@ -136,6 +136,9 @@ cluster-clean:
 bump-kubevirtci:
 	./hack/bump-kubevirtci.sh
 
+check-go-version:
+	./hack/check-go-version.sh
+
 vendor: $(GO)
 	$(GO) mod tidy -compat=$(GO_VERSION)
 	$(GO) mod vendor
@@ -157,4 +160,5 @@ vendor: $(GO)
 	push \
 	cluster-up \
 	cluster-down \
-	cluster-sync
+	cluster-sync \
+	check-go-version

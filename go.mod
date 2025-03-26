@@ -1,5 +1,6 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
+// allowed_go 1.21
 go 1.21.9
 
 require (

@@ -18,7 +18,7 @@ require (
 	k8s.io/api v0.27.1
 	k8s.io/apimachinery v0.27.1
 	k8s.io/client-go v12.0.0+incompatible
-	k8s.io/utils v0.0.0-20230505201702-9f6742963106
+	k8s.io/utils v0.0.0-20241210054802-24370beab758
 	kubevirt.io/api v1.0.0
 	kubevirt.io/client-go v1.0.0
 	sigs.k8s.io/controller-runtime v0.14.6

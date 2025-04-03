@@ -505,7 +505,7 @@ func setWebhookOptMode(webhookName, optMode string) error {
 func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName string) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		virtualMachine, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Get(context.TODO(), virtualMachine.Name, &metav1.GetOptions{})
+		virtualMachine, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Get(context.TODO(), virtualMachine.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -514,7 +514,7 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 			return nil
 		}
 		virtualMachine.ObjectMeta.Finalizers = append(finalizersList, finalizerName)
-		_, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Update(context.TODO(), virtualMachine)
+		_, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Update(context.TODO(), virtualMachine, metav1.UpdateOptions{})
 		return err
 	})
 

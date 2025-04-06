@@ -3,8 +3,10 @@ package tests
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -14,10 +16,15 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/tests/reporter"
 )
 
+var failureCount int
+
+const artifactDir = "_out/"
+
 func TestTests(t *testing.T) {
-	RegisterFailHandler(KubemacPoolFailedFunction)
+	RegisterFailHandler(Fail)
 	RunSpecs(t, "E2E Test Suite")
 }
 
@@ -25,6 +32,9 @@ var _ = BeforeSuite(func() {
 	var err error
 	testClient, err = NewTestClient()
 	Expect(err).ToNot(HaveOccurred())
+
+	Expect(os.RemoveAll(artifactDir)).To(Succeed())
+	Expect(os.Mkdir(artifactDir, 0755)).To(Succeed())
 
 	removeTestNamespaces()
 	err = createTestNamespaces()
@@ -35,6 +45,14 @@ var _ = BeforeSuite(func() {
 
 var _ = AfterSuite(func() {
 	removeTestNamespaces()
+})
+
+var _ = JustAfterEach(func() {
+	if CurrentSpecReport().Failed() {
+		failureCount++
+		dumpKubemacpoolLogs(failureCount)
+		By(fmt.Sprintf("Test failed, collected logs and artifacts, failure count %d", failureCount))
+	}
 })
 
 func getPodContainerLogs(podName, containerName string) (string, error) {
@@ -62,44 +80,21 @@ func getPodContainerLogs(podName, containerName string) (string, error) {
 	return output, nil
 }
 
-func KubemacPoolFailedFunction(message string, callerSkip ...int) {
-	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
-		metav1.ListOptions{LabelSelector: "app=kubemacpool"})
-	if err != nil {
+func dumpKubemacpoolLogs(failureCount int) {
+	if err := logPods(managerNamespace, failureCount); err != nil {
 		fmt.Println(err)
-		Fail(message, callerSkip...)
 	}
 
-	for _, pod := range podList.Items {
-		podYaml, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
-		if err != nil {
-			fmt.Println(err)
-			Fail(message, callerSkip...)
-		}
-
-		fmt.Printf("\nPod Name: %s \n", pod.Name)
-		fmt.Printf("Pod Yaml:\n%v \n", *podYaml)
-
-		if err = printPodContainersLogs(pod.Name, pod.Spec.Containers); err != nil {
-			fmt.Println(err)
-			Fail(message, callerSkip...)
-		}
-	}
-
-	if err = printService(managerNamespace, names.WEBHOOK_SERVICE); err != nil {
+	if err := logService(managerNamespace, names.WEBHOOK_SERVICE, failureCount); err != nil {
 		fmt.Println(err)
-		Fail(message, callerSkip...)
 	}
 
-	if err = printEndpoints(managerNamespace, names.WEBHOOK_SERVICE); err != nil {
+	if err := logEndpoints(managerNamespace, names.WEBHOOK_SERVICE, failureCount); err != nil {
 		fmt.Println(err)
-		Fail(message, callerSkip...)
 	}
-
-	Fail(message, callerSkip...)
 }
 
-func printPodContainersLogs(podName string, containers []corev1.Container) error {
+func logPodContainersLogs(podName string, containers []corev1.Container, failureCount int) error {
 	for i := range containers {
 		containerName := containers[i].Name
 		podLogs, err := getPodContainerLogs(podName, containerName)
@@ -107,27 +102,78 @@ func printPodContainersLogs(podName string, containers []corev1.Container) error
 			return err
 		}
 
-		fmt.Printf("\nPod container %q Logs:\n%s \n", containerName, podLogs)
+		if err := reporter.LogToFile(fmt.Sprintf("%s_container_%s", podName, containerName), podLogs, artifactDir, failureCount); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func printService(serviceNamespace, serviceName string) error {
+func logService(serviceNamespace, serviceName string, failureCount int) error {
 	service, err := testClient.VirtClient.CoreV1().Services(serviceNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Service: %v\n", service)
+	byteString, err := json.MarshalIndent(*service, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = reporter.LogToFile(fmt.Sprintf("service"+serviceName), string(byteString), artifactDir, failureCount)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func printEndpoints(endpointNamespace, endpointName string) error {
+func logEndpoints(endpointNamespace, endpointName string, failureCount int) error {
 	endpoint, err := testClient.VirtClient.CoreV1().Endpoints(endpointNamespace).Get(context.TODO(), endpointName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Endpoint: %v\n", endpoint)
+	byteString, err := json.MarshalIndent(*endpoint, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = reporter.LogToFile(fmt.Sprintf("endpoint_"+endpointName), string(byteString), artifactDir, failureCount)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func logPods(podsNamespace string, failureCount int) error {
+	var errs []error
+	podList, err := testClient.VirtClient.CoreV1().Pods(podsNamespace).List(context.TODO(),
+		metav1.ListOptions{LabelSelector: "app=kubemacpool"})
+	if err != nil {
+		return err
+	}
+
+	for _, pod := range podList.Items {
+		podYaml, err := testClient.VirtClient.CoreV1().Pods(podsNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		byteString, err := json.MarshalIndent(*podYaml, "", "  ")
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		err = reporter.LogToFile(fmt.Sprintf("pod_"+pod.Name), string(byteString), artifactDir, failureCount)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		if err = logPodContainersLogs(pod.Name, pod.Spec.Containers, failureCount); err != nil {
+			return err
+		}
+	}
 	return nil
 }

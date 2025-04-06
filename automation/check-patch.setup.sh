@@ -10,7 +10,8 @@ rm -rf $tmp_dir
 mkdir -p $tmp_dir
 
 export TMP_PROJECT_PATH=$tmp_dir/kubemacpool
-export ARTIFACTS=${ARTIFACTS-$TMP_PROJECT_PATH}
+export E2E_LOGS=${TMP_PROJECT_PATH}/tests/_out
+export ARTIFACTS=${ARTIFACTS-$TMP_PROJECT_PATH/artifacts}
 mkdir -p $ARTIFACTS
 
 rsync -rt --links --filter=':- .gitignore' $(pwd)/ $TMP_PROJECT_PATH

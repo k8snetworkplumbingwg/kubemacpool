@@ -2,6 +2,7 @@
 
 teardown() {
     make cluster-down
+    cp ${E2E_LOGS}/*.log $ARTIFACTS || true
     cp $(find . -name "*junit*.xml") $ARTIFACTS || true
 }
 

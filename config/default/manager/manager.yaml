@@ -136,6 +136,7 @@ spec:
           - name: tls-key-pair
             readOnly: true
             mountPath: /tmp/k8s-webhook-server/serving-certs/
+        terminationMessagePolicy: FallbackToLogsOnError
       - args:
         - --logtostderr
         - --secure-listen-address=:8443
@@ -246,6 +247,7 @@ spec:
             value: "4380h0m0s" # Half Year
           - name: CERT_OVERLAP_INTERVAL
             value: "24h0m0s" # One day
+        terminationMessagePolicy: FallbackToLogsOnError
       priorityClassName: system-cluster-critical
       terminationGracePeriodSeconds: 5
 ---

@@ -29,6 +29,7 @@ import (
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	kubevirt "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -43,13 +44,13 @@ var log = logf.Log.WithName("Webhook mutatevirtualmachines")
 
 type virtualMachineAnnotator struct {
 	client      client.Client
-	decoder     *admission.Decoder
+	decoder     admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *crwebhook.Server, poolManager *pool_manager.PoolManager) error {
-	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager}
+func Add(s crwebhook.Server, poolManager *pool_manager.PoolManager, scheme *runtime.Scheme, client client.Client) error {
+	virtualMachineAnnotator := &virtualMachineAnnotator{poolManager: poolManager, decoder: admission.NewDecoder(scheme), client: client}
 	s.Register("/mutate-virtualmachines", &webhook.Admission{Handler: virtualMachineAnnotator})
 	return nil
 }
@@ -261,7 +262,7 @@ func (a *virtualMachineAnnotator) InjectClient(c client.Client) error {
 }
 
 // InjectDecoder injects the decoder.
-func (a *virtualMachineAnnotator) InjectDecoder(d *admission.Decoder) error {
+func (a *virtualMachineAnnotator) InjectDecoder(d admission.Decoder) error {
 	a.decoder = d
 	return nil
 }

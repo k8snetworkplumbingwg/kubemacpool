@@ -23,6 +23,7 @@ import (
 	"gomodules.xyz/jsonpatch/v2"
 	admissionv1 "k8s.io/api/admission/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -38,13 +39,13 @@ var log = logf.Log.WithName("Webhook mutatepods")
 
 type podAnnotator struct {
 	client      client.Client
-	decoder     *admission.Decoder
+	decoder     admission.Decoder
 	poolManager *pool_manager.PoolManager
 }
 
 // Add adds server modifiers to the server, like registering the hook to the webhook server.
-func Add(s *crwebhook.Server, poolManager *pool_manager.PoolManager) error {
-	podAnnotator := &podAnnotator{poolManager: poolManager}
+func Add(s crwebhook.Server, poolManager *pool_manager.PoolManager, scheme *runtime.Scheme, client client.Client) error {
+	podAnnotator := &podAnnotator{poolManager: poolManager, decoder: admission.NewDecoder(scheme), client: client}
 	s.Register("/mutate-pods", &webhook.Admission{Handler: podAnnotator})
 	return nil
 }
@@ -103,16 +104,4 @@ func patchPodChanges(originalPod, currentPod *corev1.Pod) admission.Response {
 			PatchType: func() *admissionv1.PatchType { pt := admissionv1.PatchTypeJSONPatch; return &pt }(),
 		},
 	}
-}
-
-// InjectClient injects the client into the podAnnotator
-func (a *podAnnotator) InjectClient(c client.Client) error {
-	a.client = c
-	return nil
-}
-
-// InjectDecoder injects the decoder.
-func (a *podAnnotator) InjectDecoder(d *admission.Decoder) error {
-	a.decoder = d
-	return nil
 }

@@ -16,6 +16,7 @@ rules:
   resources:
   - mutatingwebhookconfigurations
   verbs:
+  - get
   - list
   - update
   - watch
@@ -46,6 +47,7 @@ rules:
   resources:
   - namespaces
   verbs:
+  - get
   - list
   - watch
 - apiGroups:

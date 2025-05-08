@@ -23,12 +23,15 @@ import (
 
 	"github.com/pkg/errors"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	kawtls "github.com/qinqon/kube-admission-webhook/pkg/tls"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	kawtls "github.com/qinqon/kube-admission-webhook/pkg/tls"
-	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
 const (
@@ -45,7 +48,7 @@ const (
 // +kubebuilder:rbac:groups="apiextensions.k8s.io",resources=customresourcedefinitions,verbs=get;list
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;create;update;patch;list;watch
 // +kubebuilder:rbac:groups="kubevirt.io",resources=virtualmachines,verbs=get;list;watch;create;update;patch
-var AddToWebhookFuncs []func(*crwebhook.Server, *pool_manager.PoolManager) error
+var AddToWebhookFuncs []func(crwebhook.Server, *pool_manager.PoolManager, *runtime.Scheme, client.Client) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
@@ -55,17 +58,18 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		return err
 	}
 
-	s := &crwebhook.Server{
+	s := crwebhook.NewServer(crwebhook.Options{
 		Port: WebhookServerPort,
 		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
 			tlsConfig.CipherSuites = kawtls.CipherSuitesIDs(cipherSuites())
 			tlsConfig.MinVersion = tlsMinVersion
 		}},
-	}
+	})
+
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {
-		if err := f(s, poolManager); err != nil {
+		if err := f(s, poolManager, mgr.GetScheme(), mgr.GetClient()); err != nil {
 			return err
 		}
 	}

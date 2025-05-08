@@ -9,7 +9,7 @@ See the deployment guide to learn how to install Kubemacpool on your [arbitrary 
 
 In case you just want to try it out, consider spinning up a [local virtualized cluster](doc/deployment-on-local-cluster.md).
 
-**Note:** For VirtualMachines, Kubemacpool supports primary interface MAC address allocation for [masquerade](https://kubevirt.io/user-guide/virtual_machines/interfaces_and_networks/#masquerade) or [slirp](https://kubevirt.io/user-guide/virtual_machines/interfaces_and_networks/#slirp) binding mechanisms.
+**Note:** For VirtualMachines, Kubemacpool supports primary interface MAC address allocation for [masquerade](https://kubevirt.io/user-guide/virtual_machines/interfaces_and_networks/#masquerade) binding mechanism.
 
 ## Usage
 

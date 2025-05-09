@@ -206,6 +206,7 @@ spec:
           capabilities:
             drop:
             - ALL
+        terminationMessagePolicy: FallbackToLogsOnError
       priorityClassName: system-cluster-critical
       restartPolicy: Always
       securityContext:
@@ -306,6 +307,7 @@ spec:
           capabilities:
             drop:
             - ALL
+        terminationMessagePolicy: FallbackToLogsOnError
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs/
           name: tls-key-pair

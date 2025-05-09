@@ -135,6 +135,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred())
 						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(vm.Annotations[pool_manager.TransactionTimestampAnnotation]).ToNot(BeEmpty(), "Should successfully set transaction timestamp annotation")
 
 						vmOverlap := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("brOverlap", "")}, []kubevirtv1.Network{newNetwork("brOverlap")})
 						// Allocated the same MAC address that was registered to the first vm

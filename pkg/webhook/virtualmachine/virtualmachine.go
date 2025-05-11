@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
@@ -108,11 +109,24 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 	kubemapcoolJsonPatches := []jsonpatch.Operation{}
 
 	if !pool_manager.IsVirtualMachineDeletionInProgress(currentVirtualMachine) {
-		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
+		originalTransactionTSString, originalAnnotationExists := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		if currentTransactionTSString != "" &&
 			currentTransactionTSString != originalTransactionTSString {
-			transactionTimestampAnnotationPatch := jsonpatch.NewOperation("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
+			if len(originalVirtualMachine.GetAnnotations()) == 0 {
+				annotationsInitPatch := jsonpatch.NewOperation("add", "/metadata/annotations", map[string]string{})
+				kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, annotationsInitPatch)
+			}
+
+			annotationKey := pool_manager.TransactionTimestampAnnotation
+			annotationKey = strings.ReplaceAll(annotationKey, "~", "~0")
+			annotationKey = strings.ReplaceAll(annotationKey, "/", "~1")
+
+			op := "add"
+			if originalAnnotationExists {
+				op = "replace"
+			}
+			transactionTimestampAnnotationPatch := jsonpatch.NewOperation(op, "/metadata/annotations/"+annotationKey, currentTransactionTSString)
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
 		}
 

@@ -110,7 +110,8 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 	if !pool_manager.IsVirtualMachineDeletionInProgress(currentVirtualMachine) {
 		originalTransactionTSString := originalVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
 		currentTransactionTSString := currentVirtualMachine.GetAnnotations()[pool_manager.TransactionTimestampAnnotation]
-		if originalTransactionTSString != currentTransactionTSString {
+		if currentTransactionTSString != "" &&
+			currentTransactionTSString != originalTransactionTSString {
 			transactionTimestampAnnotationPatch := jsonpatch.NewOperation("replace", "/metadata/annotations", currentVirtualMachine.GetAnnotations())
 			kubemapcoolJsonPatches = append(kubemapcoolJsonPatches, transactionTimestampAnnotationPatch)
 		}

@@ -132,6 +132,16 @@ spec:
             scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            httpHeaders:
+            - name: Content-Type
+              value: application/json
+            path: /healthz
+            port: webhook-server
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 20
         volumeMounts:
           - name: tls-key-pair
             readOnly: true
@@ -141,6 +151,7 @@ spec:
         - --logtostderr
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
+        - --proxy-endpoints-port=8643
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -153,11 +164,28 @@ spec:
         - containerPort: 8443
           name: metrics
           protocol: TCP
+        - containerPort: 8643
+          name: proxy
+          protocol: TCP
         resources:
           requests:
             cpu: 10m
             memory: 20Mi
         terminationMessagePolicy: FallbackToLogsOnError
+        readinessProbe:
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          httpGet:
+            scheme: HTTPS
+            port: proxy
+            path: healthz
+        livenessProbe:
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          httpGet:
+            scheme: HTTPS
+            port: proxy
+            path: healthz
       priorityClassName: system-cluster-critical
       terminationGracePeriodSeconds: 5
       volumes:

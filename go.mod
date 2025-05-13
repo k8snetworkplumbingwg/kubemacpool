@@ -1,6 +1,6 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
-// allowed_go any
+// allowed_go 1.23
 go 1.23.0
 
 toolchain go1.23.4

@@ -67,6 +67,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 	})
 
 	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
+	s.Register("/healthz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {
 		if err := f(s, poolManager, mgr.GetScheme(), mgr.GetClient()); err != nil {

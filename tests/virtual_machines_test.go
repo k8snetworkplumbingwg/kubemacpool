@@ -127,6 +127,22 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 
+			Context("and a simple vm is applied", func() {
+				It("should not remove the transactions timestamp annotation", func() {
+					vm := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
+					vm, err := testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
+					Expect(err).ToNot(HaveOccurred())
+
+					Consistently(func() (string, error) {
+						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
+						if err != nil {
+							return "", err
+						}
+						return vm.Annotations[pool_manager.TransactionTimestampAnnotation], nil
+					}).WithPolling(time.Second).WithTimeout(5*time.Second).ShouldNot(BeEmpty(), "vm %s should have a transaction timestamp annotation", vm.Name)
+				})
+			})
+
 			Context("and the client tries to assign the same MAC address for two different vm. Within Range and out of range", func() {
 				Context("When the MAC address is within range", func() {
 					DescribeTable("[test_id:2166]should reject a vm creation with an already allocated MAC address", func(separator string) {

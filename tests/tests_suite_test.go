@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -22,6 +23,7 @@ import (
 var failureCount int
 
 const artifactDir = "_out/"
+const testsNetworkPolicyName = "deny-all"
 
 func TestTests(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -41,10 +43,13 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	managerNamespace = findManagerNamespace()
+
+	Expect(installTestsNetworkPolicy(testsNetworkPolicyName, managerNamespace)).To(Succeed())
 })
 
 var _ = AfterSuite(func() {
 	removeTestNamespaces()
+	Expect(uninstallTestsNetworkPolicy(testsNetworkPolicyName, managerNamespace)).To(Succeed())
 })
 
 var _ = JustAfterEach(func() {
@@ -54,6 +59,30 @@ var _ = JustAfterEach(func() {
 		By(fmt.Sprintf("Test failed, collected logs and artifacts, failure count %d", failureCount))
 	}
 })
+
+// installTestsNetworkPolicy install NetworkPolicy delay all ingress / egress traffic in the given namespace.
+// Installing deny all network policy provides coverage for kubemacpool network-policy in e2e tests.
+func installTestsNetworkPolicy(name, ns string) error {
+	np := &netv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: netv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []netv1.PolicyType{
+				netv1.PolicyTypeIngress,
+				netv1.PolicyTypeEgress,
+			},
+			Egress:  []netv1.NetworkPolicyEgressRule{},
+			Ingress: []netv1.NetworkPolicyIngressRule{},
+		},
+	}
+	_, err := testClient.VirtClient.NetworkingV1().NetworkPolicies(ns).Create(context.Background(), np, metav1.CreateOptions{})
+	return err
+}
+
+// uninstallTestsNetworkPolicy
+func uninstallTestsNetworkPolicy(name, ns string) error {
+	return testClient.VirtClient.NetworkingV1().NetworkPolicies(ns).Delete(context.Background(), name, metav1.DeleteOptions{})
+}
 
 func getPodContainerLogs(podName, containerName string) (string, error) {
 	req := testClient.VirtClient.CoreV1().Pods(managerNamespace).GetLogs(podName, &corev1.PodLogOptions{

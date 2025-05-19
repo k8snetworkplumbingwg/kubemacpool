@@ -49,6 +49,9 @@ done
 
 ./cluster/kubectl.sh apply -f $config_dir/kubemacpool.yaml
 
+# Ensure the project network-polices are valid by installing an additional deny-all network policy affecting kubemacpool pods
+./hack/install-deny-all-net-pol.sh
+
 pods_ready_wait() {
   if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
     echo "Waiting for non-kubemacpool containers to be ready ..."

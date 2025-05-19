@@ -92,6 +92,10 @@ func dumpKubemacpoolLogs(failureCount int) {
 	if err := logEndpoints(managerNamespace, names.WEBHOOK_SERVICE, failureCount); err != nil {
 		fmt.Println(err)
 	}
+
+	if err := logNetworkPolicies(managerNamespace, failureCount); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func logPodContainersLogs(podName string, containers []corev1.Container, failureCount int) error {
@@ -175,5 +179,24 @@ func logPods(podsNamespace string, failureCount int) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func logNetworkPolicies(namespace string, failureCount int) error {
+	npList, err := testClient.VirtClient.NetworkingV1().NetworkPolicies(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	bytes, err := json.MarshalIndent(*npList, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	err = reporter.LogToFile(fmt.Sprintf("network-policies"), string(bytes), artifactDir, failureCount)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

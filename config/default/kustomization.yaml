@@ -28,7 +28,12 @@ resources:
 - rbac/rbac_role.yaml
 - rbac/rbac_role_binding.yaml
 - manager/manager.yaml
-#- ../rbac/auth_proxy_service.yaml
+# provide network-policy in case the env has restrictive network-policy in place
+- network-policy/allow-egress-dns.yaml
+- network-policy/allow-egress-kube-apiserver.yaml
+- network-policy/allow-ingress-to-kmp-service.yaml
+
+  #- ../rbac/auth_proxy_service.yaml
 #- ../rbac/auth_proxy_role.yaml
 #- ../rbac/auth_proxy_role_binding.yaml
   # If you want your controller-manager to expose the /metrics

@@ -178,7 +178,7 @@ func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
-	// this look will ensure that we check all the range
+	// this loop will ensure that we check all the range
 	// first iteration from current mac to last mac in the range
 	// second iteration from first mac in the range to the latest one
 	for idx := 0; idx <= 1; idx++ {

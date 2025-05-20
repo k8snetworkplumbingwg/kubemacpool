@@ -355,8 +355,8 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(&newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 
 				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(&newVM), logger)
 				Expect(err).ToNot(HaveOccurred())
@@ -371,10 +371,8 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:01", "02:00:00:00:00:02"}, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
-
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{managedNamespaceMAC})).To(Succeed(), "Failed to check macs in macMap")
 
 				err = poolManager.ReleaseAllVirtualMachineMacs(VmNamespaced(newVM), logf.Log.WithName("VirtualMachine Controller"))
 				Expect(err).ToNot(HaveOccurred())
@@ -412,18 +410,16 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				updateVm := newVM.DeepCopy()
 				newTransactionTimestamp := updateTransactionTimestamp(1)
 				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces = append(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces, multusBridgeInterface)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
 				Expect(err).To(HaveOccurred(), "Should reject an update with duplicate interface names")
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedMACsAfterRejection := expectedUpdatedMACs
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedMACsAfterRejection, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -432,9 +428,8 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				By("Updating the vm with no mac allocated")
 				updateVm := multipleInterfacesVM.DeepCopy()
@@ -442,9 +437,7 @@ var _ = Describe("Pool", func() {
 				newTransactionTimestamp := updateTransactionTimestamp(1)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses and allocate a requested one on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -454,21 +447,23 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				By("Updating the vm with no mac allocated")
 				updateVm := multipleInterfacesVM.DeepCopy()
 				updateVm.Name = "newVM"
 				By("changing one of the macs")
-				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress = "01:00:00:00:00:02"
+				const changedMAC = "01:00:00:00:00:02"
+				updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress = changedMAC
 				newTransactionTimestamp := updateTransactionTimestamp(1)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updateVm, &newTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("01:00:00:00:00:02"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01", "01:00:00:00:00:02"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				oldInterfaceMACs := expectedUpdatedMACs
+				Expect(interfaceMACsToList(updateVm.Spec.Template.Spec.Domain.Devices.Interfaces)).To(ContainElement(changedMAC))
+				By("asserting that both old and new MACs are set on the pool")
+				expectedUpdatedMACs = append(oldInterfaceMACs, changedMAC)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to add a new interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -478,11 +473,9 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
-				_, exist := poolManager.macPoolMap[NewMacKey("02:00:00:00:00:02")]
-				Expect(exist).To(BeFalse())
+				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces).To(HaveLen(2))
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				updatedVM := newVM.DeepCopy()
 				updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
@@ -490,10 +483,10 @@ var _ = Describe("Pool", func() {
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[2].MacAddress).To(Equal("02:00:00:00:00:02"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, []string{"02:00:00:00:00:02"}, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"})).To(Succeed(), "Failed to check macs in macMap")
+				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces).To(HaveLen(3))
+				expectedNotUpdatedMacs := expectedUpdatedMACs
+				expectedUpdatedMACs = []string{updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[2].MacAddress}
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMacs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove an interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -505,10 +498,8 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[2].MacAddress).To(Equal("02:00:00:00:00:02"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:02", "02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				updatedVM := multipleInterfacesVM.DeepCopy()
 				updatedVM.Name = "newVM"
@@ -517,9 +508,9 @@ var _ = Describe("Pool", func() {
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, []string{"02:00:00:00:00:02"}, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs = []string{newVM.Spec.Template.Spec.Domain.Devices.Interfaces[2].MacAddress}
+				expectedNotUpdatedMACs := []string{updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress, updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress}
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMACs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove and add an interface on update", func() {
 				poolManager := createPoolManager("02:00:00:00:00:00", "02:00:00:00:00:02")
@@ -529,9 +520,8 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp := updateTransactionTimestamp(0)
 				err := poolManager.AllocateVirtualMachineMac(newVM, &transactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(newVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:01"))
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				expectedUpdatedMACs := interfaceMACsToList(newVM.Spec.Template.Spec.Domain.Devices.Interfaces)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 
 				By("Updating the vm with no mac allocated")
 				updatedVM := sampleVM.DeepCopy()
@@ -542,11 +532,10 @@ var _ = Describe("Pool", func() {
 				NewTransactionTimestamp := updateTransactionTimestamp(1)
 				err = poolManager.UpdateMacAddressesForVirtualMachine(newVM, updatedVM, &NewTransactionTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).To(Equal("02:00:00:00:00:00"))
-				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress).To(Equal("02:00:00:00:00:02"))
 				Expect(updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].Name).To(Equal("another-multus"))
-
-				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, []string{"02:00:00:00:00:00", "02:00:00:00:00:01", "02:00:00:00:00:02"}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+				oldInterfaceMACs := expectedUpdatedMACs
+				expectedUpdatedMACs = append(oldInterfaceMACs, updatedVM.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)
+				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 		})
 		Context("creating a vm with mac address", func() {
@@ -745,10 +734,6 @@ var _ = Describe("Pool", func() {
 						macInstanceKey:       newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name,
 					}
 				})
-				It("should successfully allocate the first mac in the range", func() {
-					By("check mac allocated as expected")
-					Expect(allocatedMac).To(Equal("02:00:00:00:00:01"), "should successfully allocate the first mac in the range")
-				})
 				It("should make sure legacy configmap is empty after vm creation", func() {
 					By("check configmap is empty")
 					configMap := v1.ConfigMap{}
@@ -784,22 +769,28 @@ var _ = Describe("Pool", func() {
 
 			err := poolManager.AllocatePodMac(&newPod, true)
 			Expect(err).ToNot(HaveOccurred())
-			preAllocatedPodMac := managedNamespaceMAC
-			expectedAllocatedMac := "02:00:00:00:00:01"
-			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac, expectedAllocatedMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
+			preAllocatedPodMAC := managedNamespaceMAC
+			allocatedMAC, err := getAllocatedMacByInterface(newPod.Annotations[networkv1.NetworkAttachmentAnnot], "ovs-conf")
+			Expect(err).ToNot(HaveOccurred())
 
-			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, "02:00:00:00:00:01")[networkv1.NetworkAttachmentAnnot]))
+			expectedUpdatedMACs := []string{preAllocatedPodMAC, allocatedMAC}
+			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
+
+			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, allocatedMAC)[networkv1.NetworkAttachmentAnnot]))
 			expectedMacEntry := macEntry{
 				transactionTimestamp: nil,
 				instanceName:         podNamespaced(&newPod),
 				macInstanceKey:       "ovs-conf",
 			}
-			Expect(poolManager.macPoolMap[NewMacKey(expectedAllocatedMac)]).To(Equal(expectedMacEntry))
+			Expect(poolManager.macPoolMap[NewMacKey(allocatedMAC)]).To(Equal(expectedMacEntry))
 
 			err = poolManager.ReleaseAllPodMacs(podNamespaced(&newPod))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, []string{preAllocatedPodMac}, []string{})).To(Succeed(), "Failed to check macs in macMap")
-			_, exist := poolManager.macPoolMap[NewMacKey(expectedAllocatedMac)]
+
+			expectedUpdatedMACs = []string{preAllocatedPodMAC}
+			Expect(checkMacPoolMapEntries(poolManager.macPoolMap, nil, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
+
+			_, exist := poolManager.macPoolMap[NewMacKey(allocatedMAC)]
 			Expect(exist).To(BeFalse())
 		})
 		It("should allocate requested mac when empty", func() {
@@ -1198,4 +1189,41 @@ func checkMacPoolMapEntries(macPoolMap map[macKey]macEntry, updatedTransactionTi
 		}
 	}
 	return nil
+}
+
+func interfaceMACsToList(interfaces []kubevirt.Interface) []string {
+	var macList []string
+	for _, iface := range interfaces {
+		if len(iface.MacAddress) != 0 {
+			macList = append(macList, iface.MacAddress)
+		}
+	}
+	return macList
+}
+
+func getAllocatedMacByInterface(networksAnnot string, iface string) (string, error) {
+	if networksAnnot == "" {
+		return "", fmt.Errorf("network annotation empty")
+	}
+
+	type Network struct {
+		Name string `json:"name"`
+		MAC  string `json:"mac"`
+	}
+
+	var networks []Network
+	if err := json.Unmarshal([]byte(networksAnnot), &networks); err != nil {
+		return "", fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	if len(networks) == 0 {
+		return "", fmt.Errorf("networks array is empty")
+	}
+
+	for _, network := range networks {
+		if network.Name == iface {
+			return network.MAC, nil
+		}
+	}
+	return "", fmt.Errorf("interface %s not found", iface)
 }

@@ -18,8 +18,11 @@ package pool_manager
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net"
 	"reflect"
 	"sync"
@@ -73,6 +76,7 @@ const (
 )
 
 var ErrFull = errors.New("the range is full")
+
 type macEntry struct {
 	instanceName         string
 	macInstanceKey       string // for vms, it holds the interface Name, for pods, it holds the network Name
@@ -103,9 +107,12 @@ func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rang
 	if err != nil {
 		return nil, fmt.Errorf("RangeEnd is invalid: %v", err)
 	}
+	currentMac, err := generateRandomMac(rangeStart, rangeEnd)
+	if err != nil {
+		return nil, fmt.Errorf("first MAC generated randomely from ranges is invalid: %v", err)
+	}
+	log.Info("pool allocation will start with random MAC", "currentMac", currentMac.String())
 
-	currentMac := make(net.HardwareAddr, len(rangeStart))
-	copy(currentMac, rangeStart)
 	poolManger := &PoolManager{
 		cachedKubeClient: cachedKubeClient,
 		kubeClient:       kubeClient,
@@ -176,6 +183,33 @@ func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
 	}
 
 	return endInt - startInt + 1, nil
+}
+
+// generateRandomMac generates a random MAC address within the specified range using GetMacPoolSize.
+func generateRandomMac(rangeStart, rangeEnd net.HardwareAddr) (net.HardwareAddr, error) {
+	poolSize, err := GetMacPoolSize(rangeStart, rangeEnd)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate MAC pool size: %w", err)
+	}
+	if poolSize <= 0 {
+		return nil, fmt.Errorf("invalid MAC pool size: %d", poolSize)
+	}
+
+	randomOffset, err := rand.Int(rand.Reader, big.NewInt(poolSize))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate random mac offset: %w", err)
+	}
+
+	startInt, err := utils.ConvertHwAddrToInt64(rangeStart)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert rangeStart to int64: %w", err)
+	}
+
+	randomMacInt := startInt + randomOffset.Int64()
+
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(randomMacInt))
+	return net.HardwareAddr(buf[2:]), nil // Skip the first two bytes
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {

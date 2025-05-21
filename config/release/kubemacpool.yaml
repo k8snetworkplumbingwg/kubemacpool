@@ -428,7 +428,23 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kubemacpool-allow-ingress-to-kubemacpool-service
+  name: kubemacpool-allow-ingress-to-metrics-endpoint
+  namespace: kubemacpool-system
+spec:
+  ingress:
+  - ports:
+    - port: 8443
+      protocol: TCP
+  podSelector:
+    matchLabels:
+      control-plane: mac-controller-manager
+  policyTypes:
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kubemacpool-allow-ingress-to-webhook
   namespace: kubemacpool-system
 spec:
   ingress:

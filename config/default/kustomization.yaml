@@ -32,6 +32,7 @@ resources:
 - network-policy/allow-egress-dns.yaml
 - network-policy/allow-egress-kube-apiserver.yaml
 - network-policy/allow-ingress-to-kmp-service.yaml
+- network-policy/allow-ingress-to-metrics-endpoint.yaml
 
   #- ../rbac/auth_proxy_service.yaml
 #- ../rbac/auth_proxy_role.yaml

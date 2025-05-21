@@ -61,3 +61,24 @@ For more information, see [Kubemacpool Opt-Modes](doc/opt-modes.md).
 Part of the Kubemacpool functionality is implemented as a [kubernetes mutating admission webhook](https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#mutatingadmissionwebhook) 
 to ensure that the MAC address is assigned before VirtualMachine is created.
 This webhook uses self signed certificate. For more information see [certificate handling](doc/certificate-handling.md).
+
+### Metrics 
+Kubemacpool [Prometheus](https://prometheus.io/) expose the following metric:
+- `kubevirt_kmp_duplicate_macs`
+
+The metric is a Gouge, its incremented when Kubemacpool detects MAC address conflict by Kubevirt VirtualMachines.
+
+The metric can be used as a data source for firing alert using [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
+
+#### Metrics endpoint deployment
+Kubemacpool Deployment consist of two containers `manager` and `kube-rbac-proxy`.
+
+The metrics endpoint runs in the `manager` container and listen to port `8080`.
+* The port is controlled by the `manager` app `--metric-addr` flag.
+The metric endpoint is not secured. 
+
+The `kube-rbac-proxy` runs an instance of [kube-rbac-proxy](https://github.com/brancz/kube-rbac-proxy).
+It proxies the insecure metric endpoint and provide a secured endpoint listening to port `8443`.
+
+The secured metric endpoint port, `8443` is exposed, it allows propitious stack to 
+scrap Kubemacpool the metrics.

@@ -228,20 +228,21 @@ func (p *PoolManager) initPodMap() error {
 	err := p.paginatePodsWithLimit(100, func(pods *corev1.PodList) error {
 		for _, pod := range pods.Items {
 			log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
-			instanceManaged, err := p.IsPodManaged(pod.GetNamespace())
-			if err != nil {
-				continue
-			}
-			if !instanceManaged {
-				continue
-			}
-
 			if pod.Annotations == nil {
 				continue
 			}
 
 			networkValue, ok := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 			if !ok {
+				continue
+			}
+
+			instanceManaged, err := p.IsPodManaged(pod.GetNamespace())
+			if err != nil {
+				continue
+			}
+
+			if !instanceManaged {
 				continue
 			}
 

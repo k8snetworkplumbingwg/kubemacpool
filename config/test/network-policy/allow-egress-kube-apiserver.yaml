@@ -2,14 +2,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-ingress-to-metrics-endpoint
+  name: allow-egress-to-api-server
+  namespace: system
 spec:
   podSelector:
     matchLabels:
-      control-plane: mac-controller-manager
+      app: kubemacpool
   policyTypes:
-    - Ingress
-  ingress:
+  - Egress
+  egress:
   - ports:
     - protocol: TCP
-      port: metrics
+      port: 6443

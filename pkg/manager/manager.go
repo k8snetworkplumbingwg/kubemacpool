@@ -17,7 +17,6 @@ package manager
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -28,7 +27,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -97,26 +95,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
-
-		log.Info("Constructing cache")
-		cache, err := cache.New(k.config, cache.Options{
-			Scheme: k.runtimeManager.GetScheme(),
-			Mapper: k.runtimeManager.GetRESTMapper(),
-		})
-		if err != nil {
-			return errors.Wrap(err, "failed constructing pool manager cache")
-		}
-		log.Info("Starting cache")
-		go func() {
-			if err = cache.Start(context.TODO()); err != nil {
-				panic(errors.Wrap(err, "failed staring pool manager cache"))
-			}
-		}()
-		log.Info("Waiting for cache sync")
-		ok := cache.WaitForCacheSync(context.TODO())
-		if !ok {
-			return fmt.Errorf("cannot wait for controller-runtime manager cache sync")
-		}
 		log.Info("Building client")
 
 		if err != nil {

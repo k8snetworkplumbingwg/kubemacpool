@@ -97,9 +97,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		log.Info("Building client")
 
-		if err != nil {
-			return errors.Wrap(err, "failed creating pool manager client")
-		}
 		client, err := client.New(k.config, client.Options{
 			Scheme: k.runtimeManager.GetScheme(),
 			Mapper: k.runtimeManager.GetRESTMapper(),

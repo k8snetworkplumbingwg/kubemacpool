@@ -1,7 +1,12 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+namespace: kubemacpool-system
 resources:
 - ../default
+# install the following network-policies to simulate network restriction in tests
+- network-policy/default-deny-all.yaml
+- network-policy/allow-egress-kube-apiserver.yaml
+- network-policy/allow-egress-dns.yaml
 images:
 - name: quay.io/kubevirt/kubemacpool
   newName: registry:5000/kubevirt/kubemacpool

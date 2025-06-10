@@ -388,7 +388,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kubemacpool-allow-egress-to-api-server
+  name: allow-egress-to-api-server
   namespace: kubemacpool-system
 spec:
   egress:
@@ -404,7 +404,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kubemacpool-allow-egress-to-dns
+  name: allow-egress-to-dns
   namespace: kubemacpool-system
 spec:
   egress:
@@ -429,12 +429,25 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
+  name: default-deny-all
+  namespace: kubemacpool-system
+spec:
+  podSelector:
+    matchLabels:
+      app: kubemacpool
+  policyTypes:
+  - Egress
+  - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
   name: kubemacpool-allow-ingress-to-metrics-endpoint
   namespace: kubemacpool-system
 spec:
   ingress:
   - ports:
-    - port: 8443
+    - port: metrics
       protocol: TCP
   podSelector:
     matchLabels:

@@ -25,12 +25,12 @@ func LogToFile(topic, logBody, artifactDir string, failureCount int) error {
 	fileName := fmt.Sprintf(artifactDir+"%d_%s.log", failureCount, topic)
 	file, err := os.Create(fileName)
 	if err != nil {
-		return fmt.Errorf("Error creating log file %v, err %w\n", fileName, err)
+		return fmt.Errorf("error creating log file %v, err %w", fileName, err)
 	}
 	defer file.Close()
 
 	if _, err = fmt.Fprint(file, logBody); err != nil {
-		fmt.Printf("Error writing log %s to file, err %v\n", fileName, err)
+		fmt.Printf("error writing log %s to file, err %v", fileName, err)
 	}
 	return nil
 }

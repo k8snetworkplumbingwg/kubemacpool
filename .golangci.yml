@@ -87,7 +87,7 @@ linters:
   - noctx
   - nolintlint
   - rowserrcheck
-  # - unparam
+  - unparam
   # - unused
   # - whitespace
   - exhaustive

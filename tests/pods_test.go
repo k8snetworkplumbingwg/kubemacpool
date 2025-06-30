@@ -60,13 +60,13 @@ var _ = Describe("Pods", func() {
 			err := changeManagerReplicas(0)
 			Expect(err).ToNot(HaveOccurred())
 
-			err = addLabelsToNamespace(OtherTestNamespace, namespaceLabelMap)
+			err = addLabelsToNamespace(namespace, namespaceLabelMap)
 			Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.VirtClient.CoreV1().Pods(OtherTestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.VirtClient.CoreV1().Pods(namespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				if err != nil {
 					return false
 				}

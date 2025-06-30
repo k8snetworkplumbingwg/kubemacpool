@@ -170,8 +170,9 @@ func restartKubemacpoolManagerPods() error {
 func initKubemacpoolParams() error {
 	By("Restart Kubemacpool Pods")
 	err := restartKubemacpoolManagerPods()
-	Expect(err).ToNot(HaveOccurred(), "Should succeed resetting the kubemacpool pods")
-
+	if err != nil {
+		return fmt.Errorf("should succeed resetting the kubemacpool pods: %w", err)
+	}
 	return nil
 }
 

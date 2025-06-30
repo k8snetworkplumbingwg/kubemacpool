@@ -34,6 +34,8 @@ GOFMT := GOFLAGS=-mod=mod $(GO)fmt
 VET := GOFLAGS=-mod=mod $(GO) vet
 DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
 GO_VERSION = $(shell hack/go-version.sh)
+GOLANGICI_LINT ?= GOFLAGS=-mod=mod $(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+LINTER_COVERAGE ?= tests/reporter/...
 
 E2E_TEST_EXTRA_ARGS ?=
 export E2E_TEST_TIMEOUT ?= 1h
@@ -83,6 +85,14 @@ fmt: $(GO)
 # Run go vet against code
 vet: $(GO)
 	$(VET) ./pkg/... ./cmd/... ./tests/...
+
+lint:
+	GOTOOLCHAIN=$$(grep '^toolchain' go.mod | awk '{print $$2}' | sed 's/go//' | awk -F. '{print $$1"."$$2}' || echo ""); \
+	$(GOLANGICI_LINT) run --verbose $(LINTER_COVERAGE)
+
+lint-fix:
+	GOTOOLCHAIN=$$(grep '^toolchain' go.mod | awk '{print $$2}' | sed 's/go//' | awk -F. '{print $$1"."$$2}' || echo ""); \
+	$(GOLANGICI_LINT) run --verbose --fix $(LINTER_COVERAGE)
 
 install-deep-copy: $(GO)
 	$(DEEPCOPY_GEN)
@@ -161,4 +171,5 @@ vendor: $(GO)
 	cluster-up \
 	cluster-down \
 	cluster-sync \
-	check-go-version
+	check-go-version \
+	lint

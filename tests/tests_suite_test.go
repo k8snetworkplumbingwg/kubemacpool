@@ -193,7 +193,7 @@ func logNetworkPolicies(namespace string, failureCount int) error {
 		return err
 	}
 
-	err = reporter.LogToFile(fmt.Sprintf("network-policies"), string(bytes), artifactDir, failureCount)
+	err = reporter.LogToFile("network-policies", string(bytes), artifactDir, failureCount)
 	if err != nil {
 		return err
 	}

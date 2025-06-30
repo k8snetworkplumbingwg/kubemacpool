@@ -67,11 +67,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.VirtClient.CoreV1().Pods(namespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
-				if err != nil {
-					return false
-				}
-
-				return true
+				return err == nil
 			}, timeout, pollingInterval).Should(matcher, "failed to apply the new pod object")
 		}
 
@@ -80,11 +76,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
-				if err != nil {
-					return false
-				}
-
-				return true
+				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
 
@@ -99,11 +91,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
-				if err != nil {
-					return false
-				}
-
-				return true
+				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
 
@@ -116,11 +104,7 @@ var _ = Describe("Pods", func() {
 
 			Eventually(func() bool {
 				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
-				if err != nil {
-					return false
-				}
-
-				return true
+				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
 

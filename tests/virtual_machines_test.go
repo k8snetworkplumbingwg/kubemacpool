@@ -27,6 +27,7 @@ import (
 
 const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
+const testMacAddress = "02:00:ff:ff:ff:ff"
 
 // TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", Ordered, func() {
@@ -295,7 +296,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Context("and when restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 				It("[test_id:2179]should return an error because the MAC address is taken by the older VM", func() {
 					var err error
-					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1")})
+					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", testMacAddress)}, []kubevirtv1.Network{newNetwork("br1")})
 
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
@@ -305,7 +306,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err = initKubemacpoolParams()
 					Expect(err).ToNot(HaveOccurred())
 
-					vm2 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br2", "02:00:ff:ff:ff:ff")},
+					vm2 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br2", testMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br2")})
 
 					Eventually(func() error {
@@ -358,7 +359,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				It("[test_id:2633]should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
 					var err error
 					vm1 := CreateVmObject(TestNamespace,
-						[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
+						[]kubevirtv1.Interface{newInterface("br1", testMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
 					baseVM := vm1.DeepCopy()
@@ -380,7 +381,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				It("should allow to assign to the VM the same MAC addresses, different name as requested before and do not return an error", func() {
 					var err error
 					vm1 := CreateVmObject(TestNamespace,
-						[]kubevirtv1.Interface{newInterface("br1", "02:00:ff:ff:ff:ff")},
+						[]kubevirtv1.Interface{newInterface("br1", testMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
 					baseVM := vm1.DeepCopy()
@@ -591,7 +592,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 			Context("And checking kubemacpool upgrade", func() {
-				allocatedMacAddress := "02:00:ff:ff:ff:ff"
+				allocatedMacAddress := testMacAddress
 				BeforeEach(func() {
 					Expect(createVmWaitConfigMap()).To(Succeed(), "should succeed creating configMap")
 				})
@@ -698,7 +699,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 
 						By("Adding a vm with a preset mac")
-						preSetMac = "02:00:ff:ff:ff:ff"
+						preSetMac = testMacAddress
 						notManagedVm2 = CreateVmObject(notManagedNamespace, []kubevirtv1.Interface{newInterface("br", preSetMac)},
 							[]kubevirtv1.Network{newNetwork("br")})
 						notManagedVm2, err = testClient.VirtClient.VirtualMachine(notManagedVm2.Namespace).Create(context.TODO(), notManagedVm2, metav1.CreateOptions{})

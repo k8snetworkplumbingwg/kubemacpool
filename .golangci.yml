@@ -75,7 +75,7 @@ linters:
   - errcheck
   - funlen
   - gochecknoinits
-  # - goconst
+  - goconst
   # - gofmt
   - goheader
   - goimports

@@ -99,7 +99,6 @@ func checkSecretRecovery(oldSecret *v1.Secret) {
 			return nil, err
 		}
 		return secret.Data, nil
-
 	}, timeout, pollingInterval).ShouldNot(Equal(oldSecret.Data), "should successfully renew secret")
 }
 

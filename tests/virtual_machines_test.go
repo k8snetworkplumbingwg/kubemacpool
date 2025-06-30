@@ -75,9 +75,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			}
 
 			Eventually(func() int {
-				vmList := &kubevirtv1.VirtualMachineList{}
-				vmList, err := testClient.VirtClient.VirtualMachine(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
-				Expect(err).ToNot(HaveOccurred())
+				vmList, listErr := testClient.VirtClient.VirtualMachine(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{})
+				Expect(listErr).ToNot(HaveOccurred())
 				return len(vmList.Items)
 
 			}, timeout, pollingInterval).Should(Equal(0), "failed to remove all vm objects")

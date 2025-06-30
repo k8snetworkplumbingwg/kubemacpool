@@ -77,8 +77,7 @@ func createTestNamespaces() error {
 }
 
 func deleteTestNamespaces(namespace string) error {
-	_, err := testClient.VirtClient.CoreV1().Namespaces().Get(context.TODO(), namespace, metav1.GetOptions{})
-	err = testClient.VirtClient.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
+	err := testClient.VirtClient.CoreV1().Namespaces().Delete(context.TODO(), namespace, metav1.DeleteOptions{})
 	return err
 }
 
@@ -181,7 +180,10 @@ func getMacPoolSize() int64 {
 	Expect(err).ToNot(HaveOccurred(), "Should succeed getting kubemacpool range configmap")
 
 	rangeStart, err := net.ParseMAC(configMap.Data["RANGE_START"])
+	Expect(err).ToNot(HaveOccurred(), "Should succeed parsing RANGE_START")
+
 	rangeEnd, err := net.ParseMAC(configMap.Data["RANGE_END"])
+	Expect(err).ToNot(HaveOccurred(), "Should succeed parsing RANGE_END")
 
 	pooSize, err := poolmanager.GetMacPoolSize(rangeStart, rangeEnd)
 	Expect(err).ToNot(HaveOccurred(), "Should succeed getting the mac pool size")
@@ -291,6 +293,9 @@ func restartPodsFromDeployment(deploymentName string) error {
 	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
 
 	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+	if err != nil {
+		return err
+	}
 
 	By(fmt.Sprintf("Deleting pods from deployment %s with label selector %s", deploymentName, labelSelector))
 	err = testClient.VirtClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labelSelector})

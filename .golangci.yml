@@ -81,7 +81,7 @@ linters:
   - goimports
   - goprintffuncname
   - govet
-  # - ineffassign
+  - ineffassign
   # - misspell
   - nakedret
   - noctx

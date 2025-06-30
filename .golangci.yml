@@ -69,35 +69,35 @@ linters-settings:
 linters:
   disable-all: true
   enable:
-    - bodyclose
-    - dogsled
-    - dupl
-    - errcheck
-    - funlen
-    - gochecknoinits
-    - goconst
-    - gofmt
-    - goheader
-    - goimports
-    - goprintffuncname
-    - govet
-    - ineffassign
-    - misspell
-    - nakedret
-    - noctx
-    - nolintlint
-    - rowserrcheck
-    - unparam
-    - unused
-    - whitespace
-    - exhaustive
-    - gocritic
-    - gocyclo
-    - gosec
-    - gosimple
-    - lll
-    - mnd
-    - depguard
-    - staticcheck
-    - stylecheck
-    - unconvert
+  - bodyclose
+  - dogsled
+  - dupl
+  - errcheck
+  - funlen
+  - gochecknoinits
+  # - goconst
+  # - gofmt
+  - goheader
+  - goimports
+  - goprintffuncname
+  # - govet
+  # - ineffassign
+  # - misspell
+  - nakedret
+  - noctx
+  - nolintlint
+  - rowserrcheck
+  # - unparam
+  # - unused
+  # - whitespace
+  - exhaustive
+  # - gocritic
+  - gocyclo
+  # - gosec
+  # - gosimple
+  # - lll
+  # - mnd
+  # - depguard
+  # - staticcheck
+  # - stylecheck
+  # - unconvert

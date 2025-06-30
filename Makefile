@@ -35,7 +35,7 @@ VET := GOFLAGS=-mod=mod $(GO) vet
 DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
 GO_VERSION = $(shell hack/go-version.sh)
 GOLANGICI_LINT ?= GOFLAGS=-mod=mod $(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
-LINTER_COVERAGE ?= tests/reporter/... tests/kubectl/...
+LINTER_COVERAGE ?= tests/...
 
 E2E_TEST_EXTRA_ARGS ?=
 export E2E_TEST_TIMEOUT ?= 1h

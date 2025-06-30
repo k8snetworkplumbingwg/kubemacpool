@@ -60,7 +60,7 @@ func deleteServiceCaBundle() {
 		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
-		for i, _ := range mutatingWebhook.Webhooks {
+		for i := range mutatingWebhook.Webhooks {
 			mutatingWebhook.Webhooks[i].ClientConfig.CABundle = make([]byte, 0)
 		}
 

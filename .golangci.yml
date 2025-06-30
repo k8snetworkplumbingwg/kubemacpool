@@ -82,7 +82,7 @@ linters:
   - goprintffuncname
   - govet
   - ineffassign
-  # - misspell
+  - misspell
   - nakedret
   - noctx
   - nolintlint

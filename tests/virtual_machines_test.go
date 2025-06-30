@@ -892,7 +892,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err := cleanNamespaceLabels(OtherTestNamespace)
 					Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
 
-					By("restarting Kubemacpool to check if there are duplicats macs in the managed namespaces")
+					By("restarting Kubemacpool to check if there are duplicates macs in the managed namespaces")
 					err = initKubemacpoolParams()
 					Expect(err).ToNot(HaveOccurred())
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"reflect"
 	"regexp"
@@ -30,7 +29,6 @@ import (
 	"kubevirt.io/client-go/kubecli"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
-	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
@@ -116,21 +114,6 @@ func randName(name string) string {
 	return name + "-" + rand.String(5)
 }
 
-func addNetworksToPod(pod *corev1.Pod, networks []map[string]string) {
-	if networks != nil && len(networks) > 0 {
-		pod.Annotations = map[string]string{"k8s.v1.cni.cncf.io/networks": fmt.Sprintf("%v", networks)}
-	}
-}
-
-func findPodByName(pods *corev1.PodList, podToFind corev1.Pod) *corev1.Pod {
-	for _, pod := range pods.Items {
-		if pod.Name == podToFind.Name {
-			return &pod
-		}
-	}
-	return nil
-}
-
 func getKubemacpoolPods() (*corev1.PodList, error) {
 	filterByApp := fmt.Sprintf("%s=%s", "app", "kubemacpool")
 	pods, err := testClient.VirtClient.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{LabelSelector: filterByApp})
@@ -174,22 +157,6 @@ func initKubemacpoolParams() error {
 		return fmt.Errorf("should succeed resetting the kubemacpool pods: %w", err)
 	}
 	return nil
-}
-
-func getMacPoolSize() int64 {
-	configMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), "kubemacpool-mac-range-config", metav1.GetOptions{})
-	Expect(err).ToNot(HaveOccurred(), "Should succeed getting kubemacpool range configmap")
-
-	rangeStart, err := net.ParseMAC(configMap.Data["RANGE_START"])
-	Expect(err).ToNot(HaveOccurred(), "Should succeed parsing RANGE_START")
-
-	rangeEnd, err := net.ParseMAC(configMap.Data["RANGE_END"])
-	Expect(err).ToNot(HaveOccurred(), "Should succeed parsing RANGE_END")
-
-	pooSize, err := poolmanager.GetMacPoolSize(rangeStart, rangeEnd)
-	Expect(err).ToNot(HaveOccurred(), "Should succeed getting the mac pool size")
-
-	return pooSize
 }
 
 func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {

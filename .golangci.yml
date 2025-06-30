@@ -88,7 +88,7 @@ linters:
   - nolintlint
   - rowserrcheck
   - unparam
-  # - unused
+  - unused
   # - whitespace
   - exhaustive
   # - gocritic

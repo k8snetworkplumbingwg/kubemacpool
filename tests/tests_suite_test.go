@@ -64,8 +64,7 @@ func getPodContainerLogs(podName, containerName string) (string, error) {
 		return "", err
 	}
 	defer func(podLogs io.ReadCloser) {
-		closeErr := podLogs.Close()
-		if closeErr != nil {
+		if closeErr := podLogs.Close(); closeErr != nil {
 			return
 		}
 	}(podLogs)
@@ -159,7 +158,8 @@ func logPods(podsNamespace string, failureCount int) error {
 		return err
 	}
 
-	for _, pod := range podList.Items {
+	for i := range podList.Items {
+		pod := &podList.Items[i]
 		podYaml, err := testClient.VirtClient.CoreV1().Pods(podsNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 		if err != nil {
 			errs = append(errs, err)
@@ -175,7 +175,7 @@ func logPods(podsNamespace string, failureCount int) error {
 			errs = append(errs, err)
 		}
 
-		if err = logPodContainersLogs(pod.Name, pod.Spec.Containers, failureCount); err != nil {
+		if err := logPodContainersLogs(pod.Name, pod.Spec.Containers, failureCount); err != nil {
 			return err
 		}
 	}

@@ -195,7 +195,8 @@ func checkKubemacpoolCrash() error {
 	if err != nil {
 		return err
 	}
-	for _, pod := range kubemacpoolPods.Items {
+	for i := range kubemacpoolPods.Items {
+		pod := &kubemacpoolPods.Items[i]
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.RestartCount != 0 {
 				return errors.New(fmt.Sprintf("Kubemacpool container crashed %d times", containerStatus.RestartCount))
@@ -272,7 +273,8 @@ func restartPodsFromDeployment(deploymentName string) error {
 	}
 
 	By(fmt.Sprintf("Checking that all the old pods from deployment %s with label selector %s have being deleted", deploymentName, labelSelector))
-	for _, pod := range podList.Items {
+	for i := range podList.Items {
+		pod := &podList.Items[i]
 		Eventually(func() error {
 			_, err = testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			return err
@@ -443,28 +445,29 @@ func setWebhookOptMode(webhookName, optMode string) error {
 		}
 
 		for webhookIdx, webhook := range mutatingWebhook.Webhooks {
-			if webhook.Name == webhookName {
-				var expressions []metav1.LabelSelectorRequirement
-				for _, matchExpression := range webhook.NamespaceSelector.MatchExpressions {
-					if matchExpression.Key != webhookName {
-						expressions = append(expressions, matchExpression)
-					}
-				}
-
-				switch optMode {
-				case optInMode:
-					expressions = append(expressions, getOptInLabel(webhookName))
-				case optOutMode:
-					expressions = append(expressions, getOptOutLabel(webhookName))
-				default:
-					return fmt.Errorf("undefined opt-in mode %s", optMode)
-				}
-
-				mutatingWebhook.Webhooks[webhookIdx].NamespaceSelector.MatchExpressions = expressions
-				_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
-
-				return err
+			if webhook.Name != webhookName {
+				continue
 			}
+			var expressions []metav1.LabelSelectorRequirement
+			for _, matchExpression := range webhook.NamespaceSelector.MatchExpressions {
+				if matchExpression.Key != webhookName {
+					expressions = append(expressions, matchExpression)
+				}
+			}
+
+			switch optMode {
+			case optInMode:
+				expressions = append(expressions, getOptInLabel(webhookName))
+			case optOutMode:
+				expressions = append(expressions, getOptOutLabel(webhookName))
+			default:
+				return fmt.Errorf("undefined opt-in mode %s", optMode)
+			}
+
+			mutatingWebhook.Webhooks[webhookIdx].NamespaceSelector.MatchExpressions = expressions
+			_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
+
+			return err
 		}
 		return nil
 	})
@@ -486,7 +489,7 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 		if helper.ContainsString(finalizersList, finalizerName) {
 			return nil
 		}
-		virtualMachine.ObjectMeta.Finalizers = append(finalizersList, finalizerName)
+		virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, finalizerName)
 		_, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Update(context.TODO(), virtualMachine, metav1.UpdateOptions{})
 		return err
 	})

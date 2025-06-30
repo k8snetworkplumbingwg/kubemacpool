@@ -111,7 +111,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				})
 
-				//TODO Add dry-run functionality in kubevirt/client-go's VirtualMachine().Create(context.TODO(), )
+				// TODO Add dry-run functionality in kubevirt/client-go's VirtualMachine().Create(context.TODO(), )
 				PIt("should not allocate the Mac assigned in the dryRun request into the pool", func() {
 					By("creating a vm with the same mac to make sure the dryRun assigned mac is not occupied on the macpool")
 					var err error
@@ -207,7 +207,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Context("and two VM are deleted and we try to assign their MAC addresses for two newly created VM", func() {
 				It("[test_id:2164]should not return an error because the MAC addresses of the old VMs should have been released", func() {
 					var err error
-					//creating two VMs
+					// creating two VMs
 					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "")}, []kubevirtv1.Network{newNetwork("br1")})
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
@@ -221,7 +221,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1MacAddress := vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					vm2MacAddress := vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 
-					//deleting both and try to assign their MAC address to the new VM
+					// deleting both and try to assign their MAC address to the new VM
 					deleteVMI(vm1)
 					deleteVMI(vm2)
 
@@ -300,7 +300,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).ToNot(HaveOccurred())
 					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
 
-					//restart kubeMacPool
+					// restart kubeMacPool
 					err = initKubemacpoolParams()
 					Expect(err).ToNot(HaveOccurred())
 
@@ -737,7 +737,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						Context("and kubemacpool restarts", func() {
 							BeforeEach(func() {
-								//restart kubeMacPool
+								// restart kubeMacPool
 								err := initKubemacpoolParams()
 								Expect(err).ToNot(HaveOccurred())
 							})
@@ -999,7 +999,7 @@ func getManagerPods() (*v1.PodList, error) {
 	return podList, err
 }
 
-func findMetric(metrics string, expectedMetric string) string {
+func findMetric(metrics, expectedMetric string) string {
 	for _, line := range strings.Split(metrics, "\n") {
 		if strings.HasPrefix(line, expectedMetric+" ") {
 			return line
@@ -1009,7 +1009,7 @@ func findMetric(metrics string, expectedMetric string) string {
 	return ""
 }
 
-func getPrometheusToken() (string, string, error) {
+func getPrometheusToken() (token, stderr string, err error) {
 	const (
 		monitoringNamespace = "monitoring"
 		prometheusPod       = "prometheus-k8s-0"

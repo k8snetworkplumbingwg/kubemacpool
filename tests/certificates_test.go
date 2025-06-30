@@ -87,7 +87,7 @@ func GetCurrentCABundle() (caBundle []byte) {
 	mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
-	//get the first one
+	// get the first one
 	return mutatingWebhook.Webhooks[0].ClientConfig.CABundle
 }
 

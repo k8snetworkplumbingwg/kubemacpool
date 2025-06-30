@@ -8,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -41,9 +40,8 @@ var _ = Describe("Pods", func() {
 				}
 
 				Eventually(func() int {
-					podList := &corev1.PodList{}
-					podList, err := testClient.VirtClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
-					Expect(err).ToNot(HaveOccurred())
+					podList, listErr := testClient.VirtClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+					Expect(listErr).ToNot(HaveOccurred())
 					return len(podList.Items)
 
 				}, timeout, pollingInterval).Should(Equal(0), fmt.Sprintf("failed to remove all pod objects from namespace %s", namespace))

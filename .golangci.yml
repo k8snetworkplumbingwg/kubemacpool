@@ -80,7 +80,7 @@ linters:
   - goheader
   - goimports
   - goprintffuncname
-  # - govet
+  - govet
   # - ineffassign
   # - misspell
   - nakedret

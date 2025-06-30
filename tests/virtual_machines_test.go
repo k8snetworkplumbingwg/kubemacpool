@@ -423,7 +423,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						for numOfIfaces := maxNumOfIfaces; numOfIfaces >= 0; numOfIfaces-- {
 							By(fmt.Sprintf("updating the number of interfaces to %d", numOfIfaces))
 
-							err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+							err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
 
 								vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 								Expect(err).ToNot(HaveOccurred())
@@ -447,14 +447,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						By(fmt.Sprintf("Creating %d vms, each with a MAC interface used in the base vm", maxNumOfIfaces))
 						for ifaceIdx := 0; ifaceIdx < maxNumOfIfaces; ifaceIdx++ {
 							Eventually(func() error {
-								var err error
 								newVm := CreateVmObject(TestNamespace, []kubevirtv1.Interface{interfaces[ifaceIdx]}, []kubevirtv1.Network{networks[ifaceIdx]})
-								newVm, err = testClient.VirtClient.VirtualMachine(newVm.Namespace).Create(context.TODO(), newVm, metav1.CreateOptions{})
+								newVm, createErr := testClient.VirtClient.VirtualMachine(newVm.Namespace).Create(context.TODO(), newVm, metav1.CreateOptions{})
 
-								if err != nil {
-									Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only fail to allocate vm because the mac is already used")
+								if createErr != nil {
+									Expect(createErr).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only fail to allocate vm because the mac is already used")
 								}
-								return err
+								return createErr
 
 							}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
 						}

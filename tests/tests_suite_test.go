@@ -64,8 +64,8 @@ func getPodContainerLogs(podName, containerName string) (string, error) {
 		return "", err
 	}
 	defer func(podLogs io.ReadCloser) {
-		err := podLogs.Close()
-		if err != nil {
+		closeErr := podLogs.Close()
+		if closeErr != nil {
 			return
 		}
 	}(podLogs)

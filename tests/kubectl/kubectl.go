@@ -6,14 +6,16 @@ import (
 	"os/exec"
 )
 
-func Kubectl(command ...string) (string, string, error) {
-	var stdout, stderr bytes.Buffer
+func Kubectl(command ...string) (stdout, stderr string, err error) {
+	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd := exec.Command("./cluster/kubectl.sh", command...)
 	cmd.Dir = getClusterRootDirectory()
-	cmd.Stderr = &stderr
-	cmd.Stdout = &stdout
-	err := cmd.Run()
-	return stdout.String(), stderr.String(), err
+	cmd.Stderr = &stderrBuf
+	cmd.Stdout = &stdoutBuf
+	err = cmd.Run()
+	stdout = stdoutBuf.String()
+	stderr = stderrBuf.String()
+	return
 }
 
 func getClusterRootDirectory() string {

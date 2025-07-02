@@ -324,7 +324,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 			}
 
 			return true
-		}, timeout, interval).Should(BeTrue(), "Failed waiting readiness at for deployment:\n%v", string(deploymentName))
+		}, timeout, interval).Should(BeTrue(), "Failed waiting readiness at for deployment:\n%v", deploymentName)
 	}
 	deploymentConditionAvailability(corev1.ConditionTrue, deploymentAvailableTimeout, deploymentUpdateInterval)
 	return nil

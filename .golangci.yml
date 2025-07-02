@@ -116,4 +116,4 @@ linters:
   - depguard
   - staticcheck
   - stylecheck
-  # - unconvert
+  - unconvert

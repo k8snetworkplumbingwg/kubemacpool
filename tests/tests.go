@@ -33,10 +33,12 @@ import (
 )
 
 const (
-	TestNamespace                = "kubemacpool-test"
-	OtherTestNamespace           = "kubemacpool-test-alternative"
-	nadPostUrl                   = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD           = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition","metadata":{"name":"%s","namespace":"%s"},"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	TestNamespace      = "kubemacpool-test"
+	OtherTestNamespace = "kubemacpool-test-alternative"
+	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition",` +
+		`"metadata":{"name":"%s","namespace":"%s"},` +
+		`"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
 	podNamespaceOptInLabel       = "mutatepods.kubemacpool.io"
 	vmNamespaceOptInLabel        = "mutatevirtualmachines.kubemacpool.io"
 	deploymentContainerName      = "manager"
@@ -66,11 +68,13 @@ func NewTestClient() (*TestClient, error) {
 }
 
 func createTestNamespaces() error {
-	_, err := testClient.VirtClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}}, metav1.CreateOptions{})
+	_, err := testClient.VirtClient.CoreV1().Namespaces().Create(context.TODO(),
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: TestNamespace}}, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
-	_, err = testClient.VirtClient.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}}, metav1.CreateOptions{})
+	_, err = testClient.VirtClient.CoreV1().Namespaces().Create(context.TODO(),
+		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: OtherTestNamespace}}, metav1.CreateOptions{})
 	return err
 }
 
@@ -85,7 +89,8 @@ func removeTestNamespaces() {
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", OtherTestNamespace))
-	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) }, 120*time.Second, 5*time.Second).
+	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) },
+		120*time.Second, 5*time.Second).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
@@ -174,7 +179,8 @@ func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
 }
 
 func getVmFailCleanupWaitTime() time.Duration {
-	managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
+		names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
 	Expect(managerDeployment.Spec.Template.Spec.Containers).ToNot(BeEmpty(), "Manager's deployment should contain containers")
 
@@ -186,7 +192,8 @@ func getVmFailCleanupWaitTime() time.Duration {
 		}
 	}
 
-	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment", deploymentContainerName, names.MANAGER_DEPLOYMENT))
+	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment",
+		deploymentContainerName, names.MANAGER_DEPLOYMENT))
 	return 0
 }
 
@@ -214,7 +221,8 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 	By(fmt.Sprintf("updating deployment %s, pod replicas to be %d", managerName, numOfReplica))
 	var indentedDeployment []byte
 	Eventually(func() error {
-		managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
+			managerName, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -231,11 +239,13 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return nil
-	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(), "failed to update number of replicas on deployment:\n%v", string(indentedDeployment))
+	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(),
+		"failed to update number of replicas on deployment:\n%v", string(indentedDeployment))
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
 	Eventually(func() bool {
-		managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), managerName, metav1.GetOptions{})
+		managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
+			managerName, metav1.GetOptions{})
 		if err != nil {
 			return false
 		}
@@ -249,7 +259,8 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return true
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(), "failed to change kubemacpool deployment number of replicas.\n deployment:\n%v", string(indentedDeployment))
+	}, 2*time.Minute, 3*time.Second).Should(BeTrue(),
+		"failed to change kubemacpool deployment number of replicas.\n deployment:\n%v", string(indentedDeployment))
 
 	return nil
 }
@@ -261,24 +272,28 @@ func restartPodsFromDeployment(deploymentName string) error {
 	}
 	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
 
-	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
+		metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return err
 	}
 
 	By(fmt.Sprintf("Deleting pods from deployment %s with label selector %s", deploymentName, labelSelector))
-	err = testClient.VirtClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(), metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labelSelector})
+	err = testClient.VirtClient.CoreV1().Pods(managerNamespace).DeleteCollection(context.TODO(),
+		metav1.DeleteOptions{}, metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return err
 	}
 
-	By(fmt.Sprintf("Checking that all the old pods from deployment %s with label selector %s have being deleted", deploymentName, labelSelector))
+	By(fmt.Sprintf("Checking that all the old pods from deployment %s with label selector %s have being deleted",
+		deploymentName, labelSelector))
 	for i := range podList.Items {
 		pod := &podList.Items[i]
 		Eventually(func() error {
 			_, err = testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			return err
-		}, 2*time.Minute, time.Second).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())), "should have delete the old pods from deployment %s", deploymentName)
+		}, 2*time.Minute, time.Second).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())),
+			"should have delete the old pods from deployment %s", deploymentName)
 	}
 
 	deploymentConditionAvailability := func(conditionStatus corev1.ConditionStatus, timeout, interval time.Duration) {
@@ -356,7 +371,8 @@ func createVmWaitConfigMap() error {
 
 func deleteVmWaitConfigMap() error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		return testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
+		return testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(),
+			names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
 	})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
@@ -365,7 +381,8 @@ func deleteVmWaitConfigMap() error {
 }
 
 func getVmWaitConfigMap() (*corev1.ConfigMap, error) {
-	vmWaitConfigMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(), names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
+	vmWaitConfigMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(),
+		names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
 	}
@@ -413,7 +430,8 @@ func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
 
 // function checks what is the currently configured opt-mode configured in a specific webhook
 func getOptMode(webhookName string) (string, error) {
-	mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
+	mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
+		mutatingWebhookConfiguration, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -439,7 +457,8 @@ func getOptMode(webhookName string) (string, error) {
 func setWebhookOptMode(webhookName, optMode string) error {
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), mutatingWebhookConfiguration, metav1.GetOptions{})
+		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
+			mutatingWebhookConfiguration, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -465,7 +484,8 @@ func setWebhookOptMode(webhookName, optMode string) error {
 			}
 
 			mutatingWebhook.Webhooks[webhookIdx].NamespaceSelector.MatchExpressions = expressions
-			_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
+			_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(),
+				mutatingWebhook, metav1.UpdateOptions{})
 
 			return err
 		}
@@ -481,7 +501,8 @@ func setWebhookOptMode(webhookName, optMode string) error {
 func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName string) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		var err error
-		virtualMachine, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Get(context.TODO(), virtualMachine.Name, metav1.GetOptions{})
+		virtualMachine, err = testClient.VirtClient.VirtualMachine(virtualMachine.Namespace).Get(context.TODO(),
+			virtualMachine.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}

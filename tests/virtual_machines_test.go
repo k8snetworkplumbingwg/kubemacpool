@@ -28,6 +28,9 @@ import (
 const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
 const testMacAddress = "02:00:ff:ff:ff:ff"
+const macAllocationFailureMessage = "admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: " +
+	"Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: " +
+	"failed to allocate requested mac address"
 
 // TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the rigth parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", Ordered, func() {
@@ -107,7 +110,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 				})
 
@@ -115,8 +119,11 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				PIt("should not allocate the Mac assigned in the dryRun request into the pool", func() {
 					By("creating a vm with the same mac to make sure the dryRun assigned mac is not occupied on the macpool")
 					var err error
-					vmDryRunOverlap := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("brDryRunOverlap", macAddress)}, []kubevirtv1.Network{newNetwork("brDryRunOverlap")})
-					vmDryRunOverlap, err = testClient.VirtClient.VirtualMachine(vmDryRunOverlap.Namespace).Create(context.TODO(), vmDryRunOverlap, metav1.CreateOptions{})
+					vmDryRunOverlap := CreateVmObject(TestNamespace,
+						[]kubevirtv1.Interface{newInterface("brDryRunOverlap", macAddress)},
+						[]kubevirtv1.Network{newNetwork("brDryRunOverlap")})
+					vmDryRunOverlap, err = testClient.VirtClient.VirtualMachine(vmDryRunOverlap.Namespace).Create(context.TODO(),
+						vmDryRunOverlap, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
 
 					actualMac, err := net.ParseMAC(vmDryRunOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
@@ -138,7 +145,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							return "", err
 						}
 						return vm.Annotations[pool_manager.TransactionTimestampAnnotation], nil
-					}).WithPolling(time.Second).WithTimeout(5*time.Second).ShouldNot(BeEmpty(), "vm %s should have a transaction timestamp annotation", vm.Name)
+					}).WithPolling(time.Second).WithTimeout(5*time.Second).ShouldNot(BeEmpty(),
+						"vm %s should have a transaction timestamp annotation", vm.Name)
 				})
 			})
 
@@ -149,9 +157,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						vm := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred())
-						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+							"Should successfully parse mac address")
 
-						vmOverlap := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("brOverlap", "")}, []kubevirtv1.Network{newNetwork("brOverlap")})
+						vmOverlap := CreateVmObject(TestNamespace,
+							[]kubevirtv1.Interface{newInterface("brOverlap", "")},
+							[]kubevirtv1.Network{newNetwork("brOverlap")})
 						// Allocated the same MAC address that was registered to the first vm
 						vmOverlapMacAddress := strings.Replace(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress, ":", separator, 5)
 						vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = vmOverlapMacAddress
@@ -170,7 +181,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							[]kubevirtv1.Network{newNetwork("br")})
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred())
-						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+							"Should successfully parse mac address")
 
 						// Allocated the same mac address that was registered to the first vm
 						vmOverlap := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("brOverlap", "03:ff:ff:ff:ff:ff")},
@@ -211,12 +223,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "")}, []kubevirtv1.Network{newNetwork("br1")})
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 
 					vm2 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br2", "")}, []kubevirtv1.Network{newNetwork("br2")})
 					vm2, err = testClient.VirtClient.VirtualMachine(vm2.Namespace).Create(context.TODO(), vm2, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 
 					vm1MacAddress := vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					vm2MacAddress := vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
@@ -236,7 +250,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						return err
 
 					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
-					Expect(net.ParseMAC(newVM1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(newVM1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 
 					newVM2 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br2", vm2MacAddress)},
 						[]kubevirtv1.Network{newNetwork("br2")})
@@ -249,7 +264,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						return err
 
 					}, timeout, pollingInterval).ShouldNot(HaveOccurred(), "failed to apply the new vm object")
-					Expect(net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(newVM2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 				})
 			})
 			Context("and trying to create a VM after a MAC address has just been released due to a VM deletion", func() {
@@ -270,10 +286,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					vm2, err = testClient.VirtClient.VirtualMachine(vm2.Namespace).Create(context.TODO(), vm2, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating vm2")
-					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm2's mac address")
+					Expect(net.ParseMAC(vm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse vm2's mac address")
 
-					newVM1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress),
-						newInterface("br2", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+					newVM1 := CreateVmObject(TestNamespace,
+						[]kubevirtv1.Interface{
+							newInterface("br1", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress),
+							newInterface("br2", vm1.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress),
+						},
+						[]kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 
 					deleteVMI(vm1)
 
@@ -294,11 +315,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			Context("and when restarting kubeMacPool and trying to create a VM with the same manually configured MAC as an older VM", func() {
 				It("[test_id:2179]should return an error because the MAC address is taken by the older VM", func() {
 					var err error
-					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", testMacAddress)}, []kubevirtv1.Network{newNetwork("br1")})
+					vm1 := CreateVmObject(TestNamespace,
+						[]kubevirtv1.Interface{newInterface("br1", testMacAddress)},
+						[]kubevirtv1.Network{newNetwork("br1")})
 
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 
 					// restart kubeMacPool
 					err = initKubemacpoolParams()
@@ -336,11 +360,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					updateObject.ObjectMeta = *vm1.ObjectMeta.DeepCopy()
 
 					for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
-						Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+						Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress)).ToNot(BeEmpty(),
+							"Should successfully parse mac address")
 					}
 
 					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-						updateObject, err = testClient.VirtClient.VirtualMachine(updateObject.Namespace).Get(context.TODO(), updateObject.Name, metav1.GetOptions{})
+						updateObject, err = testClient.VirtClient.VirtualMachine(updateObject.Namespace).Get(context.TODO(),
+							updateObject.Name, metav1.GetOptions{})
 						Expect(err).ToNot(HaveOccurred())
 
 						_, err = testClient.VirtClient.VirtualMachine(updateObject.Namespace).Update(context.TODO(), updateObject, metav1.UpdateOptions{})
@@ -349,12 +375,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(err).ToNot(HaveOccurred())
 
 					for index := range vm1.Spec.Template.Spec.Domain.Devices.Interfaces {
-						Expect(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress).To(Equal(updateObject.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress))
+						Expect(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress).To(
+							Equal(updateObject.Spec.Template.Spec.Domain.Devices.Interfaces[index].MacAddress))
 					}
 				})
 			})
 			Context("and we re-apply a failed VM yaml", func() {
-				It("[test_id:2633]should allow to assign to the VM the same MAC addresses, with name as requested before and do not return an error", func() {
+				It("[test_id:2633]should allow to assign to the VM the same MAC addresses, "+
+					"with name as requested before and do not return an error", func() {
 					var err error
 					vm1 := CreateVmObject(TestNamespace,
 						[]kubevirtv1.Interface{newInterface("br1", testMacAddress)},
@@ -365,7 +393,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
-					baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
+					baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(
+						baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
 					Eventually(func() error {
 						_, err = testClient.VirtClient.VirtualMachine(baseVM.Namespace).Create(context.TODO(), baseVM, metav1.CreateOptions{})
@@ -388,7 +417,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).To(HaveOccurred(), "should fail to create VM due to missing interface assignment to a network")
 
-					baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
+					baseVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(
+						baseVM.Spec.Template.Spec.Domain.Devices.Interfaces, newInterface("br2", ""))
 
 					Eventually(func() error {
 						_, err = testClient.VirtClient.VirtualMachine(baseVM.Namespace).Create(context.TODO(), baseVM, metav1.CreateOptions{})
@@ -416,7 +446,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 				})
-				Context(fmt.Sprintf("and then sequentially updated from %d interfaces back to 0 with minimal time between requests", maxNumOfIfaces), func() {
+				Context(fmt.Sprintf("and then sequentially updated from %d interfaces back to 0 with minimal time between requests",
+					maxNumOfIfaces), func() {
 					BeforeEach(func() {
 						for numOfIfaces := maxNumOfIfaces; numOfIfaces >= 0; numOfIfaces-- {
 							By(fmt.Sprintf("updating the number of interfaces to %d", numOfIfaces))
@@ -449,7 +480,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 								newVm, createErr := testClient.VirtClient.VirtualMachine(newVm.Namespace).Create(context.TODO(), newVm, metav1.CreateOptions{})
 
 								if createErr != nil {
-									Expect(createErr).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only fail to allocate vm because the mac is already used")
+									Expect(createErr).Should(MatchError(macAllocationFailureMessage),
+										"Should only fail to allocate vm because the mac is already used")
 								}
 								return createErr
 
@@ -457,7 +489,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						}
 					})
 				})
-				Context(fmt.Sprintf("and then sequentially updated from 0 to %d interfaces with minimal time between requests", maxNumOfIfaces), func() {
+				Context(fmt.Sprintf("and then sequentially updated from 0 to %d interfaces with minimal time between requests",
+					maxNumOfIfaces), func() {
 					BeforeEach(func() {
 						for numOfIfaces := 1; numOfIfaces <= maxNumOfIfaces; numOfIfaces++ {
 							By(fmt.Sprintf("updating the number of interfaces to %d", numOfIfaces))
@@ -479,7 +512,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						By(fmt.Sprintf("Checking that the vm has %d interface after the changes are made", maxNumOfIfaces))
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 						Expect(err).ToNot(HaveOccurred(), "Should succeed getting vm")
-						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces).To(HaveLen(maxNumOfIfaces), fmt.Sprintf("Should have %d interfaces", maxNumOfIfaces))
+						Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces).To(HaveLen(maxNumOfIfaces),
+							fmt.Sprintf("Should have %d interfaces", maxNumOfIfaces))
 					})
 					It("should not be able to allocate the occupied macs to new vms", func() {
 						By(fmt.Sprintf("Creating %d vms, each with a MAC interface used in the base vm", maxNumOfIfaces))
@@ -535,7 +569,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					newVM := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1")})
 					newVM, err = testClient.VirtClient.VirtualMachine(newVM.Namespace).Create(context.TODO(), newVM, metav1.CreateOptions{})
-					Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should fail to allocate vm because the mac is already used")
+					Expect(err).Should(MatchError(macAllocationFailureMessage), "Should fail to allocate vm because the mac is already used")
 				})
 			})
 			Context("and a VM's NIC is removed and a new VM is created with the same MAC", func() {
@@ -546,15 +580,17 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 
-					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's first mac address")
-					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(), "Should successfully parse vm's second mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse vm's first mac address")
+					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[1].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse vm's second mac address")
 
 					reusedMacAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 					By("checking that a new VM cannot be created when the mac is already occupied")
 					newVM := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", reusedMacAddress)},
 						[]kubevirtv1.Network{newNetwork("br1")})
 					_, err = testClient.VirtClient.VirtualMachine(newVM.Namespace).Create(context.TODO(), newVM, metav1.CreateOptions{})
-					Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should fail to allocate vm because the mac is already used")
+					Expect(err).Should(MatchError(macAllocationFailureMessage), "Should fail to allocate vm because the mac is already used")
 
 					By("checking that the VM's NIC can be removed")
 					err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
@@ -577,7 +613,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						_, err = testClient.VirtClient.VirtualMachine(newVM.Namespace).Create(context.TODO(), newVM, metav1.CreateOptions{})
 						if err != nil {
-							Expect(err).Should(MatchError("admission webhook \"mutatevirtualmachines.kubemacpool.io\" denied the request: Failed to create virtual machine allocation error: Failed to allocate mac to the vm object: failed to allocate requested mac address"), "Should only get a mac-allocation denial error until cache get updated")
+							Expect(err).Should(MatchError(macAllocationFailureMessage), "Should only get a mac-allocation denial error until cache get updated")
 						}
 						return err
 
@@ -585,7 +621,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					newVM, err = testClient.VirtClient.VirtualMachine(newVM.Namespace).Get(context.TODO(), newVM.Name, metav1.GetOptions{})
 					Expect(err).ToNot(HaveOccurred(), "Should succeed getting newVM")
-					Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true), "new vm should be allocated with the now released mac address")
+					Expect(len(newVM.Spec.Template.Spec.Domain.Devices.Interfaces) == 1).To(Equal(true),
+						"new vm should be allocated with the now released mac address")
 				})
 			})
 			Context("And checking kubemacpool upgrade", func() {
@@ -628,7 +665,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							Eventually(func() error {
 								_, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 								return err
-							}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(), "should succeed creating a vm with the now released mac address after stale mac restored")
+							}, restoreFailedWebhookChangesTimeout, pollingInterval).ShouldNot(HaveOccurred(),
+								"should succeed creating a vm with the now released mac address after stale mac restored")
 						})
 					})
 				})
@@ -692,19 +730,23 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						var err error
 						notManagedVm1 = CreateVmObject(notManagedNamespace, []kubevirtv1.Interface{newInterface("br", "")},
 							[]kubevirtv1.Network{newNetwork("br")})
-						notManagedVm1, err = testClient.VirtClient.VirtualMachine(notManagedVm1.Namespace).Create(context.TODO(), notManagedVm1, metav1.CreateOptions{})
+						notManagedVm1, err = testClient.VirtClient.VirtualMachine(notManagedVm1.Namespace).Create(context.TODO(),
+							notManagedVm1, metav1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 
 						By("Adding a vm with a preset mac")
 						preSetMac = testMacAddress
 						notManagedVm2 = CreateVmObject(notManagedNamespace, []kubevirtv1.Interface{newInterface("br", preSetMac)},
 							[]kubevirtv1.Network{newNetwork("br")})
-						notManagedVm2, err = testClient.VirtClient.VirtualMachine(notManagedVm2.Namespace).Create(context.TODO(), notManagedVm2, metav1.CreateOptions{})
+						notManagedVm2, err = testClient.VirtClient.VirtualMachine(notManagedVm2.Namespace).Create(context.TODO(),
+							notManagedVm2, metav1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 					})
 					It("should create the VM objects without a MAC allocated by Kubemacpool", func() {
-						Expect(notManagedVm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocate a mac to the opted-out vm")
-						Expect(notManagedVm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(preSetMac), "should not allocate a mac to the opted-out vm")
+						Expect(notManagedVm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""),
+							"should not allocate a mac to the opted-out vm")
+						Expect(notManagedVm2.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(preSetMac),
+							"should not allocate a mac to the opted-out vm")
 					})
 					Context("and another vm is created in an opted-in namespace", func() {
 						BeforeEach(func() {
@@ -725,13 +767,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						It("should reject a new opted-in VM object with the occupied MAC assigned", func() {
 							anotherManagedVm := CreateVmObject(managedNamespace, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
 								[]kubevirtv1.Network{newNetwork("br")})
-							_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(context.TODO(), anotherManagedVm, metav1.CreateOptions{})
+							_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(
+								context.TODO(), anotherManagedVm, metav1.CreateOptions{})
 							Expect(err).To(HaveOccurred(), "Should reject a new vm with occupied mac address")
 						})
 						It("should not reject a new opted-in VM object with unmanaged preset MAC", func() {
 							anotherManagedVm := CreateVmObject(managedNamespace, []kubevirtv1.Interface{newInterface("br", preSetMac)},
 								[]kubevirtv1.Network{newNetwork("br")})
-							_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(context.TODO(), anotherManagedVm, metav1.CreateOptions{})
+							_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(
+								context.TODO(), anotherManagedVm, metav1.CreateOptions{})
 							Expect(err).ToNot(HaveOccurred(), "Should not reject a new vm if the mac is occupied on a non-opted-in namespace")
 						})
 
@@ -745,13 +789,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							It("should still reject a new opted-in VM object with the occupied MAC assigned", func() {
 								anotherManagedVm := CreateVmObject(managedNamespace, []kubevirtv1.Interface{newInterface("br", allocatedMac)},
 									[]kubevirtv1.Network{newNetwork("br")})
-								_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(context.TODO(), anotherManagedVm, metav1.CreateOptions{})
+								_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(
+									context.TODO(), anotherManagedVm, metav1.CreateOptions{})
 								Expect(err).To(HaveOccurred(), "Should reject a new vm with occupied mac address")
 							})
 							It("should still not reject a new opted-in VM object with unmanaged preset MAC", func() {
 								anotherManagedVm := CreateVmObject(managedNamespace, []kubevirtv1.Interface{newInterface("br", preSetMac)},
 									[]kubevirtv1.Network{newNetwork("br")})
-								_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(context.TODO(), anotherManagedVm, metav1.CreateOptions{})
+								_, err := testClient.VirtClient.VirtualMachine(anotherManagedVm.Namespace).Create(
+									context.TODO(), anotherManagedVm, metav1.CreateOptions{})
 								Expect(err).ToNot(HaveOccurred(), "Should not reject a new vm if the mac is occupied on a non-opted-in namespce")
 							})
 						})
@@ -780,7 +826,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
-					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""), "should not allocated a mac to the opted-out vm")
+					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""),
+						"should not allocated a mac to the opted-out vm")
 				})
 			})
 
@@ -846,7 +893,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						By("checking the original created vm does not have a finalizer")
 						Expect(vm.GetFinalizers()).ToNot(ContainElements(pool_manager.RuntimeObjectFinalizerName), "vm should have a finalizer")
 						By("adding a finalizer to the vm")
-						Expect(addFinalizer(vm, pool_manager.RuntimeObjectFinalizerName)).To(Succeed(), "Should succeed adding the legacy finalizer to the vm")
+						Expect(addFinalizer(vm, pool_manager.RuntimeObjectFinalizerName)).To(Succeed(),
+							"Should succeed adding the legacy finalizer to the vm")
 						vm, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 						Expect(err).ToNot(HaveOccurred())
 						Expect(vm.GetFinalizers()).To(ContainElements(pool_manager.RuntimeObjectFinalizerName), "vm should have a finalizer")
@@ -859,7 +907,8 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Eventually(func() error {
 							_, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 							return err
-						}, timeout, pollingInterval).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())), "should remove the finalizer and delete the vm")
+						}, timeout, pollingInterval).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())),
+							"should remove the finalizer and delete the vm")
 					})
 				})
 			})
@@ -874,16 +923,21 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					vm1 := CreateVmObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", macAddress)}, []kubevirtv1.Network{newNetwork("br1")})
 					vm1, err = testClient.VirtClient.VirtualMachine(vm1.Namespace).Create(context.TODO(), vm1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 
 					err = addLabelsToNamespace(OtherTestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
 					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
 
 					By(fmt.Sprintf("Adding a vm with the same Mac Address %s on the unmanaged namespace", macAddress))
-					conflictingVM = CreateVmObject(OtherTestNamespace, []kubevirtv1.Interface{newInterface("br1", macAddress)}, []kubevirtv1.Network{newNetwork("br1")})
-					conflictingVM, err = testClient.VirtClient.VirtualMachine(conflictingVM.Namespace).Create(context.TODO(), conflictingVM, metav1.CreateOptions{})
+					conflictingVM = CreateVmObject(OtherTestNamespace,
+						[]kubevirtv1.Interface{newInterface("br1", macAddress)},
+						[]kubevirtv1.Network{newNetwork("br1")})
+					conflictingVM, err = testClient.VirtClient.VirtualMachine(conflictingVM.Namespace).Create(context.TODO(),
+						conflictingVM, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(conflictingVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(), "Should successfully parse mac address")
+					Expect(net.ParseMAC(conflictingVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
+						"Should successfully parse mac address")
 				})
 
 				It("should detect duplicate macs gauge after restarting kubemacpool, and then mitigating that", func() {
@@ -985,13 +1039,15 @@ func getMetrics(token string) (string, error) {
 }
 
 func getManagerPods() (*v1.PodList, error) {
-	deployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
+	deployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(
+		context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
-	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
+	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
+		metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, err
 	}
@@ -1014,7 +1070,8 @@ func getPrometheusToken() (token, stderr string, err error) {
 		monitoringNamespace = "monitoring"
 		prometheusPod       = "prometheus-k8s-0"
 		container           = "prometheus"
-		tokenPath           = "/var/run/secrets/kubernetes.io/serviceaccount/token" // #nosec G101 -- Standard Kubernetes service account token path, not hardcoded credentials
+		tokenPath           = "/var/run/secrets/kubernetes.io/serviceaccount/token" // #nosec G101 --
+		// Standard Kubernetes service account token path, not hardcoded credentials
 	)
 
 	return kubectl.Kubectl("exec", "-n", monitoringNamespace, prometheusPod, "-c", container, "--", "cat", tokenPath)

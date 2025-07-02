@@ -95,7 +95,7 @@ linters:
   - gocyclo
   - gosec
   - gosimple
-  # - lll
+  - lll
   # - mnd
   # - depguard
   # - staticcheck

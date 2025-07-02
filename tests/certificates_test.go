@@ -57,14 +57,16 @@ func deleteServiceSecret() {
 
 func deleteServiceCaBundle() {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
+		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
+			names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
-		for i, _ := range mutatingWebhook.Webhooks {
+		for i := range mutatingWebhook.Webhooks {
 			mutatingWebhook.Webhooks[i].ClientConfig.CABundle = make([]byte, 0)
 		}
 
-		_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(), mutatingWebhook, metav1.UpdateOptions{})
+		_, err = testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Update(context.TODO(),
+			mutatingWebhook, metav1.UpdateOptions{})
 		return err
 	})
 
@@ -84,10 +86,11 @@ func GetCurrentSecret(secretName string) (*v1.Secret, error) {
 }
 
 func GetCurrentCABundle() (caBundle []byte) {
-	mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
+	mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
+		names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get MutatingWebhookConfiguration")
 
-	//get the first one
+	// get the first one
 	return mutatingWebhook.Webhooks[0].ClientConfig.CABundle
 }
 
@@ -99,14 +102,14 @@ func checkSecretRecovery(oldSecret *v1.Secret) {
 			return nil, err
 		}
 		return secret.Data, nil
-
 	}, timeout, pollingInterval).ShouldNot(Equal(oldSecret.Data), "should successfully renew secret")
 }
 
 func checkCaBundleRecovery(oldCABundle []byte) {
 	Eventually(func() ([][]byte, error) {
 		By("Getting the MutatingWebhookConfiguration")
-		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(), names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
+		mutatingWebhook, err := testClient.VirtClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
+			names.MUTATE_WEBHOOK_CONFIG, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}

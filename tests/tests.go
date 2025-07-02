@@ -23,7 +23,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/util/retry"
-	"k8s.io/utils/pointer"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
@@ -584,7 +583,7 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 							},
 						},
 					},
-					TerminationGracePeriodSeconds: pointer.Int64(0),
+					TerminationGracePeriodSeconds: ptr.To[int64](0),
 					Volumes: []kubevirtv1.Volume{
 						{
 							Name: "containerdisk",

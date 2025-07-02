@@ -179,6 +179,10 @@ func logPods(podsNamespace string, failureCount int) error {
 			return err
 		}
 	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple pod logging errors: %v", errs)
+	}
 	return nil
 }
 

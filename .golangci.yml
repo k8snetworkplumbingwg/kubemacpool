@@ -114,6 +114,6 @@ linters:
   - lll
   - mnd
   - depguard
-  # - staticcheck
+  - staticcheck
   # - stylecheck
   # - unconvert

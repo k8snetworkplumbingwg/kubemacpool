@@ -96,7 +96,7 @@ linters:
   - gosec
   - gosimple
   - lll
-  # - mnd
+  - mnd
   # - depguard
   # - staticcheck
   # - stylecheck

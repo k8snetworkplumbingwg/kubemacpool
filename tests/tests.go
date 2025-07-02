@@ -45,6 +45,20 @@ const (
 	optInMode                    = "opt-in"
 	optOutMode                   = "opt-out"
 	mutatingWebhookConfiguration = "kubemacpool-mutator"
+
+	// Test timeouts and intervals
+	namespaceDeleteTimeout     = 120 * time.Second
+	namespaceDeleteInterval    = 5 * time.Second
+	deploymentUpdateTimeout    = 30 * time.Second
+	deploymentUpdateInterval   = 3 * time.Second
+	replicaWaitTimeout         = 2 * time.Minute
+	podDeleteTimeout           = 2 * time.Minute
+	podDeleteInterval          = 1 * time.Second
+	deploymentAvailableTimeout = 2 * time.Minute
+
+	// String and format constants
+	randomStringLength     = 5
+	macAddressReplaceCount = 5
 )
 
 var (
@@ -85,12 +99,13 @@ func deleteTestNamespaces(namespace string) error {
 
 func removeTestNamespaces() {
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", TestNamespace))
-	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(TestNamespace)) }, 120*time.Second, 5*time.Second).
+	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(TestNamespace)) },
+		namespaceDeleteTimeout, namespaceDeleteInterval).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 
 	By(fmt.Sprintf("Waiting for namespace %s to be removed, this can take a while ...\n", OtherTestNamespace))
 	EventuallyWithOffset(1, func() bool { return apierrors.IsNotFound(deleteTestNamespaces(OtherTestNamespace)) },
-		120*time.Second, 5*time.Second).
+		namespaceDeleteTimeout, namespaceDeleteInterval).
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
@@ -116,7 +131,7 @@ func createPodObject() *corev1.Pod {
 }
 
 func randName(name string) string {
-	return name + "-" + rand.String(5)
+	return name + "-" + rand.String(randomStringLength)
 }
 
 func getKubemacpoolPods() (*corev1.PodList, error) {
@@ -239,7 +254,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return nil
-	}, 30*time.Second, 3*time.Second).ShouldNot(HaveOccurred(),
+	}, deploymentUpdateTimeout, deploymentUpdateInterval).ShouldNot(HaveOccurred(),
 		"failed to update number of replicas on deployment:\n%v", string(indentedDeployment))
 
 	By(fmt.Sprintf("Waiting for expected ready pods to be %d", numOfReplica))
@@ -259,7 +274,7 @@ func changeReplicas(managerName string, numOfReplica int32) error {
 		}
 
 		return true
-	}, 2*time.Minute, 3*time.Second).Should(BeTrue(),
+	}, replicaWaitTimeout, deploymentUpdateInterval).Should(BeTrue(),
 		"failed to change kubemacpool deployment number of replicas.\n deployment:\n%v", string(indentedDeployment))
 
 	return nil
@@ -292,7 +307,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 		Eventually(func() error {
 			_, err = testClient.VirtClient.CoreV1().Pods(managerNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 			return err
-		}, 2*time.Minute, time.Second).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())),
+		}, podDeleteTimeout, podDeleteInterval).Should(SatisfyAll(HaveOccurred(), WithTransform(apierrors.IsNotFound, BeTrue())),
 			"should have delete the old pods from deployment %s", deploymentName)
 	}
 
@@ -312,7 +327,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 			return true
 		}, timeout, interval).Should(BeTrue(), "Failed waiting readiness at for deployment:\n%v", string(deploymentName))
 	}
-	deploymentConditionAvailability(corev1.ConditionTrue, 2*time.Minute, 3*time.Second)
+	deploymentConditionAvailability(corev1.ConditionTrue, deploymentAvailableTimeout, deploymentUpdateInterval)
 	return nil
 }
 
@@ -410,7 +425,7 @@ func updateVmWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) erro
 
 func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
 	waitTime := getVmFailCleanupWaitTime()
-	macAddressDashes := strings.Replace(macAddress, ":", "-", 5)
+	macAddressDashes := strings.Replace(macAddress, ":", "-", macAddressReplaceCount)
 
 	err := updateVmWaitConfigMap(func(vmWaitConfigMap *corev1.ConfigMap) error {
 		if vmWaitConfigMap.Data == nil {

@@ -34,7 +34,7 @@ import (
 const (
 	TestNamespace      = "kubemacpool-test"
 	OtherTestNamespace = "kubemacpool-test-alternative"
-	nadPostUrl         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
+	nadPostURL         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
 	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition",` +
 		`"metadata":{"name":"%s","namespace":"%s"},` +
 		`"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
@@ -108,7 +108,7 @@ func removeTestNamespaces() {
 		Should(BeTrue(), "Namespace %s haven't been deleted within the given timeout", TestNamespace)
 }
 
-func CreateVmObject(namespace string, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
+func CreateVMObject(namespace string, interfaces []kubevirtv1.Interface, networks []kubevirtv1.Network) *kubevirtv1.VirtualMachine {
 	vm := getVMCirros()
 	vm.Name = randName("testvm")
 	vm.Namespace = namespace
@@ -192,7 +192,7 @@ func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
 	return 0, false
 }
 
-func getVmFailCleanupWaitTime() time.Duration {
+func getVMFailCleanupWaitTime() time.Duration {
 	managerDeployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
 		names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
@@ -371,7 +371,7 @@ func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
 	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
 }
 
-func createVmWaitConfigMap() error {
+func createVMWaitConfigMap() error {
 	vmWaitConfigMap := &corev1.ConfigMap{Data: map[string]string{}}
 	vmWaitConfigMap.SetName(names.WAITING_VMS_CONFIGMAP)
 	vmWaitConfigMap.SetNamespace(managerNamespace)
@@ -383,7 +383,7 @@ func createVmWaitConfigMap() error {
 	return nil
 }
 
-func deleteVmWaitConfigMap() error {
+func deleteVMWaitConfigMap() error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		return testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(),
 			names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
@@ -394,7 +394,7 @@ func deleteVmWaitConfigMap() error {
 	return nil
 }
 
-func getVmWaitConfigMap() (*corev1.ConfigMap, error) {
+func getVMWaitConfigMap() (*corev1.ConfigMap, error) {
 	vmWaitConfigMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(),
 		names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
@@ -404,9 +404,9 @@ func getVmWaitConfigMap() (*corev1.ConfigMap, error) {
 	return vmWaitConfigMap, nil
 }
 
-func updateVmWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) error {
+func updateVMWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) error {
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		vmWaitConfigMap, err := getVmWaitConfigMap()
+		vmWaitConfigMap, err := getVMWaitConfigMap()
 		if err != nil {
 			return err
 		}
@@ -423,10 +423,10 @@ func updateVmWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) erro
 }
 
 func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
-	waitTime := getVmFailCleanupWaitTime()
+	waitTime := getVMFailCleanupWaitTime()
 	macAddressDashes := strings.Replace(macAddress, ":", "-", macAddressReplaceCount)
 
-	err := updateVmWaitConfigMap(func(vmWaitConfigMap *corev1.ConfigMap) error {
+	err := updateVMWaitConfigMap(func(vmWaitConfigMap *corev1.ConfigMap) error {
 		if vmWaitConfigMap.Data == nil {
 			vmWaitConfigMap.Data = map[string]string{}
 		}

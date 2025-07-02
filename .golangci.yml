@@ -36,6 +36,22 @@ linters-settings:
 
   goimports:
 
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "github.com/sirupsen/logrus"
+            desc: "logging is allowed only by logutils.Log"
+        allow:
+          - $gostd
+          - github.com/onsi/ginkgo/v2
+          - github.com/onsi/gomega
+          - github.com/k8snetworkplumbingwg/kubemacpool
+          - k8s.io
+          - kubevirt.io
+          - sigs.k8s.io
+          - github.com/pkg/errors
+
   mnd:
     settings:
       mnd:
@@ -97,7 +113,7 @@ linters:
   - gosimple
   - lll
   - mnd
-  # - depguard
+  - depguard
   # - staticcheck
   # - stylecheck
   # - unconvert

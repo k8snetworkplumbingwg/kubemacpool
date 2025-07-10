@@ -409,9 +409,9 @@ metadata:
 spec:
   egress:
   - ports:
-    - port: dns-tcp
+    - port: 53
       protocol: TCP
-    - port: dns
+    - port: 53
       protocol: UDP
     to:
     - namespaceSelector:
@@ -447,7 +447,7 @@ metadata:
 spec:
   ingress:
   - ports:
-    - port: metrics
+    - port: 8443
       protocol: TCP
   podSelector:
     matchLabels:

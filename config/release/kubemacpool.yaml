@@ -392,7 +392,7 @@ metadata:
 spec:
   ingress:
   - ports:
-    - port: metrics
+    - port: 8443
       protocol: TCP
   podSelector:
     matchLabels:

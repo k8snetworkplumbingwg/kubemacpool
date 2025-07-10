@@ -12,4 +12,4 @@ spec:
   ingress:
   - ports:
     - protocol: TCP
-      port: metrics
+      port: 8443

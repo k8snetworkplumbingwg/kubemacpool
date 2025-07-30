@@ -123,7 +123,7 @@ func logService(serviceNamespace, serviceName string, failureCount int) error {
 		return err
 	}
 
-	err = reporter.LogToFile(fmt.Sprintf("service"+serviceName), string(byteString), artifactDir, failureCount)
+	err = reporter.LogToFile(fmt.Sprintf("service_%s", serviceName), string(byteString), artifactDir, failureCount)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func logEndpoints(endpointNamespace, endpointName string, failureCount int) erro
 		return err
 	}
 
-	err = reporter.LogToFile(fmt.Sprintf("endpoint_"+endpointName), string(byteString), artifactDir, failureCount)
+	err = reporter.LogToFile(fmt.Sprintf("endpoint_%s", endpointName), string(byteString), artifactDir, failureCount)
 	if err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func logPods(podsNamespace string, failureCount int) error {
 			errs = append(errs, err)
 			continue
 		}
-		err = reporter.LogToFile(fmt.Sprintf("pod_"+pod.Name), string(byteString), artifactDir, failureCount)
+		err = reporter.LogToFile(fmt.Sprintf("pod_%s", pod.Name), string(byteString), artifactDir, failureCount)
 		if err != nil {
 			errs = append(errs, err)
 		}

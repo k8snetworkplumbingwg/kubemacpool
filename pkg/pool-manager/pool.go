@@ -134,6 +134,27 @@ func (p *PoolManager) Start() error {
 	return nil
 }
 
+// getManagedNamespaces pre-computes which namespaces are managed by kubemacpool for a specific webhook
+func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error) {
+	log.V(1).Info("computing managed namespaces for initialization", "webhookName", webhookName)
+
+	namespaces := &v1.NamespaceList{}
+	err := p.kubeClient.List(context.TODO(), namespaces)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to list namespaces for webhook %s", webhookName)
+	}
+
+	var managedNamespaces []string
+	for _, ns := range namespaces.Items {
+		if managed, err := p.IsNamespaceManaged(ns.Name, webhookName); err == nil && managed {
+			managedNamespaces = append(managedNamespaces, ns.Name)
+		}
+	}
+
+	log.Info("computed managed namespaces", "webhookName", webhookName, "count", len(managedNamespaces), "namespaces", managedNamespaces)
+	return managedNamespaces, nil
+}
+
 func (p *PoolManager) InitMaps() error {
 	err := p.initPodMap()
 	if err != nil {

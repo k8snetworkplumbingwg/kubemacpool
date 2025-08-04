@@ -131,7 +131,7 @@ spec:
             port: webhook-server
             scheme: HTTPS
           initialDelaySeconds: 10
-          periodSeconds: 10
+          periodSeconds: 180
         volumeMounts:
           - name: tls-key-pair
             readOnly: true

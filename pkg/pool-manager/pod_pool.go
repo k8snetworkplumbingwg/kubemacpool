@@ -26,7 +26,6 @@ import (
 	"github.com/pkg/errors"
 	multus "gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -194,14 +193,36 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 	return macAddr.String(), nil
 }
 
-// paginatePodsWithLimit performs a pods list request with pagination, to limit the amount of pods received at a time
-// and prevent exceeding the memory limit.
-func (p *PoolManager) paginatePodsWithLimit(limit int64, f func(pods *corev1.PodList) error) error {
+// paginatePodsInManagedNamespaces performs pod list requests with pagination, but only for managed namespaces
+func (p *PoolManager) paginatePodsInManagedNamespaces(limit int64, f func(pods *corev1.PodList) error) error {
+	managedNamespaces, err := p.getManagedNamespaces(podsWebhookName)
+	if err != nil {
+		return errors.Wrap(err, "failed to get managed namespaces for pods")
+	}
+
+	if len(managedNamespaces) == 0 {
+		log.Info("no managed namespaces found, skipping pod initialization")
+		return nil
+	}
+
+	for _, namespace := range managedNamespaces {
+		log.V(1).Info("processing pods in managed namespace", "namespace", namespace)
+		err := p.paginatePodsInNamespace(namespace, limit, f)
+		if err != nil {
+			return errors.Wrapf(err, "failed to process pods in namespace %s", namespace)
+		}
+	}
+
+	return nil
+}
+
+// paginatePodsInNamespace performs pods list request with pagination for a specific namespace
+func (p *PoolManager) paginatePodsInNamespace(namespace string, limit int64, f func(pods *corev1.PodList) error) error {
 	continueFlag := ""
 	for {
 		pods := corev1.PodList{}
 		err := p.kubeClient.List(context.TODO(), &pods, &client.ListOptions{
-			Namespace: metav1.NamespaceAll,
+			Namespace: namespace,
 			Limit:     limit,
 			Continue:  continueFlag,
 		})
@@ -215,7 +236,7 @@ func (p *PoolManager) paginatePodsWithLimit(limit int64, f func(pods *corev1.Pod
 		}
 
 		continueFlag = pods.GetContinue()
-		log.V(1).Info("limit Pod list", "pods len", len(pods.Items), "remaining", pods.GetRemainingItemCount(), "continue", continueFlag)
+		log.V(1).Info("limit Pod list in namespace", "namespace", namespace, "pods len", len(pods.Items), "remaining", pods.GetRemainingItemCount(), "continue", continueFlag)
 		if continueFlag == "" {
 			break
 		}
@@ -225,7 +246,7 @@ func (p *PoolManager) paginatePodsWithLimit(limit int64, f func(pods *corev1.Pod
 
 func (p *PoolManager) initPodMap() error {
 	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
-	err := p.paginatePodsWithLimit(100, func(pods *corev1.PodList) error {
+	err := p.paginatePodsInManagedNamespaces(100, func(pods *corev1.PodList) error {
 		for _, pod := range pods.Items {
 			log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
 			if pod.Annotations == nil {
@@ -234,15 +255,6 @@ func (p *PoolManager) initPodMap() error {
 
 			networkValue, ok := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 			if !ok {
-				continue
-			}
-
-			instanceManaged, err := p.IsPodManaged(pod.GetNamespace())
-			if err != nil {
-				continue
-			}
-
-			if !instanceManaged {
 				continue
 			}
 
@@ -282,7 +294,7 @@ func (p *PoolManager) initPodMap() error {
 		return nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed iterating over all cluster pods")
+		return errors.Wrap(err, "failed iterating over pods in managed namespaces")
 	}
 
 	return nil

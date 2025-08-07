@@ -478,7 +478,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 func (p *PoolManager) vmWaitingCleanupLook() {
 	logger := log.WithName("vmWaitingCleanupLook")
 	c := time.Tick(3 * time.Second)
-	logger.Info("starting cleanup loop for waiting mac addresses")
+	logger.Info("starting cleanup loop for waiting mac addresses", "CleanupWaitTime", p.waitTime)
 	for _ = range c {
 		p.healStaleMacEntries(logger)
 	}

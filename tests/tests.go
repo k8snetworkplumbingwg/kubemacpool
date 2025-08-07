@@ -431,8 +431,9 @@ func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
 			vmWaitConfigMap.Data = map[string]string{}
 		}
 		// legacy configMap uses time.RFC3339 format timestamps
-		// This entry should go stale after 1 minute
-		vmWaitConfigMap.Data[macAddressDashes] = time.Now().Add(-waitTime + time.Minute).Format(time.RFC3339)
+		// This entry should go stale after 3 minutes
+		const staleAfterDuration = 3 * time.Minute
+		vmWaitConfigMap.Data[macAddressDashes] = time.Now().Add(-waitTime + staleAfterDuration).Format(time.RFC3339)
 		return nil
 	})
 

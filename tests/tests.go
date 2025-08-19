@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -369,78 +368,6 @@ func getOptInLabel(webhookName string) metav1.LabelSelectorRequirement {
 
 func getOptOutLabel(webhookName string) metav1.LabelSelectorRequirement {
 	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}
-}
-
-func createVMWaitConfigMap() error {
-	vmWaitConfigMap := &corev1.ConfigMap{Data: map[string]string{}}
-	vmWaitConfigMap.SetName(names.WAITING_VMS_CONFIGMAP)
-	vmWaitConfigMap.SetNamespace(managerNamespace)
-	_, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Create(context.TODO(), vmWaitConfigMap, metav1.CreateOptions{})
-	if err != nil {
-		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
-	}
-
-	return nil
-}
-
-func deleteVMWaitConfigMap() error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		return testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.TODO(),
-			names.WAITING_VMS_CONFIGMAP, metav1.DeleteOptions{})
-	})
-	if err != nil && !apierrors.IsNotFound(err) {
-		return errors.Wrapf(err, "failed to create %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
-	}
-	return nil
-}
-
-func getVMWaitConfigMap() (*corev1.ConfigMap, error) {
-	vmWaitConfigMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.TODO(),
-		names.WAITING_VMS_CONFIGMAP, metav1.GetOptions{})
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to get %s ConfigMap", names.WAITING_VMS_CONFIGMAP)
-	}
-
-	return vmWaitConfigMap, nil
-}
-
-func updateVMWaitConfigMap(f func(vmWaitConfigMap *corev1.ConfigMap) error) error {
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		vmWaitConfigMap, err := getVMWaitConfigMap()
-		if err != nil {
-			return err
-		}
-
-		err = f(vmWaitConfigMap)
-		if err != nil {
-			return errors.Wrap(err, "got an error in updating function")
-		}
-
-		_, err = testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Update(context.TODO(), vmWaitConfigMap, metav1.UpdateOptions{})
-		return err
-	})
-	return err
-}
-
-func simulateSoonToBeStaleEntryInConfigMap(macAddress string) error {
-	waitTime := getVMFailCleanupWaitTime()
-	macAddressDashes := strings.Replace(macAddress, ":", "-", macAddressReplaceCount)
-
-	err := updateVMWaitConfigMap(func(vmWaitConfigMap *corev1.ConfigMap) error {
-		if vmWaitConfigMap.Data == nil {
-			vmWaitConfigMap.Data = map[string]string{}
-		}
-		// legacy configMap uses time.RFC3339 format timestamps
-		// This entry should go stale after 3 minutes
-		const staleAfterDuration = 3 * time.Minute
-		vmWaitConfigMap.Data[macAddressDashes] = time.Now().Add(-waitTime + staleAfterDuration).Format(time.RFC3339)
-		return nil
-	})
-
-	if err != nil {
-		return errors.Wrap(err, "Failed to add soon to be stale entry to configMap")
-	}
-	return nil
 }
 
 // function checks what is the currently configured opt-mode configured in a specific webhook

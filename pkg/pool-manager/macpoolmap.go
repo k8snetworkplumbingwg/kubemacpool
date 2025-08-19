@@ -103,10 +103,6 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 				logger.Info("marked mac as allocated", "macAddress", macAddress)
 				m.clearMacTransactionFromMacEntry(macAddress)
 				return
-			} else if macEntry.isDummyEntry() {
-				logger.Info("Dummy entry released a mac from macMap", "macAddress", macAddress)
-				m.removeMacEntry(macAddress)
-				m.createOrUpdateEntry(macAddress, instanceFullName, iface.Name)
 			}
 		}
 	}

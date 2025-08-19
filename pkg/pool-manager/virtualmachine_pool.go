@@ -28,7 +28,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -282,10 +281,6 @@ func (p *PoolManager) initVirtualMachineMap() error {
 		return errors.Wrap(err, "failed to init MacPoolMap From Cluster")
 	}
 
-	err = p.initMacMapFromLegacyConfigMap()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -497,13 +492,7 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 		if err == nil && isEntryStale {
 			logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", macEntry.instanceName, "interfaceName", macEntry.macInstanceKey, "stale TS", macEntry.transactionTimestamp)
 
-			var vm *kubevirt.VirtualMachine
-			var err error
-			if macEntry.isDummyEntry() {
-				vm, err = p.recoverVmFromCluster(macAddress.String())
-			} else {
-				vm, err = p.getvmInstance(macEntry.instanceName)
-			}
+			vm, err := p.getvmInstance(macEntry.instanceName)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
@@ -530,33 +519,6 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 
 	logger.V(1).Info("macMap is updated", "macPoolMap", p.macPoolMap)
 	return nil
-}
-
-func (p *PoolManager) recoverVmFromCluster(macAddress string) (*kubevirt.VirtualMachine, error) {
-	log.V(1).Info("recoverVmFromCluster", "macAddress", macAddress)
-	foundVmName := ""
-	err := p.forEachManagedVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
-		if !validateInterfaceSupported(iface, networks) {
-			return nil
-		}
-
-		if iface.MacAddress != "" && NewMacKey(iface.MacAddress).String() == macAddress {
-			foundVmName = vmFullName
-		}
-		return nil
-	})
-
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to search for vm that holds the mac address in cluster")
-	}
-	if foundVmName != "" {
-		return p.getvmInstance(foundVmName)
-	} else {
-		return nil, apierrors.NewNotFound(schema.GroupResource{
-			Group:    "kubevirt.io",
-			Resource: "virtualmachine",
-		}, foundVmName)
-	}
 }
 
 func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine, error) {

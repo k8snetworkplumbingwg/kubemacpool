@@ -42,6 +42,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		vmFailCleanupWaitTime := getVmFailCleanupWaitTime()
 		// since this test checks vmWaitingCleanupLook routine, we need to adjust the total timeout with the wait-time argument.
 		// we also add some extra timeout apart form wait-time to be sure that we catch the vm mac release.
+		Expect(vmFailCleanupWaitTime).ToNot(BeZero(), "vmFailCleanupWaitTime should not be zero")
 		restoreFailedWebhookChangesTimeout = vmFailCleanupWaitTime + time.Minute
 	})
 

@@ -314,15 +314,36 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 	return nil
 }
 
-// paginateVmsWithLimit performs a vm list request with pagination, to limit the amount of vms received at a time
-// and prevent taking too much memory.
-func (p *PoolManager) paginateVmsWithLimit(limit int64, vmsFunc func(pods *kubevirt.VirtualMachineList) error) error {
+// paginateVmsInManagedNamespaces performs VM list requests with pagination, but only for managed namespaces
+func (p *PoolManager) paginateVmsInManagedNamespaces(limit int64, vmsFunc func(vms *kubevirt.VirtualMachineList) error) error {
+	managedNamespaces, err := p.getManagedNamespaces(virtualMachnesWebhookName)
+	if err != nil {
+		return errors.Wrap(err, "failed to get managed namespaces for VMs")
+	}
+
+	if len(managedNamespaces) == 0 {
+		log.Info("no managed namespaces found for VMs, skipping VM initialization")
+		return nil
+	}
+
+	for _, namespace := range managedNamespaces {
+		log.V(1).Info("processing VMs in managed namespace", "namespace", namespace)
+		err := p.paginateVmsInNamespace(namespace, limit, vmsFunc)
+		if err != nil {
+			return errors.Wrapf(err, "failed to process VMs in namespace %s", namespace)
+		}
+	}
+
+	return nil
+}
+
+// paginateVmsInNamespace performs VM list request with pagination for a specific namespace
+func (p *PoolManager) paginateVmsInNamespace(namespace string, limit int64, vmsFunc func(vms *kubevirt.VirtualMachineList) error) error {
 	continueFlag := ""
 	for {
-		// Using a unstructured object.
 		vms := &kubevirt.VirtualMachineList{}
 		err := p.kubeClient.List(context.TODO(), vms, &client.ListOptions{
-			Namespace: metav1.NamespaceAll,
+			Namespace: namespace,
 			Limit:     limit,
 			Continue:  continueFlag,
 		})
@@ -336,7 +357,7 @@ func (p *PoolManager) paginateVmsWithLimit(limit int64, vmsFunc func(pods *kubev
 		}
 
 		continueFlag = vms.GetContinue()
-		log.V(1).Info("limit vms list", "vms len", len(vms.Items), "remaining", vms.GetRemainingItemCount(), "continue", continueFlag)
+		log.V(1).Info("limit vms list in namespace", "namespace", namespace, "vms len", len(vms.Items), "remaining", vms.GetRemainingItemCount(), "continue", continueFlag)
 		if continueFlag == "" {
 			break
 		}
@@ -347,18 +368,9 @@ func (p *PoolManager) paginateVmsWithLimit(limit int64, vmsFunc func(pods *kubev
 // forEachManagedVmInterfaceInClusterRunFunction gets all the macs from all the supported interfaces in all the managed cluster vms, and runs
 // a function vmInterfacesFunc on it
 func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(vmInterfacesFunc func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
-	err := p.paginateVmsWithLimit(100, func(vms *kubevirt.VirtualMachineList) error {
+	err := p.paginateVmsInManagedNamespaces(100, func(vms *kubevirt.VirtualMachineList) error {
 		logger := log.WithName("forEachManagedVmInterfaceInClusterRunFunction")
 		for _, vm := range vms.Items {
-			vmNamespace := vm.GetNamespace()
-			isNamespaceManaged, err := p.IsVirtualMachineManaged(vmNamespace)
-			if err != nil {
-				return errors.Wrap(err, fmt.Sprintf("failed to check if namespace %s is managed in current opt-mode", vmNamespace))
-			}
-			if !isNamespaceManaged {
-				logger.V(1).Info("skipping vm in loop iteration, namespace not managed", "vmNamespace", vmNamespace)
-				continue
-			}
 			vmFullName := VmNamespaced(&vm)
 			vmInterfaces := getVirtualMachineInterfaces(&vm)
 			vmNetworks := getVirtualMachineNetworks(&vm)
@@ -393,7 +405,7 @@ func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(vmInterfaces
 		return nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "failed iterating over all cluster vms")
+		return errors.Wrap(err, "failed iterating over VMs in managed namespaces")
 	}
 	return nil
 }
@@ -466,7 +478,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 func (p *PoolManager) vmWaitingCleanupLook() {
 	logger := log.WithName("vmWaitingCleanupLook")
 	c := time.Tick(3 * time.Second)
-	logger.Info("starting cleanup loop for waiting mac addresses")
+	logger.Info("starting cleanup loop for waiting mac addresses", "CleanupWaitTime", p.waitTime)
 	for _ = range c {
 		p.healStaleMacEntries(logger)
 	}

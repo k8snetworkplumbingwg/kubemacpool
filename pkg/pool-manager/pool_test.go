@@ -17,7 +17,6 @@ limitations under the License.
 package pool_manager
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -32,7 +31,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
+
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -40,8 +39,6 @@ import (
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	kubevirt "kubevirt.io/api/core/v1"
-
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
 
 const (
@@ -75,13 +72,6 @@ var _ = Describe("Pool", func() {
 			Name:        "unmanagedPod",
 			Namespace:   notManagedNamespaceName,
 			Annotations: afterAllocationAnnotation(notManagedNamespaceName, unmanagedNamespaceMAC),
-		},
-	}
-
-	vmConfigMap := v1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: testManagerNamespace,
-			Name:      names.WAITING_VMS_CONFIGMAP,
 		},
 	}
 
@@ -672,7 +662,7 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp time.Time
 			)
 			BeforeEach(func() {
-				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &vmConfigMap)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool)
 				newVM = masqueradeVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -688,15 +678,7 @@ var _ = Describe("Pool", func() {
 					macInstanceKey:       newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name,
 				}
 			})
-			It("should not set a mac in legacy configmap with new mac", func() {
-				By("get configmap")
-				configMap := v1.ConfigMap{}
-				err := poolManager.kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: poolManager.managerNamespace, Name: names.WAITING_VMS_CONFIGMAP}, &configMap)
-				Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
 
-				By("checking the configmap is not updated with mac allocated")
-				Expect(configMap.Data).To(BeEmpty(), "configmap should not hold the mac address waiting for approval")
-			})
 			It("should set a mac in pool cache with updated transaction timestamp", func() {
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
 				Expect(poolManager.macPoolMap[NewMacKey(allocatedMac)]).To(Equal(expectedMacEntry), "macPoolMap's mac's entry should be as expected")
@@ -737,13 +719,7 @@ var _ = Describe("Pool", func() {
 						macInstanceKey:       newVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].Name,
 					}
 				})
-				It("should make sure legacy configmap is empty after vm creation", func() {
-					By("check configmap is empty")
-					configMap := v1.ConfigMap{}
-					err := poolManager.kubeClient.Get(context.TODO(), types.NamespacedName{Namespace: poolManager.managerNamespace, Name: names.WAITING_VMS_CONFIGMAP}, &configMap)
-					Expect(err).ToNot(HaveOccurred(), "should successfully get configmap")
-					Expect(configMap.Data).To(BeEmpty(), "configmap should hold no more mac addresses for approval")
-				})
+
 				It("should properly update the pool cache after vm creation", func() {
 					By("check allocated pool is populated and set to AllocationStatusAllocated status")
 					Expect(poolManager.macPoolMap[NewMacKey(allocatedMac)]).To(Equal(expectedMacEntry), "updated macPoolMap's mac's entry should remove transaction timestamp")

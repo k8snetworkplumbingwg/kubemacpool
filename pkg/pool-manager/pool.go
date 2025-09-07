@@ -95,37 +95,27 @@ func (m macMap) MarshalJSON() ([]byte, error) {
 }
 
 func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
-	err := checkRange(rangeStart, rangeEnd)
-	if err != nil {
-		return nil, err
-	}
-	err = checkCast(rangeStart)
-	if err != nil {
-		return nil, fmt.Errorf("RangeStart is invalid: %v", err)
-	}
-	err = checkCast(rangeEnd)
-	if err != nil {
-		return nil, fmt.Errorf("RangeEnd is invalid: %v", err)
-	}
-	currentMac, err := generateRandomMac(rangeStart, rangeEnd)
-	if err != nil {
-		return nil, fmt.Errorf("first MAC generated randomely from ranges is invalid: %v", err)
-	}
-	log.Info("pool allocation will start with random MAC", "currentMac", currentMac.String())
-
+	// Create PoolManager struct with empty ranges initially
 	poolManger := &PoolManager{
 		cachedKubeClient: cachedKubeClient,
 		kubeClient:       kubeClient,
 		isKubevirt:       kubevirtExist,
-		rangeEnd:         rangeEnd,
-		rangeStart:       rangeStart,
-		currentMac:       currentMac,
 		managerNamespace: managerNamespace,
 		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       macMap{},
 		poolMutex:        sync.Mutex{},
 		waitTime:         waitTime,
 	}
+
+	// Use UpdateRanges to set initial ranges with proper validation
+	if err := poolManger.UpdateRanges(rangeStart, rangeEnd); err != nil {
+		return nil, fmt.Errorf("failed to set initial ranges: %w", err)
+	}
+
+	log.Info("PoolManager initialized with MAC ranges",
+		"rangeStart", rangeStart.String(),
+		"rangeEnd", rangeEnd.String(),
+		"currentMac", poolManger.currentMac.String())
 
 	return poolManger, nil
 }
@@ -184,7 +174,7 @@ func checkRange(startMac, endMac net.HardwareAddr) error {
 		}
 	}
 
-	return fmt.Errorf("Invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
+	return fmt.Errorf("invalid range. rangeStart: %s rangeEnd: %s", startMac.String(), endMac.String())
 }
 
 func GetMacPoolSize(rangeStart, rangeEnd net.HardwareAddr) (int64, error) {
@@ -404,4 +394,44 @@ func (p *PoolManager) getOptMode(mutatingWebhookConfigName, webhookName string) 
 	}
 
 	return "", fmt.Errorf("No Opt mode defined for webhook %s in mutatingWebhookConfig %s", webhookName, mutatingWebhookConfigName)
+}
+
+// UpdateRanges atomically updates the MAC address ranges for allocation
+// This method will be used for dynamic range updates without pod restart
+func (p *PoolManager) UpdateRanges(newStart, newEnd net.HardwareAddr) error {
+	// Validate the new ranges
+	if err := checkRange(newStart, newEnd); err != nil {
+		return err
+	}
+
+	if err := checkCast(newStart); err != nil {
+		return fmt.Errorf("invalid range start: %v", err)
+	}
+
+	if err := checkCast(newEnd); err != nil {
+		return fmt.Errorf("invalid range end: %v", err)
+	}
+
+	oldStart := p.rangeStart
+	oldEnd := p.rangeEnd
+
+	p.rangeStart = newStart
+	p.rangeEnd = newEnd
+
+	// Reset current MAC to somewhere in the new range
+	newCurrentMac, err := generateRandomMac(newStart, newEnd)
+	if err != nil {
+		// Rollback on failure
+		p.rangeStart = oldStart
+		p.rangeEnd = oldEnd
+		return fmt.Errorf("failed to generate new current MAC: %v", err)
+	}
+	p.currentMac = newCurrentMac
+
+	log.Info("Successfully updated MAC allocation ranges",
+		"oldStart", oldStart.String(), "oldEnd", oldEnd.String(),
+		"newStart", newStart.String(), "newEnd", newEnd.String(),
+		"newCurrentMac", newCurrentMac.String())
+
+	return nil
 }

@@ -39,7 +39,7 @@ func (p *PoolManager) AllocatePodMac(pod *corev1.Pod, isNotDryRun bool) error {
 
 	log.V(1).Info("AllocatePodMac: Data",
 		"macmap", p.macPoolMap,
-		"currentMac", p.currentMac.String())
+		"currentMac", p.getCurrentMAC())
 
 	networkValue, ok := pod.Annotations[networkv1.NetworkAttachmentAnnot]
 	if !ok {

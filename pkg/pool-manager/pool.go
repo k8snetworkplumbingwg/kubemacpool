@@ -64,6 +64,7 @@ type PoolManager struct {
 	macPoolMap       macMap                       // allocated mac map and macEntry
 	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
 	poolMutex        sync.Mutex                   // mutex for allocation an release
+	rangeMutex       sync.RWMutex                 // mutex for range operations to support dynamic updates
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
 }
@@ -104,6 +105,7 @@ func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rang
 		podToMacPoolMap:  map[string]map[string]string{},
 		macPoolMap:       macMap{},
 		poolMutex:        sync.Mutex{},
+		rangeMutex:       sync.RWMutex{},
 		waitTime:         waitTime,
 	}
 
@@ -115,7 +117,7 @@ func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rang
 	log.Info("PoolManager initialized with MAC ranges",
 		"rangeStart", rangeStart.String(),
 		"rangeEnd", rangeEnd.String(),
-		"currentMac", poolManger.currentMac.String())
+		"currentMac", poolManger.getCurrentMAC())
 
 	return poolManger, nil
 }
@@ -224,6 +226,10 @@ func generateRandomMac(rangeStart, rangeEnd net.HardwareAddr) (net.HardwareAddr,
 }
 
 func (p *PoolManager) getFreeMac() (net.HardwareAddr, error) {
+	// Acquire read lock to coordinate with UpdateRanges
+	p.rangeMutex.RLock()
+	defer p.rangeMutex.RUnlock()
+
 	// this loop will ensure that we check all the range
 	// first iteration from current mac to last mac in the range
 	// second iteration from first mac in the range to the latest one
@@ -412,6 +418,10 @@ func (p *PoolManager) UpdateRanges(newStart, newEnd net.HardwareAddr) error {
 		return fmt.Errorf("invalid range end: %v", err)
 	}
 
+	// Update ranges atomically
+	p.rangeMutex.Lock()
+	defer p.rangeMutex.Unlock()
+
 	oldStart := p.rangeStart
 	oldEnd := p.rangeEnd
 
@@ -438,7 +448,18 @@ func (p *PoolManager) UpdateRanges(newStart, newEnd net.HardwareAddr) error {
 
 // GetCurrentRanges returns the current MAC address ranges
 func (p *PoolManager) GetCurrentRanges() (start, end string) {
+	p.rangeMutex.RLock()
+	defer p.rangeMutex.RUnlock()
+
 	return p.rangeStart.String(), p.rangeEnd.String()
+}
+
+// getCurrentMAC returns the current MAC address with proper locking
+func (p *PoolManager) getCurrentMAC() string {
+	p.rangeMutex.RLock()
+	defer p.rangeMutex.RUnlock()
+
+	return p.currentMac.String()
 }
 
 // ManagerNamespace returns the manager namespace

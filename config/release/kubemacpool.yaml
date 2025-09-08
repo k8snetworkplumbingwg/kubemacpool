@@ -79,6 +79,8 @@ rules:
   verbs:
   - get
   - delete
+  - list
+  - watch
 - apiGroups:
   - authentication.k8s.io
   resources:

@@ -435,3 +435,8 @@ func (p *PoolManager) UpdateRanges(newStart, newEnd net.HardwareAddr) error {
 
 	return nil
 }
+
+// GetCurrentRanges returns the current MAC address ranges
+func (p *PoolManager) GetCurrentRanges() (start, end string) {
+	return p.rangeStart.String(), p.rangeEnd.String()
+}

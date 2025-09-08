@@ -18,6 +18,8 @@ package configmap
 
 import (
 	"context"
+	"fmt"
+	"net"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -27,11 +29,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// PoolManager defines the interface for MAC pool management
+type PoolManager interface {
+	GetCurrentRanges() (start, end string)
+	UpdateRanges(start, end net.HardwareAddr) error
+}
+
 // ConfigMapReconciler reconciles a ConfigMap object for MAC range updates
 type ConfigMapReconciler struct {
 	client.Client
 	Scheme             *runtime.Scheme
+	PoolManager        PoolManager
 	ConfigMapNamespace string
+}
+
+// RangeConfig represents MAC address range configuration parsed from ConfigMap
+type RangeConfig struct {
+	Start net.HardwareAddr
+	End   net.HardwareAddr
 }
 
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
@@ -51,10 +66,78 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	// TODO: In future commits, implement the actual range extraction and update logic
-	logger.Info("ConfigMap reconcile called (stub implementation)",
-		"configMap", configMap.Name,
-		"namespace", configMap.Namespace)
+	logger.Info("Processing ConfigMap for MAC range update")
+
+	// Extract and validate new MAC ranges from ConfigMap
+	rangeConfig, err := r.extractRangesFromConfigMap(configMap)
+	if err != nil {
+		logger.Error(err, "Failed to extract ranges from ConfigMap",
+			"data", configMap.Data)
+		return ctrl.Result{}, fmt.Errorf("invalid ConfigMap data: %v", err)
+	}
+
+	logger.V(1).Info("Extracted new MAC ranges from ConfigMap",
+		"newRangeStart", rangeConfig.Start.String(),
+		"newRangeEnd", rangeConfig.End.String())
+
+	// Check if the new ranges are different from current ranges
+	currentStart, currentEnd := r.PoolManager.GetCurrentRanges()
+	if rangeConfig.Start.String() == currentStart && rangeConfig.End.String() == currentEnd {
+		logger.Info("MAC address ranges unchanged, skipping update",
+			"currentRangeStart", currentStart,
+			"currentRangeEnd", currentEnd)
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("MAC address ranges changed, applying update",
+		"oldRangeStart", currentStart,
+		"oldRangeEnd", currentEnd,
+		"newRangeStart", rangeConfig.Start.String(),
+		"newRangeEnd", rangeConfig.End.String())
+
+	// Apply the new ranges to PoolManager
+	if err := r.PoolManager.UpdateRanges(rangeConfig.Start, rangeConfig.End); err != nil {
+		logger.Error(err, "Failed to update MAC address ranges in PoolManager",
+			"rangeStart", rangeConfig.Start.String(),
+			"rangeEnd", rangeConfig.End.String())
+		return ctrl.Result{}, fmt.Errorf("failed to apply new ranges: %v", err)
+	}
+
+	logger.V(1).Info("Successfully updated MAC address ranges",
+		"rangeStart", rangeConfig.Start.String(),
+		"rangeEnd", rangeConfig.End.String())
 
 	return ctrl.Result{}, nil
+}
+
+// extractRangesFromConfigMap parses MAC ranges from ConfigMap data
+func (r *ConfigMapReconciler) extractRangesFromConfigMap(cm *corev1.ConfigMap) (*RangeConfig, error) {
+	// Validate ConfigMap has the expected keys
+	startStr, ok := cm.Data["RANGE_START"]
+	if !ok {
+		return nil, fmt.Errorf("RANGE_START not found in ConfigMap")
+	}
+
+	endStr, ok := cm.Data["RANGE_END"]
+	if !ok {
+		return nil, fmt.Errorf("RANGE_END not found in ConfigMap")
+	}
+
+	// Parse and validate MAC addresses
+	start, err := net.ParseMAC(startStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid RANGE_START %q: %w", startStr, err)
+	}
+
+	end, err := net.ParseMAC(endStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid RANGE_END %q: %w", endStr, err)
+	}
+
+	return newRangeConfig(start, end), nil
+}
+
+// newRangeConfig creates a new RangeConfig with the provided MAC addresses
+func newRangeConfig(start, end net.HardwareAddr) *RangeConfig {
+	return &RangeConfig{Start: start, End: end}
 }

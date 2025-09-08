@@ -27,6 +27,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 // PoolManager defines the interface for MAC pool management
@@ -50,6 +53,24 @@ type RangeConfig struct {
 }
 
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+
+// Add creates a new ConfigMap Controller and adds it to the Manager with the given poolManager.
+func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) error {
+	// Get the namespace from the pool manager
+	podNamespace := poolManager.ManagerNamespace()
+
+	reconciler := &ConfigMapReconciler{
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		PoolManager:        poolManager,
+		ConfigMapNamespace: podNamespace,
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("mac-range-configmap").
+		For(&corev1.ConfigMap{}).
+		Complete(reconciler)
+}
 
 func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)

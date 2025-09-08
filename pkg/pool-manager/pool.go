@@ -440,3 +440,8 @@ func (p *PoolManager) UpdateRanges(newStart, newEnd net.HardwareAddr) error {
 func (p *PoolManager) GetCurrentRanges() (start, end string) {
 	return p.rangeStart.String(), p.rangeEnd.String()
 }
+
+// ManagerNamespace returns the manager namespace
+func (p *PoolManager) ManagerNamespace() string {
+	return p.managerNamespace
+}

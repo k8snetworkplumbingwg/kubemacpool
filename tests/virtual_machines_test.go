@@ -168,7 +168,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						vmOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress = vmOverlapMacAddress
 						_, err = testClient.VirtClient.VirtualMachine(vmOverlap.Namespace).Create(context.TODO(), vmOverlap, metav1.CreateOptions{})
 						Expect(err).To(HaveOccurred())
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 					},
 						Entry("with the same mac format", ":"),
 						Entry("with different mac format", "-"),
@@ -189,7 +189,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							[]kubevirtv1.Network{newNetwork("brOverlap")})
 						_, err = testClient.VirtClient.VirtualMachine(vmOverlap.Namespace).Create(context.TODO(), vmOverlap, metav1.CreateOptions{})
 						Expect(err).To(HaveOccurred())
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 
 					})
 				})
@@ -202,7 +202,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							newInterface("br2", "02:00:00:00:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 						_, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 						Expect(err).To(HaveOccurred())
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 					})
 				})
 				Context("and when the MAC address is out of range", func() {
@@ -212,7 +212,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							newInterface("br2", "03:ff:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 						_, err = testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.TODO(), vm, metav1.CreateOptions{})
 						Expect(err).To(HaveOccurred())
-						Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 					})
 				})
 			})
@@ -245,7 +245,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						newVM1, err = testClient.VirtClient.VirtualMachine(newVM1.Namespace).Create(context.TODO(), newVM1, metav1.CreateOptions{})
 						if err != nil {
-							Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+							Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 						}
 						return err
 
@@ -259,7 +259,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						newVM2, err = testClient.VirtClient.VirtualMachine(newVM2.Namespace).Create(context.TODO(), newVM2, metav1.CreateOptions{})
 						if err != nil {
-							Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+							Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 						}
 						return err
 
@@ -399,7 +399,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						_, err = testClient.VirtClient.VirtualMachine(baseVM.Namespace).Create(context.TODO(), baseVM, metav1.CreateOptions{})
 						if err != nil {
-							Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+							Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 						}
 						return err
 
@@ -423,7 +423,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Eventually(func() error {
 						_, err = testClient.VirtClient.VirtualMachine(baseVM.Namespace).Create(context.TODO(), baseVM, metav1.CreateOptions{})
 						if err != nil {
-							Expect(strings.Contains(err.Error(), "failed to allocate requested mac address")).To(Equal(true))
+							Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
 						}
 						return err
 

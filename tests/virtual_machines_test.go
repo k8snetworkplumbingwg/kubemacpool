@@ -627,7 +627,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 		})
 
-		Context("When all the VMs are not serviced by default (opt-in mode)", func() {
+		Context("When all the VMs are not serviced by default (opt-in mode)", Label("vm-opt-in"), func() {
 			BeforeEach(func() {
 				By("setting vm webhook to not accept all namespaces unless they include opt-in label")
 				err := setWebhookOptMode(vmNamespaceOptInLabel, optInMode)
@@ -726,7 +726,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 		})
 
-		Context("When all the VMs are serviced by default (opt-out mode)", func() {
+		Context("When all the VMs are serviced by default (opt-out mode)", Label("vm-opt-out"), func() {
 			BeforeEach(func() {
 				By("setting vm webhook to accept all namespaces that don't include opt-out label")
 				err := setWebhookOptMode(vmNamespaceOptInLabel, optOutMode)

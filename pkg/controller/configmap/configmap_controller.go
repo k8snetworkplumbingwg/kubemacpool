@@ -24,10 +24,13 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+
+	"github.com/go-logr/logr"
 
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
@@ -44,6 +47,7 @@ type ConfigMapReconciler struct {
 	Scheme             *runtime.Scheme
 	PoolManager        PoolManager
 	ConfigMapNamespace string
+	EventRecorder      record.EventRecorder
 }
 
 // RangeConfig represents MAC address range configuration parsed from ConfigMap
@@ -53,6 +57,8 @@ type RangeConfig struct {
 }
 
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=pods,verbs=get;list
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Add creates a new ConfigMap Controller and adds it to the Manager with the given poolManager.
 func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) error {
@@ -64,6 +70,7 @@ func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) error {
 		Scheme:             mgr.GetScheme(),
 		PoolManager:        poolManager,
 		ConfigMapNamespace: podNamespace,
+		EventRecorder:      mgr.GetEventRecorderFor("configmap-controller"),
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -94,6 +101,10 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		logger.Error(err, "Failed to extract ranges from ConfigMap",
 			"data", configMap.Data)
+
+		r.recordEvent(ctx, logger, corev1.EventTypeWarning, "InvalidRange",
+			"Invalid MAC range in ConfigMap, ignoring new range values: %v", err)
+
 		return ctrl.Result{}, fmt.Errorf("invalid ConfigMap data: %v", err)
 	}
 
@@ -121,6 +132,11 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		logger.Error(err, "Failed to update MAC address ranges in PoolManager",
 			"rangeStart", rangeConfig.Start.String(),
 			"rangeEnd", rangeConfig.End.String())
+
+		r.recordEvent(ctx, logger, corev1.EventTypeWarning, "UpdateFailed",
+			"Failed to apply new MAC ranges %s - %s: %v",
+			rangeConfig.Start.String(), rangeConfig.End.String(), err)
+
 		return ctrl.Result{}, fmt.Errorf("failed to apply new ranges: %v", err)
 	}
 
@@ -161,4 +177,45 @@ func (r *ConfigMapReconciler) extractRangesFromConfigMap(cm *corev1.ConfigMap) (
 // newRangeConfig creates a new RangeConfig with the provided MAC addresses
 func newRangeConfig(start, end net.HardwareAddr) *RangeConfig {
 	return &RangeConfig{Start: start, End: end}
+}
+
+// getManagerPod finds the kubemacpool manager pod for event recording
+func (r *ConfigMapReconciler) getManagerPod(ctx context.Context) (*corev1.Pod, error) {
+	podList := &corev1.PodList{}
+	listOptions := []client.ListOption{
+		client.InNamespace(r.ConfigMapNamespace),
+		client.MatchingLabels{
+			"app":           "kubemacpool",
+			"control-plane": "mac-controller-manager",
+		},
+	}
+
+	if err := r.List(ctx, podList, listOptions...); err != nil {
+		return nil, fmt.Errorf("failed to list kubemacpool pods: %w", err)
+	}
+
+	if len(podList.Items) == 0 {
+		return nil, fmt.Errorf("no kubemacpool manager pods found")
+	}
+
+	// Return the first running pod
+	for _, pod := range podList.Items {
+		if pod.Status.Phase == corev1.PodRunning {
+			return &pod, nil
+		}
+	}
+
+	// If no running pod found, return the first pod
+	return &podList.Items[0], nil
+}
+
+// recordEvent is a helper to record Kubernetes events on the manager pod
+func (r *ConfigMapReconciler) recordEvent(ctx context.Context, logger logr.Logger, eventType, reason, messageFmt string, args ...interface{}) {
+	if r.EventRecorder != nil {
+		if managerPod, err := r.getManagerPod(ctx); err != nil {
+			logger.V(1).Info("Could not find manager pod for event recording", "error", err)
+		} else {
+			r.EventRecorder.Eventf(managerPod, eventType, reason, messageFmt, args...)
+		}
+	}
 }

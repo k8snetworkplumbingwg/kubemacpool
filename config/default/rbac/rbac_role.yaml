@@ -40,6 +40,7 @@ rules:
   resources:
   - pods
   verbs:
+  - get
   - list
   - watch
 - apiGroups:
@@ -80,3 +81,10 @@ rules:
   - subjectaccessreviews
   verbs:
   - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch

@@ -18,6 +18,7 @@ package configmap
 
 import (
 	"context"
+	"fmt"
 	"net"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -25,6 +26,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +34,35 @@ import (
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
+
+// MockEventRecorder captures events for testing
+type MockEventRecorder struct {
+	events []Event
+}
+
+type Event struct {
+	Object    runtime.Object
+	EventType string
+	Reason    string
+	Message   string
+}
+
+func (m *MockEventRecorder) Event(object runtime.Object, eventtype, reason, message string) {
+	m.events = append(m.events, Event{
+		Object:    object,
+		EventType: eventtype,
+		Reason:    reason,
+		Message:   message,
+	})
+}
+
+func (m *MockEventRecorder) Eventf(object runtime.Object, eventtype, reason, messageFmt string, args ...interface{}) {
+	m.Event(object, eventtype, reason, fmt.Sprintf(messageFmt, args...))
+}
+
+func (m *MockEventRecorder) AnnotatedEventf(object runtime.Object, annotations map[string]string, eventtype, reason, messageFmt string, args ...interface{}) {
+	m.Event(object, eventtype, reason, fmt.Sprintf(messageFmt, args...))
+}
 
 const managerNamespace = "kubemacpool-system"
 
@@ -77,7 +108,8 @@ var _ = Describe("ConfigMap Controller", func() {
 		}
 
 		reconciler = &ConfigMapReconciler{
-			PoolManager: mockPoolManager,
+			PoolManager:   mockPoolManager,
+			EventRecorder: nil,
 		}
 	})
 
@@ -339,5 +371,92 @@ var _ = Describe("ConfigMap Controller", func() {
 				Expect(mockPoolManager.updateRangesCalled).To(BeFalse(), "UpdateRanges should not be called when ConfigMap not found")
 			})
 		})
+	})
+
+	Describe("Event Recording", func() {
+		var mockEventRecorder *MockEventRecorder
+		BeforeEach(func() {
+			mockEventRecorder = &MockEventRecorder{
+				events: []Event{},
+			}
+			reconciler.EventRecorder = mockEventRecorder
+		})
+
+		type eventTestParams struct {
+			configMapData           map[string]string
+			mockError               error
+			expectedReason          string
+			expectedMessageContains []string
+		}
+
+		DescribeTable("should record error events",
+			func(params eventTestParams) {
+				if params.mockError != nil {
+					mockPoolManager.updateRangesError = params.mockError
+				}
+
+				configMap := &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      names.MAC_RANGE_CONFIGMAP,
+						Namespace: managerNamespace,
+					},
+					Data: params.configMapData,
+				}
+
+				managerPod := &corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "kubemacpool-manager-test",
+						Namespace: managerNamespace,
+						Labels: map[string]string{
+							"app":           "kubemacpool",
+							"control-plane": "mac-controller-manager",
+						},
+					},
+					Status: corev1.PodStatus{Phase: corev1.PodRunning},
+				}
+
+				fakeClient := fake.NewClientBuilder().
+					WithScheme(scheme.Scheme).
+					WithObjects(configMap, managerPod).
+					Build()
+				reconciler.Client = fakeClient
+
+				req := ctrl.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      names.MAC_RANGE_CONFIGMAP,
+						Namespace: managerNamespace,
+					},
+				}
+				result, err := reconciler.Reconcile(context.TODO(), req)
+				Expect(err).To(HaveOccurred())
+				Expect(result).To(Equal(ctrl.Result{}))
+
+				Expect(mockEventRecorder.events).To(HaveLen(1))
+				event := mockEventRecorder.events[0]
+				Expect(event.EventType).To(Equal(corev1.EventTypeWarning))
+				Expect(event.Reason).To(Equal(params.expectedReason))
+				for _, expectedMessage := range params.expectedMessageContains {
+					Expect(event.Message).To(ContainSubstring(expectedMessage))
+				}
+			},
+			Entry("when ConfigMap has invalid range format", eventTestParams{
+				configMapData: map[string]string{
+					"RANGE_START": "invalid-mac",
+					"RANGE_END":   "02:22:22:22:22:22",
+				},
+				mockError:               nil,
+				expectedReason:          "InvalidRange",
+				expectedMessageContains: []string{"Invalid MAC range in ConfigMap"},
+			}),
+			Entry("when UpdateRanges fails due to pool manager validations", eventTestParams{
+				configMapData: map[string]string{
+					"RANGE_START": "03:33:33:33:33:33",
+					"RANGE_END":   "03:44:44:44:44:44",
+				},
+				mockError:               fmt.Errorf("pool manager internal error"),
+				expectedReason:          "UpdateFailed",
+				expectedMessageContains: []string{"Failed to apply new MAC ranges", "pool manager internal error"},
+			}),
+		)
 	})
 })

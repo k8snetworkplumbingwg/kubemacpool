@@ -38,7 +38,7 @@ GOLANGICI_LINT ?= GOFLAGS=-mod=mod $(GO) run github.com/golangci/golangci-lint/c
 LINTER_COVERAGE ?= tests/...
 
 E2E_TEST_EXTRA_ARGS ?=
-export E2E_TEST_TIMEOUT ?= 90m
+export E2E_TEST_TIMEOUT ?= 100m
 E2E_TEST_ARGS ?= $(strip -test.v -test.timeout=$(E2E_TEST_TIMEOUT) -ginkgo.timeout=$(E2E_TEST_TIMEOUT) -ginkgo.v $(E2E_TEST_EXTRA_ARGS))
 
 export KUBECTL ?= cluster/kubectl.sh

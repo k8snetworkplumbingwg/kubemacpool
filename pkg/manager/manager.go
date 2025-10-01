@@ -24,9 +24,12 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -34,6 +37,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
@@ -159,10 +163,24 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 	log.Info("Setting up Manager")
 	var err error
 
+	configMapNameFieldSelector := fields.OneTermEqualSelector("metadata.name", names.MAC_RANGE_CONFIGMAP)
+
+	cacheOptions := cache.Options{
+		ByObject: map[client.Object]cache.ByObject{
+			&corev1.ConfigMap{}: {
+				Namespaces: map[string]cache.Config{
+					k.podNamespace: {},
+				},
+				Field: configMapNameFieldSelector,
+			},
+		},
+	}
+
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
 		Metrics: metricsserver.Options{
 			BindAddress: k.metricsAddr,
 		},
+		Cache: cacheOptions,
 	})
 	return err
 }

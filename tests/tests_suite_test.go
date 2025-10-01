@@ -95,6 +95,10 @@ func dumpKubemacpoolLogs(failureCount int) {
 	if err := logNetworkPolicies(managerNamespace, failureCount); err != nil {
 		fmt.Println(err)
 	}
+
+	if err := logConfigMaps(managerNamespace, failureCount); err != nil {
+		fmt.Println(err)
+	}
 }
 
 func logPodContainersLogs(podName string, containers []corev1.Container, failureCount int) error {
@@ -202,5 +206,38 @@ func logNetworkPolicies(namespace string, failureCount int) error {
 		return err
 	}
 
+	return nil
+}
+
+func logConfigMaps(namespace string, failureCount int) error {
+	var errs []error
+	configMapList, err := testClient.VirtClient.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+
+	for i := range configMapList.Items {
+		configMap := &configMapList.Items[i]
+		configMapYaml, err := testClient.VirtClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMap.Name, metav1.GetOptions{})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		bytes, err := json.MarshalIndent(*configMapYaml, "", "  ")
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		err = reporter.LogToFile(fmt.Sprintf("configmap_%s", configMap.Name), string(bytes), artifactDir, failureCount)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple configmap logging errors: %v", errs)
+	}
 	return nil
 }

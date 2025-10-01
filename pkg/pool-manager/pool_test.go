@@ -163,7 +163,7 @@ var _ = Describe("Pool", func() {
 				Expect(err).ToNot(HaveOccurred())
 				_, err = NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("Invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
+				Expect(err.Error()).To(Equal("failed to set initial ranges: invalid range. rangeStart: 0a:00:00:00:00:00 rangeEnd: 02:00:00:00:00:00"))
 
 			})
 
@@ -175,7 +175,7 @@ var _ = Describe("Pool", func() {
 				Expect(err).ToNot(HaveOccurred())
 				_, err = NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("RangeStart is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
+				Expect(err.Error()).To(Equal("failed to set initial ranges: invalid range start: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X3"))
 
 			})
 
@@ -187,7 +187,7 @@ var _ = Describe("Pool", func() {
 				Expect(err).ToNot(HaveOccurred())
 				_, err = NewPoolManager(fakeClient, fakeClient, startPoolRangeEnv, endPoolRangeEnv, testManagerNamespace, false, 10)
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("RangeEnd is invalid: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
+				Expect(err.Error()).To(Equal("failed to set initial ranges: invalid range end: invalid mac address. Multicast addressing is not supported. Unicast addressing must be used. The first octet is 0X5"))
 			})
 
 			Context("When poolManager is initialized when there are pods on managed and unmanaged namespaces", func() {

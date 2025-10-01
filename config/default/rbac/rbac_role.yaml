@@ -40,6 +40,7 @@ rules:
   resources:
   - pods
   verbs:
+  - get
   - list
   - watch
 - apiGroups:
@@ -66,6 +67,8 @@ rules:
   verbs:
   - get
   - delete
+  - list
+  - watch
 - apiGroups:
   - authentication.k8s.io
   resources:
@@ -78,3 +81,10 @@ rules:
   - subjectaccessreviews
   verbs:
   - create
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch

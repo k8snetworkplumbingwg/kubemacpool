@@ -20,6 +20,8 @@ const OPENSHIFT_RUNLABEL = "openshift.io/run-level"
 
 const WAIT_TIME_ARG = "wait-time"
 
+const MAC_RANGE_CONFIGMAP = "kubemacpool-mac-range-config"
+
 // Relationship labels
 const COMPONENT_LABEL_KEY = "app.kubernetes.io/component"
 const PART_OF_LABEL_KEY = "app.kubernetes.io/part-of"

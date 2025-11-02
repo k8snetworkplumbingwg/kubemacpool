@@ -18,6 +18,8 @@ package webhook
 
 import (
 	"crypto/tls"
+	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -66,7 +68,12 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}},
 	})
 
-	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Ping})
+	s.Register("/readyz", healthz.CheckHandler{Checker: healthz.Checker(func(_ *http.Request) error {
+		if !poolManager.IsReady() {
+			return fmt.Errorf("pool manager not ready")
+		}
+		return nil
+	})})
 	s.Register("/healthz", healthz.CheckHandler{Checker: healthz.Ping})
 
 	for _, f := range AddToWebhookFuncs {

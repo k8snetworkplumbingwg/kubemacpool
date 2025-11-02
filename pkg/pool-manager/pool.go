@@ -26,6 +26,7 @@ import (
 	"net"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -66,6 +67,7 @@ type PoolManager struct {
 	poolMutex        sync.Mutex                   // mutex for allocation an release
 	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
+	isPoolReady      atomic.Bool                  // indicates whether the pool manager has completed initialization
 }
 
 type OptMode string
@@ -139,7 +141,16 @@ func (p *PoolManager) Start() error {
 	if p.isKubevirt {
 		go p.vmWaitingCleanupLook()
 	}
+
+	log.Info("Pool Manager is ready")
+	p.isPoolReady.Store(true)
+
 	return nil
+}
+
+// IsReady returns true if the pool manager has completed initialization
+func (p *PoolManager) IsReady() bool {
+	return p.isPoolReady.Load()
 }
 
 // getManagedNamespaces pre-computes which namespaces are managed by kubemacpool for a specific webhook

@@ -320,7 +320,7 @@ func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceNam
 			return false, errors.Wrap(err, "Failed lookup webhook in MutatingWebhookConfig")
 		}
 		if namespaceLabelSet := labels.Set(namespaceLabelMap); namespaceLabelSet != nil {
-			isNamespaceManaged, err = isNamespaceManagedByWebhookNamespaceSelector(webhook, vmOptMode, namespaceLabelSet, isNamespaceManaged)
+			isNamespaceManaged, err = isNamespaceManagedByWebhookNamespaceSelector(webhook.NamespaceSelector, vmOptMode, namespaceLabelSet, isNamespaceManaged)
 			if err != nil {
 				return false, errors.Wrap(err, "Failed to check if namespace managed by webhook namespaceSelector")
 			}
@@ -373,14 +373,13 @@ func (p *PoolManager) IsNamespaceManaged(namespaceName, webhookName string) (boo
 }
 
 // isNamespaceManagedByWebhookNamespaceSelector checks if namespace managed by webhook namespaceSelector and opt-mode
-func isNamespaceManagedByWebhookNamespaceSelector(webhook *admissionregistrationv1.MutatingWebhook, vmOptMode OptMode, namespaceLabelSet labels.Set, defaultIsManaged bool) (bool, error) {
-	webhookNamespaceLabelSelector, err := metav1.LabelSelectorAsSelector(webhook.NamespaceSelector)
+func isNamespaceManagedByWebhookNamespaceSelector(namespaceSelector *metav1.LabelSelector, vmOptMode OptMode, namespaceLabelSet labels.Set, defaultIsManaged bool) (bool, error) {
+	webhookNamespaceLabelSelector, err := metav1.LabelSelectorAsSelector(namespaceSelector)
 	if err != nil {
-		return false, errors.Wrapf(err, "Failed to set webhook Namespace Label Selector for webhook %s", webhook.Name)
+		return false, errors.Wrap(err, "failed to convert namespace selector")
 	}
 
 	isMatch := webhookNamespaceLabelSelector.Matches(namespaceLabelSet)
-	log.V(1).Info("webhook NamespaceLabelSelectors", "webhookName", webhook.Name, "NamespaceLabelSelectors", webhookNamespaceLabelSelector)
 	if vmOptMode == OptInMode && isMatch {
 		// if we are in opt-in mode then we check that the namespace has the including label
 		return true, nil

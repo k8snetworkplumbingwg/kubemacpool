@@ -862,227 +862,116 @@ var _ = Describe("Pool", func() {
 		})
 	})
 
-	type isNamespaceSelectorCompatibleWithOptModeLabelParams struct {
-		mutatingWebhookConfigurationName string
-		namespaceName                    string
-		optMode                          OptMode
-		ErrorTextExpected                string
-		expectedResult                   bool
-		failureDescription               string
+	type isNamespaceManagedParams struct {
+		webhookName        string
+		optMode            OptMode
+		namespaceName      string
+		ErrorTextExpected  string
+		expectedResult     bool
+		failureDescription string
 	}
 
-	Describe("isNamespaceSelectorCompatibleWithOptModeLabel API Tests", func() {
-		webhookName := "webhook"
-		LabelKey := "targetLabel.kubemacpool.io"
-		includingValue := "allocate"
-		excludingValue := "ignore"
-		optOutMutatingWebhookConfigurationName := "optOutMutatingWebhookConfiguration"
-		optInMutatingWebhookConfigurationName := "optInMutatingWebhookConfiguration"
-		namespaceWithIncludingLabelName := "withIncludingLabel"
-		namespaceWithExcludingLabelName := "withExcludingLabel"
-		namespaceWithNoLabelsName := "withNoLabels"
-		namespaceWithIrrelevantLabelsName := "withIrrelevantLabels"
-		noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
-
-		optOutMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: optOutMutatingWebhookConfigurationName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    webhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      LabelKey,
-								Operator: "NotIn",
-								Values:   []string{excludingValue},
-							},
-						},
-					},
-				},
-			},
-		}
-		optInMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: optInMutatingWebhookConfigurationName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    webhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      LabelKey,
-								Operator: "In",
-								Values:   []string{includingValue},
-							},
-						},
-					},
-				},
-			},
-		}
-		namespaceWithIncludingLabel := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithIncludingLabelName,
-				Labels: map[string]string{LabelKey: includingValue},
-			},
-		}
-		namespaceWithExcludingLabel := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithExcludingLabelName,
-				Labels: map[string]string{LabelKey: excludingValue},
-			},
-		}
-		namespaceWithNoLabels := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: namespaceWithNoLabelsName,
-			},
-		}
-		namespaceWithIrrelevantLabels := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithIrrelevantLabelsName,
-				Labels: map[string]string{"other": "label"},
-			},
-		}
-		var poolManager *PoolManager
-		BeforeEach(func() {
-			poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, optOutMutatingWebhookConfiguration, optInMutatingWebhookConfiguration, namespaceWithIncludingLabel, namespaceWithExcludingLabel, namespaceWithNoLabels, namespaceWithIrrelevantLabels)
-		})
-		DescribeTable("Should return the expected namespace acceptance outcome according to the opt-mode or return an error",
-			func(n *isNamespaceSelectorCompatibleWithOptModeLabelParams) {
-
-				isNamespaceManaged, err := poolManager.isNamespaceSelectorCompatibleWithOptModeLabel(n.namespaceName, n.mutatingWebhookConfigurationName, webhookName, n.optMode)
+	Describe("IsNamespaceManaged API Tests", func() {
+		DescribeTable("should return the expected namespace acceptance outcome according to the opt-mode",
+			func(n *isNamespaceManagedParams) {
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, n.optMode)
+				isNamespaceManaged, err := poolManager.IsNamespaceManaged(n.namespaceName, n.webhookName)
 				if n.ErrorTextExpected != "" {
-					Expect(err).Should(MatchError(n.ErrorTextExpected), "isNamespaceSelectorCompatibleWithOptModeLabel should match expected error message")
+					Expect(err).Should(MatchError(n.ErrorTextExpected), "IsNamespaceManaged should match expected error message")
 				} else {
-					Expect(err).ToNot(HaveOccurred(), "isNamespaceSelectorCompatibleWithOptModeLabel should not return an error")
+					Expect(err).ToNot(HaveOccurred(), "IsNamespaceManaged should not return an error")
 				}
-
 				Expect(isNamespaceManaged).To(Equal(n.expectedResult), n.failureDescription)
 			},
-			Entry("when opt-mode is opt-in and using a namespace with including label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace when in opt-in and including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-in and using a managed namespace with allocate label",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace when in opt-in and allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with irrelevant label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIrrelevantLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-in and using a non-managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should not include namespace by default unless allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with no labels",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-out and using a non-managed namespace with ignore label",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should exclude namespace when in opt-out and ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with excluding label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithExcludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-out and using a managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace by default unless ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with excluding label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithExcludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should exclude namespace when in opt-out and excluding label is set in the namespace",
+			Entry("VMs: when namespace is not found",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      "non-existing-namespace-name",
+					ErrorTextExpected:  "failed to check if namespace is managed according to opt-mode: Failed to get Namespace: namespaces \"non-existing-namespace-name\" not found",
+					expectedResult:     false,
+					failureDescription: "Should reject namespace if an error has occurred during the function operation",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with irrelevant label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIrrelevantLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-in and using a managed namespace with allocate label",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace when in opt-in and allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with no labels",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-in and using a non-managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should not include namespace by default unless allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with including label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-out and using a non-managed namespace with ignore label",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should exclude namespace when in opt-out and ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode parameter is not valid",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptMode("not-valid"),
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "Failed to check if namespaces are managed by default by opt-mode: opt-mode is not defined: not-valid",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
+			Entry("Pods: when opt-mode is opt-out and using a managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace by default unless ignore label is set in the namespace",
 				}),
-			Entry("when namespace is not found",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    "non-existing-namespace-name",
-					ErrorTextExpected:                "Failed to get Namespace: namespaces \"non-existing-namespace-name\" not found",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
-				}),
-			Entry("when mutatingWebhookConfiguration is not found",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: "non-existing-mutatingWebhookConfiguration-name",
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "Failed lookup webhook in MutatingWebhookConfig: Failed to get mutatingWebhookConfig: mutatingwebhookconfigurations.admissionregistration.k8s.io \"non-existing-mutatingWebhookConfiguration-name\" not found",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
+			Entry("Pods: when namespace is not found",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      "non-existing-namespace-name",
+					ErrorTextExpected:  "failed to check if namespace is managed according to opt-mode: Failed to get Namespace: namespaces \"non-existing-namespace-name\" not found",
+					expectedResult:     false,
+					failureDescription: "Should reject namespace if an error has occurred during the function operation",
 				}),
 		)
 	})

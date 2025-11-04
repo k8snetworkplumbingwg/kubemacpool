@@ -298,38 +298,6 @@ func getNextMac(currentMac net.HardwareAddr) net.HardwareAddr {
 	return currentMac
 }
 
-// isNamespaceSelectorCompatibleWithOptModeLabel decides whether a namespace should be managed
-// by comparing the mutating-webhook's namespaceSelector (that defines the opt-mode)
-// and its compatibility to the given label in the namespace
-func (p *PoolManager) isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName string, vmOptMode OptMode) (bool, error) {
-	isNamespaceManaged, err := isNamespaceManagedByDefault(vmOptMode)
-	if err != nil {
-		return false, errors.Wrap(err, "Failed to check if namespaces are managed by default by opt-mode")
-	}
-	ns := v1.Namespace{}
-	err = p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: namespaceName}, &ns)
-	if err != nil {
-		return false, errors.Wrap(err, "Failed to get Namespace")
-	}
-	namespaceLabelMap := ns.GetLabels()
-	log.V(1).Info("namespaceName Labels", "vm instance namespaceName", namespaceName, "Labels", namespaceLabelMap)
-
-	if namespaceLabelMap != nil {
-		webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
-		if err != nil {
-			return false, errors.Wrap(err, "Failed lookup webhook in MutatingWebhookConfig")
-		}
-		if namespaceLabelSet := labels.Set(namespaceLabelMap); namespaceLabelSet != nil {
-			isNamespaceManaged, err = isNamespaceManagedByWebhookNamespaceSelector(webhook.NamespaceSelector, vmOptMode, namespaceLabelSet, isNamespaceManaged)
-			if err != nil {
-				return false, errors.Wrap(err, "Failed to check if namespace managed by webhook namespaceSelector")
-			}
-		}
-	}
-
-	return isNamespaceManaged, nil
-}
-
 func (p *PoolManager) lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName string) (*admissionregistrationv1.MutatingWebhook, error) {
 	mutatingWebhookConfiguration := admissionregistrationv1.MutatingWebhookConfiguration{}
 	err := p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: mutatingWebhookConfigName}, &mutatingWebhookConfiguration)
@@ -358,14 +326,25 @@ func isNamespaceManagedByDefault(vmOptMode OptMode) (bool, error) {
 
 // IsNamespaceManaged checks if the namespace of the instance is managed by kubemacpool in terms of opt-mode
 func (p *PoolManager) IsNamespaceManaged(namespaceName, webhookName string) (bool, error) {
-	vmOptMode, err := p.getOptMode(mutatingWebhookConfigName, webhookName)
+	webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to lookup webhook")
+	}
+
+	vmOptMode, err := getOptModeFromWebhook(webhookName, webhook.NamespaceSelector)
 	if err != nil {
 		return false, errors.Wrap(err, "failed to get opt-Mode")
 	}
 
-	isNamespaceManaged, err := p.isNamespaceSelectorCompatibleWithOptModeLabel(namespaceName, mutatingWebhookConfigName, webhookName, vmOptMode)
+	ns := v1.Namespace{}
+	err = p.cachedKubeClient.Get(context.TODO(), client.ObjectKey{Name: namespaceName}, &ns)
 	if err != nil {
-		return false, errors.Wrap(err, "failed to check if namespace is managed according to opt-mode")
+		return false, errors.Wrap(err, "failed to get namespace")
+	}
+
+	isNamespaceManaged, err := isNamespaceManagedFromObject(&ns, webhook.NamespaceSelector, vmOptMode)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if namespace is managed")
 	}
 
 	log.V(1).Info("IsNamespaceManaged", "vmOptMode", vmOptMode, "namespaceName", namespaceName, "is namespace in the game", isNamespaceManaged)
@@ -390,13 +369,45 @@ func isNamespaceManagedByWebhookNamespaceSelector(namespaceSelector *metav1.Labe
 	return defaultIsManaged, nil
 }
 
+// isNamespaceManagedFromObject checks if a namespace is managed without making additional API calls
+// This optimized version uses the namespace object directly instead of fetching it by name
+func isNamespaceManagedFromObject(namespace *v1.Namespace, namespaceSelector *metav1.LabelSelector, vmOptMode OptMode) (bool, error) {
+	defaultIsManaged, err := isNamespaceManagedByDefault(vmOptMode)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to determine default managed state")
+	}
+
+	namespaceLabelMap := namespace.GetLabels()
+	if namespaceLabelMap == nil {
+		return defaultIsManaged, nil
+	}
+
+	namespaceLabelSet := labels.Set(namespaceLabelMap)
+	isManaged, err := isNamespaceManagedByWebhookNamespaceSelector(namespaceSelector, vmOptMode, namespaceLabelSet, defaultIsManaged)
+	if err != nil {
+		return false, errors.Wrap(err, "failed to check if namespace managed by webhook namespaceSelector")
+	}
+
+	return isManaged, nil
+}
+
 // getOptMode returns the configured opt-mode
 func (p *PoolManager) getOptMode(mutatingWebhookConfigName, webhookName string) (OptMode, error) {
 	webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
 	if err != nil {
 		return "", errors.Wrap(err, "Failed lookup webhook in MutatingWebhookConfig")
 	}
-	for _, expression := range webhook.NamespaceSelector.MatchExpressions {
+	return getOptModeFromWebhook(webhookName, webhook.NamespaceSelector)
+}
+
+// getOptModeFromWebhook extracts the opt-mode from a webhook's namespace selector
+// This is a helper function to avoid redundant webhook fetches
+func getOptModeFromWebhook(webhookName string, namespaceSelector *metav1.LabelSelector) (OptMode, error) {
+	if namespaceSelector == nil {
+		return "", fmt.Errorf("webhook %s has no NamespaceSelector", webhookName)
+	}
+
+	for _, expression := range namespaceSelector.MatchExpressions {
 		if reflect.DeepEqual(expression, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}}) {
 			return OptInMode, nil
 		} else if reflect.DeepEqual(expression, metav1.LabelSelectorRequirement{Key: webhookName, Operator: "NotIn", Values: []string{"ignore"}}) {
@@ -405,11 +416,11 @@ func (p *PoolManager) getOptMode(mutatingWebhookConfigName, webhookName string) 
 	}
 
 	// opt-in can technically also be defined with matchLabels
-	if value, ok := webhook.NamespaceSelector.MatchLabels[webhookName]; ok && value == "allocate" {
+	if value, ok := namespaceSelector.MatchLabels[webhookName]; ok && value == "allocate" {
 		return OptInMode, nil
 	}
 
-	return "", fmt.Errorf("No Opt mode defined for webhook %s in mutatingWebhookConfig %s", webhookName, mutatingWebhookConfigName)
+	return "", fmt.Errorf("no opt mode defined for webhook %s", webhookName)
 }
 
 // UpdateRanges atomically updates the MAC address ranges for allocation

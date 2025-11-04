@@ -129,11 +129,17 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 			return errors.Wrap(err, "unable to register webhooks to the manager")
 		}
 
-		err = poolManager.Start()
-		if err != nil {
-			return errors.Wrap(err, "failed to start pool manager routines")
-		}
+		log.Info("Setting up Pool Manager")
+		go func() {
+			err := poolManager.Start()
+			if err != nil {
+				log.Error(err, "failed to start pool manager routines")
+				k.cancel()
+				return
+			}
+		}()
 
+		log.Info("Starting Runtime Manager")
 		err = k.runtimeManager.Start(ctx)
 		if err != nil {
 			log.Error(err, "unable to run the manager")

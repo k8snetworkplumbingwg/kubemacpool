@@ -285,7 +285,6 @@ metadata:
   name: service
   namespace: kubemacpool-system
 spec:
-  publishNotReadyAddresses: true
   ports:
     - port: 443
       targetPort: 8000

@@ -27,7 +27,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	"kubevirt.io/client-go/kubecli"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
@@ -70,21 +69,12 @@ var (
 )
 
 type TestClient struct {
-	// Deprecated: VirtClient is deprecated. Use K8sClient for standard Kubernetes operations
-	// and CRClient (controller-runtime client) for KubeVirt VirtualMachine operations instead.
-	VirtClient kubecli.KubevirtClient
-	K8sClient  kubernetes.Interface
-	CRClient   client.Client
+	K8sClient kubernetes.Interface
+	CRClient  client.Client
 }
 
 func NewTestClient() (*TestClient, error) {
 	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
-	if err != nil {
-		return nil, err
-	}
-
-	// Keep old client for backward compatibility during migration
-	oldVirtClient, err := kubecli.GetKubevirtClientFromFlags("", os.Getenv("KUBECONFIG"))
 	if err != nil {
 		return nil, err
 	}
@@ -103,9 +93,8 @@ func NewTestClient() (*TestClient, error) {
 	}
 
 	return &TestClient{
-		VirtClient: oldVirtClient,
-		K8sClient:  k8sClient,
-		CRClient:   crClient,
+		K8sClient: k8sClient,
+		CRClient:  crClient,
 	}, nil
 }
 

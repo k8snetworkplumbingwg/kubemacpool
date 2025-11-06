@@ -20,11 +20,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/rand"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	helper "github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
@@ -66,17 +70,43 @@ var (
 )
 
 type TestClient struct {
+	// Deprecated: VirtClient is deprecated. Use K8sClient for standard Kubernetes operations
+	// and CRClient (controller-runtime client) for KubeVirt VirtualMachine operations instead.
 	VirtClient kubecli.KubevirtClient
+	K8sClient  kubernetes.Interface
+	CRClient   client.Client
 }
 
 func NewTestClient() (*TestClient, error) {
-	var newVirtClient kubecli.KubevirtClient
-	newVirtClient, err := kubecli.GetKubevirtClientFromFlags("", os.Getenv("KUBECONFIG"))
+	config, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 	if err != nil {
 		return nil, err
 	}
 
-	return &TestClient{VirtClient: newVirtClient}, nil
+	// Keep old client for backward compatibility during migration
+	oldVirtClient, err := kubecli.GetKubevirtClientFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return nil, err
+	}
+
+	k8sClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	scheme := runtime.NewScheme()
+	_ = kubevirtv1.AddToScheme(scheme)
+
+	crClient, err := client.New(config, client.Options{Scheme: scheme})
+	if err != nil {
+		return nil, err
+	}
+
+	return &TestClient{
+		VirtClient: oldVirtClient,
+		K8sClient:  k8sClient,
+		CRClient:   crClient,
+	}, nil
 }
 
 func createTestNamespaces() error {

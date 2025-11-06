@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -83,8 +84,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 					return ""
 				}
 				defer func() {
-					_ = testClient.VirtClient.VirtualMachine(TestNamespace).Delete(context.Background(),
-						vmAfter.Name, metav1.DeleteOptions{})
+					_ = testClient.CRClient.Delete(context.Background(), vmAfter)
 				}()
 				macAfter, macErr := getMacAddressFromVM(vmAfter)
 				if macErr != nil {
@@ -113,8 +113,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 					return ""
 				}
 				defer func() {
-					_ = testClient.VirtClient.VirtualMachine(TestNamespace).Delete(context.Background(),
-						vm.Name, metav1.DeleteOptions{})
+					_ = testClient.CRClient.Delete(context.Background(), vm)
 				}()
 				mac, err := getMacAddressFromVM(vm)
 				if err != nil {
@@ -165,8 +164,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 						return ""
 					}
 					defer func() {
-						_ = testClient.VirtClient.VirtualMachine(TestNamespace).Delete(context.Background(),
-							newVM.Name, metav1.DeleteOptions{})
+						_ = testClient.CRClient.Delete(context.Background(), newVM)
 					}()
 					mac, err := getMacAddressFromVM(newVM)
 					if err != nil {
@@ -194,8 +192,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 					return ""
 				}
 				defer func() {
-					_ = testClient.VirtClient.VirtualMachine(TestNamespace).Delete(context.Background(),
-						vm.Name, metav1.DeleteOptions{})
+					_ = testClient.CRClient.Delete(context.Background(), vm)
 				}()
 				mac, err := getMacAddressFromVM(vm)
 				if err != nil {
@@ -217,8 +214,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 					return ""
 				}
 				defer func() {
-					_ = testClient.VirtClient.VirtualMachine(TestNamespace).Delete(context.Background(),
-						vm2.Name, metav1.DeleteOptions{})
+					_ = testClient.CRClient.Delete(context.Background(), vm2)
 				}()
 				mac, err := getMacAddressFromVM(vm2)
 				if err != nil {
@@ -273,12 +269,14 @@ func createTestVM(name string) (*kubevirtv1.VirtualMachine, error) {
 	vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("default", "")}, []kubevirtv1.Network{newNetwork("default")})
 	vm.Name = name
 
-	return testClient.VirtClient.VirtualMachine(vm.Namespace).Create(context.Background(), vm, metav1.CreateOptions{})
+	err := testClient.CRClient.Create(context.Background(), vm)
+	return vm, err
 }
 
 func getMacAddressFromVM(vm *kubevirtv1.VirtualMachine) (string, error) {
-	updatedVM, err := testClient.VirtClient.VirtualMachine(vm.Namespace).Get(context.Background(),
-		vm.Name, metav1.GetOptions{})
+	updatedVM := &kubevirtv1.VirtualMachine{}
+	err := testClient.CRClient.Get(context.Background(),
+		client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, updatedVM)
 	if err != nil {
 		return "", err
 	}
@@ -345,14 +343,15 @@ func (m *macRangeMatcher) NegatedFailureMessage(actual interface{}) (message str
 
 func cleanupTestVMs() {
 	for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-		vmList, err := testClient.VirtClient.VirtualMachine(namespace).List(context.Background(), metav1.ListOptions{})
+		vmList := &kubevirtv1.VirtualMachineList{}
+		err := testClient.CRClient.List(context.Background(), vmList, client.InNamespace(namespace))
 		if err != nil {
 			continue
 		}
 
-		for _, vm := range vmList.Items {
-			_ = testClient.VirtClient.VirtualMachine(namespace).Delete(context.Background(),
-				vm.Name, metav1.DeleteOptions{})
+		for i := range vmList.Items {
+			vm := &vmList.Items[i]
+			_ = testClient.CRClient.Delete(context.Background(), vm)
 		}
 	}
 }

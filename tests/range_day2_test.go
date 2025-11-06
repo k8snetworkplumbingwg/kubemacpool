@@ -40,7 +40,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 		for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
 			Expect(addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "allocate"})).To(Succeed())
 		}
-		configMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.Background(),
+		configMap, err := testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Get(context.Background(),
 			names.MAC_RANGE_CONFIGMAP, metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred(), "ConfigMap should always exist in deployment")
 
@@ -131,7 +131,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 			var deletionTestRangeStart, deletionTestRangeEnd string
 
 			BeforeEach(func() {
-				configMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(context.Background(),
+				configMap, err := testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Get(context.Background(),
 					names.MAC_RANGE_CONFIGMAP, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				deletionTestRangeStart = configMap.Data["RANGE_START"]
@@ -154,7 +154,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 				Expect(inRange).To(BeTrue(), "Initial VM MAC should be from current range")
 
 				By("Deleting the MAC range ConfigMap")
-				err = testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.Background(),
+				err = testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Delete(context.Background(),
 					names.MAC_RANGE_CONFIGMAP, metav1.DeleteOptions{})
 				Expect(err).ToNot(HaveOccurred())
 
@@ -236,7 +236,7 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 func updateMacRangeConfigMap(rangeStart, rangeEnd string) error {
 	ctx := context.Background()
 
-	configMap, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Get(ctx,
+	configMap, err := testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Get(ctx,
 		names.MAC_RANGE_CONFIGMAP, metav1.GetOptions{})
 	if err != nil {
 		return err
@@ -245,7 +245,7 @@ func updateMacRangeConfigMap(rangeStart, rangeEnd string) error {
 	configMap.Data["RANGE_START"] = rangeStart
 	configMap.Data["RANGE_END"] = rangeEnd
 
-	_, err = testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Update(ctx,
+	_, err = testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Update(ctx,
 		configMap, metav1.UpdateOptions{})
 	return err
 }
@@ -264,7 +264,7 @@ func createMacRangeConfigMap(rangeStart, rangeEnd string) error {
 		},
 	}
 
-	_, err := testClient.VirtClient.CoreV1().ConfigMaps(managerNamespace).Create(ctx,
+	_, err := testClient.K8sClient.CoreV1().ConfigMaps(managerNamespace).Create(ctx,
 		configMap, metav1.CreateOptions{})
 	return err
 }

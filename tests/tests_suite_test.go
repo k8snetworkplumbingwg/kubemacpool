@@ -56,7 +56,7 @@ var _ = JustAfterEach(func() {
 })
 
 func getPodContainerLogs(podName, containerName string) (string, error) {
-	req := testClient.VirtClient.CoreV1().Pods(managerNamespace).GetLogs(podName, &corev1.PodLogOptions{
+	req := testClient.K8sClient.CoreV1().Pods(managerNamespace).GetLogs(podName, &corev1.PodLogOptions{
 		Container: containerName,
 	})
 	podLogs, err := req.Stream(context.TODO())
@@ -117,7 +117,7 @@ func logPodContainersLogs(podName string, containers []corev1.Container, failure
 }
 
 func logService(serviceNamespace, serviceName string, failureCount int) error {
-	service, err := testClient.VirtClient.CoreV1().Services(serviceNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
+	service, err := testClient.K8sClient.CoreV1().Services(serviceNamespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func logService(serviceNamespace, serviceName string, failureCount int) error {
 }
 
 func logEndpoints(endpointNamespace, endpointName string, failureCount int) error {
-	endpoint, err := testClient.VirtClient.CoreV1().Endpoints(endpointNamespace).Get(context.TODO(), endpointName, metav1.GetOptions{})
+	endpoint, err := testClient.K8sClient.CoreV1().Endpoints(endpointNamespace).Get(context.TODO(), endpointName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func logEndpoints(endpointNamespace, endpointName string, failureCount int) erro
 
 func logPods(podsNamespace string, failureCount int) error {
 	var errs []error
-	podList, err := testClient.VirtClient.CoreV1().Pods(podsNamespace).List(context.TODO(),
+	podList, err := testClient.K8sClient.CoreV1().Pods(podsNamespace).List(context.TODO(),
 		metav1.ListOptions{LabelSelector: "app=kubemacpool"})
 	if err != nil {
 		return err
@@ -164,7 +164,7 @@ func logPods(podsNamespace string, failureCount int) error {
 
 	for i := range podList.Items {
 		pod := &podList.Items[i]
-		podYaml, err := testClient.VirtClient.CoreV1().Pods(podsNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
+		podYaml, err := testClient.K8sClient.CoreV1().Pods(podsNamespace).Get(context.TODO(), pod.Name, metav1.GetOptions{})
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -191,7 +191,7 @@ func logPods(podsNamespace string, failureCount int) error {
 }
 
 func logNetworkPolicies(namespace string, failureCount int) error {
-	npList, err := testClient.VirtClient.NetworkingV1().NetworkPolicies(namespace).List(context.TODO(), metav1.ListOptions{})
+	npList, err := testClient.K8sClient.NetworkingV1().NetworkPolicies(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
@@ -211,14 +211,14 @@ func logNetworkPolicies(namespace string, failureCount int) error {
 
 func logConfigMaps(namespace string, failureCount int) error {
 	var errs []error
-	configMapList, err := testClient.VirtClient.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
+	configMapList, err := testClient.K8sClient.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
 	for i := range configMapList.Items {
 		configMap := &configMapList.Items[i]
-		configMapYaml, err := testClient.VirtClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMap.Name, metav1.GetOptions{})
+		configMapYaml, err := testClient.K8sClient.CoreV1().ConfigMaps(namespace).Get(context.TODO(), configMap.Name, metav1.GetOptions{})
 		if err != nil {
 			errs = append(errs, err)
 			continue

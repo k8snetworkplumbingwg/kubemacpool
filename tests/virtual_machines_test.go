@@ -36,7 +36,7 @@ const macAllocationFailureMessage = "admission webhook \"mutatevirtualmachines.k
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machines", Ordered, func() {
 	restoreFailedWebhookChangesTimeout := time.Duration(0)
 	BeforeAll(func() {
-		result := testClient.VirtClient.ExtensionsV1beta1().RESTClient().
+		result := testClient.K8sClient.ExtensionsV1beta1().RESTClient().
 			Post().
 			RequestURI(fmt.Sprintf(nadPostURL, TestNamespace, "linux-bridge")).
 			Body([]byte(fmt.Sprintf(linuxBridgeConfCRD, "linux-bridge", TestNamespace))).
@@ -959,14 +959,14 @@ func getMetrics(token string) (string, error) {
 }
 
 func getManagerPods() (*v1.PodList, error) {
-	deployment, err := testClient.VirtClient.AppsV1().Deployments(managerNamespace).Get(
+	deployment, err := testClient.K8sClient.AppsV1().Deployments(managerNamespace).Get(
 		context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
 	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
-	podList, err := testClient.VirtClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
+	podList, err := testClient.K8sClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
 		metav1.ListOptions{LabelSelector: labelSelector})
 	if err != nil {
 		return nil, err

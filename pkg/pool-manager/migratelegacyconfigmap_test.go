@@ -21,7 +21,13 @@ import (
 var _ = Describe("migrate legacy vm configMap", func() {
 	waitTimeSeconds := 10
 
-	createPoolManager := func(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
+	createPoolManager := func(startMacAddr, endMacAddr string, optMode OptMode, fakeObjectsForClient ...runtime.Object) *PoolManager {
+		// Add webhook configurations required by InitMaps
+		if optMode == OptOutMode {
+			fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
+		} else {
+			fakeObjectsForClient = appendOptInModes(fakeObjectsForClient)
+		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
 		startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
 		Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")
@@ -39,7 +45,7 @@ var _ = Describe("migrate legacy vm configMap", func() {
 	now := time.Now()
 	timestamp := now.Format(time.RFC3339)
 	BeforeEach(func() {
-		poolManager = createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF")
+		poolManager = createPoolManager("02:00:00:00:00:00", "02:FF:FF:FF:FF:FF", OptOutMode)
 		Expect(poolManager).ToNot(BeNil())
 	})
 	Context("check migrate of legacy vm configMap to macPoolMap entries", func() {

@@ -161,7 +161,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager General Functions ", func() {
 		It("should create a pool manager", func() {
-			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			Expect(poolManager).ToNot(BeNil())
 		})
 		Context("check NewPoolManager", func() {
@@ -203,7 +203,7 @@ var _ = Describe("Pool", func() {
 			Context("When poolManager is initialized when there are pods on managed and unmanaged namespaces", func() {
 				var poolManager *PoolManager
 				BeforeEach(func() {
-					poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated, &unmanagedPodWithMacAllocated)
+					poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, &managedPodWithMacAllocated, &unmanagedPodWithMacAllocated)
 					Expect(poolManager).ToNot(BeNil())
 				})
 				It("Should initialize the macPoolmap only with macs on the mananged pods", func() {
@@ -312,7 +312,7 @@ var _ = Describe("Pool", func() {
 				smallMACPoolSize     = 2
 			)
 
-			poolManager := createPoolManager(minRangeMACSmallPool, maxRangeMACSmallPool)
+			poolManager := createPoolManager(minRangeMACSmallPool, maxRangeMACSmallPool, OptOutMode)
 			transactionTimestamp := updateTransactionTimestamp(0)
 
 			for i := 0; i < smallMACPoolSize; i++ {
@@ -327,7 +327,7 @@ var _ = Describe("Pool", func() {
 
 		})
 		It("should reject allocation if there are interfaces with the same name", func() {
-			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			newVM := duplicateInterfacesVM.DeepCopy()
 			newVM.Name = "duplicateInterfacesVM"
 
@@ -337,7 +337,7 @@ var _ = Describe("Pool", func() {
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate macs if there are duplicate interfaces")
 		})
 		It("should not allocate a new mac for bridge interface on pod network", func() {
-			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			newVM := sampleVM
 			newVM.Name = "newVM"
 
@@ -349,7 +349,7 @@ var _ = Describe("Pool", func() {
 		Context("and there is a pre-existing pod with mac allocated to it", func() {
 			var poolManager *PoolManager
 			BeforeEach(func() {
-				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, &managedPodWithMacAllocated)
 			})
 			It("should allocate a new mac and release it for masquerade", func() {
 				newVM := masqueradeVM
@@ -388,7 +388,7 @@ var _ = Describe("Pool", func() {
 					vm.Spec.Template.Spec.Domain.Devices.Disks = make([]kubevirt.Disk, 1)
 					vm.Spec.Template.Spec.Domain.Devices.Disks[0].IO = ioName
 				}
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -406,7 +406,7 @@ var _ = Describe("Pool", func() {
 				Expect(updateVm.Spec.Template.Spec.Domain.Devices.Disks[0].IO).To(Equal(kubevirt.DriverIO("native-update")), "disk.io configuration must be preserved after mac allocation update")
 			})
 			It("should reject update allocation if there are interfaces with the same name", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "multipleInterfacesVM"
 
@@ -425,7 +425,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &transactionTimestamp, expectedMACsAfterRejection, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses on update", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				transactionTimestamp := updateTransactionTimestamp(0)
@@ -443,7 +443,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should preserve mac addresses and allocate a requested one on update", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -469,7 +469,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &newTransactionTimestamp, expectedUpdatedMACs, []string{})).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to add a new interface on update", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -492,7 +492,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMacs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove an interface on update", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 				newVM.Spec.Template.Spec.Domain.Devices.Interfaces = append(newVM.Spec.Template.Spec.Domain.Devices.Interfaces, anotherMultusBridgeInterface)
@@ -516,7 +516,7 @@ var _ = Describe("Pool", func() {
 				Expect(checkMacPoolMapEntries(poolManager.macPoolMap, &NewTransactionTimestamp, expectedUpdatedMACs, expectedNotUpdatedMACs)).To(Succeed(), "Failed to check macs in macMap")
 			})
 			It("should allow to remove and add an interface on update", func() {
-				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				newVM := multipleInterfacesVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -553,7 +553,7 @@ var _ = Describe("Pool", func() {
 			vmFirstUpdateTimestamp := now.Add(time.Duration(1) * time.Second)
 			vmSecondUpdateTimestamp := now.Add(time.Duration(2) * time.Second)
 			BeforeEach(func() {
-				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			})
 			var vm, vmFirstUpdate, vmSecondUpdate *kubevirt.VirtualMachine
 			var vmLastPersistedTransactionTimestampAnnotation *time.Time
@@ -672,7 +672,7 @@ var _ = Describe("Pool", func() {
 				transactionTimestamp time.Time
 			)
 			BeforeEach(func() {
-				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, &vmConfigMap)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, &vmConfigMap)
 				newVM = masqueradeVM.DeepCopy()
 				newVM.Name = "newVM"
 
@@ -765,7 +765,7 @@ var _ = Describe("Pool", func() {
 
 	Describe("Pool Manager Functions For pod", func() {
 		It("should allocate a new mac and release it", func() {
-			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, &managedPodWithMacAllocated)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, &managedPodWithMacAllocated)
 			newPod := managedPodWithMacAllocated
 			newPod.Name = "newPod"
 			newPod.Annotations = beforeAllocationAnnotation
@@ -797,7 +797,7 @@ var _ = Describe("Pool", func() {
 			Expect(exist).To(BeFalse())
 		})
 		It("should allocate requested mac when empty", func() {
-			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool)
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			newPod := managedPodWithMacAllocated
 			newPod.Name = "newPod"
 
@@ -812,7 +812,7 @@ var _ = Describe("Pool", func() {
 			poolManager := &PoolManager{}
 
 			BeforeEach(func() {
-				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool)
+				poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 				Expect(poolManager).ToNot(Equal(nil), "should create pool-manager")
 			})
 
@@ -862,227 +862,116 @@ var _ = Describe("Pool", func() {
 		})
 	})
 
-	type isNamespaceSelectorCompatibleWithOptModeLabelParams struct {
-		mutatingWebhookConfigurationName string
-		namespaceName                    string
-		optMode                          OptMode
-		ErrorTextExpected                string
-		expectedResult                   bool
-		failureDescription               string
+	type isNamespaceManagedParams struct {
+		webhookName        string
+		optMode            OptMode
+		namespaceName      string
+		ErrorTextExpected  string
+		expectedResult     bool
+		failureDescription string
 	}
 
-	Describe("isNamespaceSelectorCompatibleWithOptModeLabel API Tests", func() {
-		webhookName := "webhook"
-		LabelKey := "targetLabel.kubemacpool.io"
-		includingValue := "allocate"
-		excludingValue := "ignore"
-		optOutMutatingWebhookConfigurationName := "optOutMutatingWebhookConfiguration"
-		optInMutatingWebhookConfigurationName := "optInMutatingWebhookConfiguration"
-		namespaceWithIncludingLabelName := "withIncludingLabel"
-		namespaceWithExcludingLabelName := "withExcludingLabel"
-		namespaceWithNoLabelsName := "withNoLabels"
-		namespaceWithIrrelevantLabelsName := "withIrrelevantLabels"
-		noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
-
-		optOutMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: optOutMutatingWebhookConfigurationName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    webhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      LabelKey,
-								Operator: "NotIn",
-								Values:   []string{excludingValue},
-							},
-						},
-					},
-				},
-			},
-		}
-		optInMutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: optInMutatingWebhookConfigurationName,
-			},
-			Webhooks: []admissionregistrationv1.MutatingWebhook{
-				admissionregistrationv1.MutatingWebhook{
-					Name:                    webhookName,
-					SideEffects:             &noneOnDryRun,
-					AdmissionReviewVersions: []string{"v1", "v1beta1"},
-					NamespaceSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "runlevel",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      "openshift.io/run-level",
-								Operator: "NotIn",
-								Values:   []string{"0", "1"},
-							},
-							metav1.LabelSelectorRequirement{
-								Key:      LabelKey,
-								Operator: "In",
-								Values:   []string{includingValue},
-							},
-						},
-					},
-				},
-			},
-		}
-		namespaceWithIncludingLabel := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithIncludingLabelName,
-				Labels: map[string]string{LabelKey: includingValue},
-			},
-		}
-		namespaceWithExcludingLabel := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithExcludingLabelName,
-				Labels: map[string]string{LabelKey: excludingValue},
-			},
-		}
-		namespaceWithNoLabels := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: namespaceWithNoLabelsName,
-			},
-		}
-		namespaceWithIrrelevantLabels := &v1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   namespaceWithIrrelevantLabelsName,
-				Labels: map[string]string{"other": "label"},
-			},
-		}
-		var poolManager *PoolManager
-		BeforeEach(func() {
-			poolManager = createPoolManager(minRangeMACPool, maxRangeMACPool, optOutMutatingWebhookConfiguration, optInMutatingWebhookConfiguration, namespaceWithIncludingLabel, namespaceWithExcludingLabel, namespaceWithNoLabels, namespaceWithIrrelevantLabels)
-		})
-		DescribeTable("Should return the expected namespace acceptance outcome according to the opt-mode or return an error",
-			func(n *isNamespaceSelectorCompatibleWithOptModeLabelParams) {
-
-				isNamespaceManaged, err := poolManager.isNamespaceSelectorCompatibleWithOptModeLabel(n.namespaceName, n.mutatingWebhookConfigurationName, webhookName, n.optMode)
+	Describe("IsNamespaceManaged API Tests", func() {
+		DescribeTable("should return the expected namespace acceptance outcome according to the opt-mode",
+			func(n *isNamespaceManagedParams) {
+				poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, n.optMode)
+				isNamespaceManaged, err := poolManager.IsNamespaceManaged(n.namespaceName, n.webhookName)
 				if n.ErrorTextExpected != "" {
-					Expect(err).Should(MatchError(n.ErrorTextExpected), "isNamespaceSelectorCompatibleWithOptModeLabel should match expected error message")
+					Expect(err).Should(MatchError(n.ErrorTextExpected), "IsNamespaceManaged should match expected error message")
 				} else {
-					Expect(err).ToNot(HaveOccurred(), "isNamespaceSelectorCompatibleWithOptModeLabel should not return an error")
+					Expect(err).ToNot(HaveOccurred(), "IsNamespaceManaged should not return an error")
 				}
-
 				Expect(isNamespaceManaged).To(Equal(n.expectedResult), n.failureDescription)
 			},
-			Entry("when opt-mode is opt-in and using a namespace with including label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace when in opt-in and including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-in and using a managed namespace with allocate label",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace when in opt-in and allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with irrelevant label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIrrelevantLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-in and using a non-managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should not include namespace by default unless allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with no labels",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-out and using a non-managed namespace with ignore label",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should exclude namespace when in opt-out and ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-in and using a namespace with excluding label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithExcludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should not include namespace by default unless including label is set in the namespace",
+			Entry("VMs: when opt-mode is opt-out and using a managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace by default unless ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with excluding label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithExcludingLabelName,
-					ErrorTextExpected:                "",
-					expectedResult:                   false,
-					failureDescription:               "Should exclude namespace when in opt-out and excluding label is set in the namespace",
+			Entry("VMs: when namespace is not found",
+				&isNamespaceManagedParams{
+					webhookName:        virtualMachnesWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      "non-existing-namespace-name",
+					ErrorTextExpected:  "failed to get namespace: namespaces \"non-existing-namespace-name\" not found",
+					expectedResult:     false,
+					failureDescription: "Should reject namespace if an error has occurred during the function operation",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with irrelevant label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIrrelevantLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-in and using a managed namespace with allocate label",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace when in opt-in and allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with no labels",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-in and using a non-managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should not include namespace by default unless allocate label is set in the namespace",
 				}),
-			Entry("when opt-mode is opt-out and using a namespace with including label",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptOutMode,
-					mutatingWebhookConfigurationName: optOutMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithNoLabelsName,
-					ErrorTextExpected:                "",
-					expectedResult:                   true,
-					failureDescription:               "Should include namespace by default unless excluding label is set in the namespace",
+			Entry("Pods: when opt-mode is opt-out and using a non-managed namespace with ignore label",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      notManagedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     false,
+					failureDescription: "Should exclude namespace when in opt-out and ignore label is set in the namespace",
 				}),
-			Entry("when opt-mode parameter is not valid",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptMode("not-valid"),
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "Failed to check if namespaces are managed by default by opt-mode: opt-mode is not defined: not-valid",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
+			Entry("Pods: when opt-mode is opt-out and using a managed namespace without labels",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptOutMode,
+					namespaceName:      managedNamespaceName,
+					ErrorTextExpected:  "",
+					expectedResult:     true,
+					failureDescription: "Should include namespace by default unless ignore label is set in the namespace",
 				}),
-			Entry("when namespace is not found",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: optInMutatingWebhookConfigurationName,
-					namespaceName:                    "non-existing-namespace-name",
-					ErrorTextExpected:                "Failed to get Namespace: namespaces \"non-existing-namespace-name\" not found",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
-				}),
-			Entry("when mutatingWebhookConfiguration is not found",
-				&isNamespaceSelectorCompatibleWithOptModeLabelParams{
-					optMode:                          OptInMode,
-					mutatingWebhookConfigurationName: "non-existing-mutatingWebhookConfiguration-name",
-					namespaceName:                    namespaceWithIncludingLabelName,
-					ErrorTextExpected:                "Failed lookup webhook in MutatingWebhookConfig: Failed to get mutatingWebhookConfig: mutatingwebhookconfigurations.admissionregistration.k8s.io \"non-existing-mutatingWebhookConfiguration-name\" not found",
-					expectedResult:                   false,
-					failureDescription:               "Should reject namespace if an error has occurred during the function operation",
+			Entry("Pods: when namespace is not found",
+				&isNamespaceManagedParams{
+					webhookName:        podsWebhookName,
+					optMode:            OptInMode,
+					namespaceName:      "non-existing-namespace-name",
+					ErrorTextExpected:  "failed to get namespace: namespaces \"non-existing-namespace-name\" not found",
+					expectedResult:     false,
+					failureDescription: "Should reject namespace if an error has occurred during the function operation",
 				}),
 		)
 	})
@@ -1154,9 +1043,79 @@ func appendOptOutModes(fakeObjectsForClient []runtime.Object) []runtime.Object {
 	return fakeObjectsForClient
 }
 
-func createPoolManager(startMacAddr, endMacAddr string, fakeObjectsForClient ...runtime.Object) *PoolManager {
+func appendOptInModes(fakeObjectsForClient []runtime.Object) []runtime.Object {
+	noneOnDryRun := admissionregistrationv1.SideEffectClassNoneOnDryRun
+	mutatingWebhookConfiguration := &admissionregistrationv1.MutatingWebhookConfiguration{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: mutatingWebhookConfigName,
+		},
+		Webhooks: []admissionregistrationv1.MutatingWebhook{
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    virtualMachnesWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      virtualMachnesWebhookName,
+							Operator: "In",
+							Values:   []string{"allocate"},
+						},
+					},
+				},
+			},
+			admissionregistrationv1.MutatingWebhook{
+				Name:                    podsWebhookName,
+				SideEffects:             &noneOnDryRun,
+				AdmissionReviewVersions: []string{"v1", "v1beta1"},
+				NamespaceSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						metav1.LabelSelectorRequirement{
+							Key:      "runlevel",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      "openshift.io/run-level",
+							Operator: "NotIn",
+							Values:   []string{"0", "1"},
+						},
+						metav1.LabelSelectorRequirement{
+							Key:      podsWebhookName,
+							Operator: "In",
+							Values:   []string{"allocate"},
+						},
+					},
+				},
+			},
+		},
+	}
+	managedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: managedNamespaceName, Labels: map[string]string{podsWebhookName: "allocate", virtualMachnesWebhookName: "allocate"}}}
+	notManagedNamespace := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: notManagedNamespaceName}}
+	By("Setting kubemacpool MutatingWebhookConfigurations to opt-in mode on vms and pods")
+	fakeObjectsForClient = append(fakeObjectsForClient, mutatingWebhookConfiguration)
+	By("Setting managed and non-managed namespaces")
+	fakeObjectsForClient = append(fakeObjectsForClient, managedNamespace, notManagedNamespace)
+	return fakeObjectsForClient
+}
+
+func createPoolManager(startMacAddr, endMacAddr string, optMode OptMode, fakeObjectsForClient ...runtime.Object) *PoolManager {
 	waitTimeSeconds := 10
-	fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
+	if optMode == OptOutMode {
+		fakeObjectsForClient = appendOptOutModes(fakeObjectsForClient)
+	} else {
+		fakeObjectsForClient = appendOptInModes(fakeObjectsForClient)
+	}
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithRuntimeObjects(fakeObjectsForClient...).Build()
 	startPoolRangeEnv, err := net.ParseMAC(startMacAddr)
 	Expect(err).ToNot(HaveOccurred(), "should successfully parse starting mac address range")

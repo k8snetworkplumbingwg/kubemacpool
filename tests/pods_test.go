@@ -31,16 +31,16 @@ var _ = Describe("Pods", func() {
 		AfterEach(func() {
 			// Clean pods from our test namespaces after every test to start clean
 			for _, namespace := range []string{TestNamespace, OtherTestNamespace} {
-				podList, err := testClient.VirtClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+				podList, err := testClient.K8sClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 				Expect(err).ToNot(HaveOccurred())
 
 				for _, podObject := range podList.Items {
-					err = testClient.VirtClient.CoreV1().Pods(namespace).Delete(context.TODO(), podObject.Name, metav1.DeleteOptions{})
+					err = testClient.K8sClient.CoreV1().Pods(namespace).Delete(context.TODO(), podObject.Name, metav1.DeleteOptions{})
 					Expect(err).ToNot(HaveOccurred())
 				}
 
 				Eventually(func() int {
-					podList, listErr := testClient.VirtClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+					podList, listErr := testClient.K8sClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
 					Expect(listErr).ToNot(HaveOccurred())
 					return len(podList.Items)
 
@@ -66,7 +66,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.VirtClient.CoreV1().Pods(namespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.K8sClient.CoreV1().Pods(namespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				return err == nil
 			}, timeout, pollingInterval).Should(matcher, "failed to apply the new pod object")
 		}
@@ -75,7 +75,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.K8sClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
@@ -90,7 +90,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.K8sClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})
@@ -103,7 +103,7 @@ var _ = Describe("Pods", func() {
 			podObject := createPodObject()
 
 			Eventually(func() bool {
-				_, err := testClient.VirtClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
+				_, err := testClient.K8sClient.CoreV1().Pods(TestNamespace).Create(context.TODO(), podObject, metav1.CreateOptions{})
 				return err == nil
 			}, timeout, pollingInterval).Should(BeTrue(), "failed to apply the new pod object")
 		})

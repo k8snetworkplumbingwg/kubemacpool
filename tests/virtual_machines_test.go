@@ -97,9 +97,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(err).ToNot(HaveOccurred(), "Should succeed getting the mutating webhook opt-mode")
 
 				if vmWebhookOptMode == optInMode {
-					By("opting in the namespace")
-					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+					optInNamespaceForVMs(TestNamespace)
 				}
 			})
 
@@ -671,14 +669,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 					Context("and another vm is created in an opted-in namespace", func() {
 						BeforeEach(func() {
-							By(fmt.Sprintf("opting in the %s namespace", managedNamespace))
-							err := addLabelsToNamespace(managedNamespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
-							Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+							optInNamespaceForVMs(managedNamespace)
 
 							By("creating a vm in the opted-in namespace")
 							managedVM := CreateVMObject(managedNamespace, []kubevirtv1.Interface{newInterface("br", "")},
 								[]kubevirtv1.Network{newNetwork("br")})
-							err = testClient.CRClient.Create(context.TODO(), managedVM)
+							err := testClient.CRClient.Create(context.TODO(), managedVM)
 							Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 							allocatedMac = managedVM.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
 						})
@@ -732,19 +728,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			Context("and kubemacpool is opted-out on a namespace", func() {
 				BeforeEach(func() {
-					By("opting out the namespace")
-					err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+					optOutNamespaceForVMs(TestNamespace)
 				})
 				It("should create a VM object without a MAC assigned", func() {
-					var err error
 					vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br", "")},
 						[]kubevirtv1.Network{newNetwork("br")})
-
-					err = testClient.CRClient.Create(context.TODO(), vm)
+					err := testClient.CRClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred(), "Should succeed creating the vm")
 					Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).Should(Equal(""),
-						"should not allocated a mac to the opted-out vm")
+						"should not allocate a mac to the opted-out vm")
 				})
 			})
 
@@ -775,20 +767,12 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 				Context("and then when we opt-out the namespace", func() {
 					BeforeEach(func() {
-						By("Adding namespace opt-out label to mark it as opted-out")
-						err := addLabelsToNamespace(TestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
-						Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
-
-						By("Wait 5 seconds for namespace label clean-up to be propagated at server")
-						time.Sleep(5 * time.Second)
+						optOutNamespaceForVMs(TestNamespace)
 					})
 					AfterEach(func() {
-						By("Removing namespace opt-out label to get kmp service again")
+						By("Removing namespace opt-out label")
 						err := cleanNamespaceLabels(TestNamespace)
 						Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")
-
-						By("Wait 5 seconds for opt-in label at namespace to be propagated at server")
-						time.Sleep(5 * time.Second)
 					})
 					It("should able to be deleted", func() {
 						By("Delete the VM after opt-out the namespace")
@@ -841,8 +825,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(net.ParseMAC(vm1.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
 						"Should successfully parse mac address")
 
-					err = addLabelsToNamespace(OtherTestNamespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
-					Expect(err).ToNot(HaveOccurred(), "should be able to add the namespace labels")
+					optOutNamespaceForVMs(OtherTestNamespace)
 
 					By(fmt.Sprintf("Adding a vm with the same Mac Address %s on the unmanaged namespace", macAddress))
 					conflictingVM = CreateVMObject(OtherTestNamespace,
@@ -898,27 +881,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 	})
 })
-
-func newInterface(name, macAddress string) kubevirtv1.Interface {
-	return kubevirtv1.Interface{
-		Name: name,
-		InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
-			Bridge: &kubevirtv1.InterfaceBridge{},
-		},
-		MacAddress: macAddress,
-	}
-}
-
-func newNetwork(name string) kubevirtv1.Network {
-	return kubevirtv1.Network{
-		Name: name,
-		NetworkSource: kubevirtv1.NetworkSource{
-			Multus: &kubevirtv1.MultusNetwork{
-				NetworkName: name,
-			},
-		},
-	}
-}
 
 func deleteVMI(vm *kubevirtv1.VirtualMachine) {
 	By(fmt.Sprintf("Delete vm %s/%s", vm.Namespace, vm.Name))

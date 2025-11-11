@@ -56,6 +56,8 @@ const (
 	podDeleteTimeout           = 2 * time.Minute
 	podDeleteInterval          = 1 * time.Second
 	deploymentAvailableTimeout = 2 * time.Minute
+	webhookPropagationTimeout  = 2 * time.Minute
+	webhookPropagationInterval = 1 * time.Second
 
 	// String and format constants
 	randomStringLength     = 5
@@ -379,6 +381,61 @@ func addLabelsToNamespace(namespace string, labels map[string]string) error {
 
 	_, err = testClient.K8sClient.CoreV1().Namespaces().Update(context.TODO(), nsObject, metav1.UpdateOptions{})
 	return err
+}
+
+// optInNamespaceForVMs opts in a namespace for VM MAC allocation and waits for the webhook
+func optInNamespaceForVMs(namespace string) {
+	By(fmt.Sprintf("opting in namespace %s for VM MAC allocation", namespace))
+	err := addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "allocate"})
+	Expect(err).ToNot(HaveOccurred(), "should be able to add opt-in label to namespace")
+
+	By("waiting for webhook to recognize namespace as opted-in")
+	Eventually(func(g Gomega) {
+		vm := CreateVMObject(namespace, []kubevirtv1.Interface{newInterface("br", "")},
+			[]kubevirtv1.Network{newNetwork("br")})
+		g.Expect(testClient.CRClient.Create(context.TODO(), vm)).To(Succeed())
+		macAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+		_ = testClient.CRClient.Delete(context.TODO(), vm)
+		g.Expect(macAddress).ToNot(BeEmpty(), "VM should have MAC allocated in opted-in namespace")
+	}, webhookPropagationTimeout, webhookPropagationInterval).Should(Succeed())
+}
+
+// optOutNamespaceForVMs opts out a namespace from VM MAC allocation and waits for the webhook
+func optOutNamespaceForVMs(namespace string) {
+	By(fmt.Sprintf("opting out namespace %s from VM MAC allocation", namespace))
+	err := addLabelsToNamespace(namespace, map[string]string{vmNamespaceOptInLabel: "ignore"})
+	Expect(err).ToNot(HaveOccurred(), "should be able to add opt-out label to namespace")
+
+	By("waiting for webhook to recognize namespace as opted-out")
+	Eventually(func(g Gomega) {
+		vm := CreateVMObject(namespace, []kubevirtv1.Interface{newInterface("br", "")},
+			[]kubevirtv1.Network{newNetwork("br")})
+		g.Expect(testClient.CRClient.Create(context.TODO(), vm)).To(Succeed())
+		macAddress := vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
+		_ = testClient.CRClient.Delete(context.TODO(), vm)
+		g.Expect(macAddress).To(BeEmpty(), "VM should not have MAC allocated in opted-out namespace")
+	}, webhookPropagationTimeout, webhookPropagationInterval).Should(Succeed())
+}
+
+func newInterface(name, macAddress string) kubevirtv1.Interface {
+	return kubevirtv1.Interface{
+		Name: name,
+		InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+			Bridge: &kubevirtv1.InterfaceBridge{},
+		},
+		MacAddress: macAddress,
+	}
+}
+
+func newNetwork(name string) kubevirtv1.Network {
+	return kubevirtv1.Network{
+		Name: name,
+		NetworkSource: kubevirtv1.NetworkSource{
+			Multus: &kubevirtv1.MultusNetwork{
+				NetworkName: name,
+			},
+		},
+	}
 }
 
 func getOptInLabel(webhookName string) metav1.LabelSelectorRequirement {

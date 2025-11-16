@@ -167,25 +167,38 @@ func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error)
 		return nil, errors.Wrapf(err, "failed to get opt-mode for webhook %s", webhookName)
 	}
 
-	namespaces := &v1.NamespaceList{}
-	err = p.kubeClient.List(context.TODO(), namespaces)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list namespaces for webhook %s", webhookName)
-	}
-
 	var managedNamespaces []string
-	for _, ns := range namespaces.Items {
-		managed, err := isNamespaceManagedFromObject(&ns, webhook.NamespaceSelector, vmOptMode)
+	continueFlag := ""
+	const pageSize int64 = 500
+
+	for {
+		namespaces := &v1.NamespaceList{}
+		err = p.kubeClient.List(context.TODO(), namespaces, &client.ListOptions{
+			Limit:    pageSize,
+			Continue: continueFlag,
+		})
 		if err != nil {
-			log.Error(err, "failed to check if namespace is managed, skipping", "namespace", ns.Name, "webhookName", webhookName)
-			continue
+			return nil, errors.Wrapf(err, "failed to list namespaces for webhook %s", webhookName)
 		}
-		if managed {
-			managedNamespaces = append(managedNamespaces, ns.Name)
+
+		for _, ns := range namespaces.Items {
+			managed, err := isNamespaceManagedFromObject(&ns, webhook.NamespaceSelector, vmOptMode)
+			if err != nil {
+				log.Error(err, "failed to check if namespace is managed, skipping", "namespace", ns.Name, "webhookName", webhookName)
+				continue
+			}
+			if managed {
+				managedNamespaces = append(managedNamespaces, ns.Name)
+			}
+		}
+
+		continueFlag = namespaces.GetContinue()
+		if continueFlag == "" {
+			break
 		}
 	}
 
-	log.Info("computed managed namespaces", "webhookName", webhookName, "count", len(managedNamespaces), "namespaces", managedNamespaces)
+	log.Info("computed managed namespaces", "webhookName", webhookName, "count", len(managedNamespaces))
 	return managedNamespaces, nil
 }
 

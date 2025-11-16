@@ -309,7 +309,7 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 	return nil
 }
 
-// paginateVmsInManagedNamespaces performs VM list requests with pagination, but only for managed namespaces
+// paginateVmsInManagedNamespaces performs VM list requests with pagination cluster-wide, filtering for managed namespaces
 func (p *PoolManager) paginateVmsInManagedNamespaces(limit int64, vmsFunc func(vms *kubevirt.VirtualMachineList) error) error {
 	managedNamespaces, err := p.getManagedNamespaces(virtualMachnesWebhookName)
 	if err != nil {
@@ -321,42 +321,48 @@ func (p *PoolManager) paginateVmsInManagedNamespaces(limit int64, vmsFunc func(v
 		return nil
 	}
 
-	for namespace := range managedNamespaces {
-		log.V(1).Info("processing VMs in managed namespace", "namespace", namespace)
-		err := p.paginateVmsInNamespace(namespace, limit, vmsFunc)
-		if err != nil {
-			return errors.Wrapf(err, "failed to process VMs in namespace %s", namespace)
-		}
-	}
-
-	return nil
-}
-
-// paginateVmsInNamespace performs VM list request with pagination for a specific namespace
-func (p *PoolManager) paginateVmsInNamespace(namespace string, limit int64, vmsFunc func(vms *kubevirt.VirtualMachineList) error) error {
 	continueFlag := ""
+	totalProcessed := 0
+	totalFiltered := 0
+
 	for {
 		vms := &kubevirt.VirtualMachineList{}
 		err := p.kubeClient.List(context.TODO(), vms, &client.ListOptions{
-			Namespace: namespace,
-			Limit:     limit,
-			Continue:  continueFlag,
+			Limit:    limit,
+			Continue: continueFlag,
 		})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to list VMs cluster-wide")
 		}
 
-		err = vmsFunc(vms)
-		if err != nil {
-			return err
+		filteredVMs := &kubevirt.VirtualMachineList{}
+		for _, vm := range vms.Items {
+			if _, ok := managedNamespaces[vm.Namespace]; ok {
+				filteredVMs.Items = append(filteredVMs.Items, vm)
+			}
+		}
+
+		totalProcessed += len(vms.Items)
+		totalFiltered += len(filteredVMs.Items)
+
+		if len(filteredVMs.Items) > 0 {
+			err = vmsFunc(filteredVMs)
+			if err != nil {
+				return err
+			}
 		}
 
 		continueFlag = vms.GetContinue()
-		log.V(1).Info("limit vms list in namespace", "namespace", namespace, "vms len", len(vms.Items), "remaining", vms.GetRemainingItemCount(), "continue", continueFlag)
 		if continueFlag == "" {
 			break
 		}
 	}
+
+	log.Info("completed VM listing",
+		"totalVMsProcessed", totalProcessed,
+		"totalVMsInManagedNamespaces", totalFiltered,
+		"managedNamespaces", len(managedNamespaces))
+
 	return nil
 }
 

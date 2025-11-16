@@ -321,7 +321,7 @@ func (p *PoolManager) paginateVmsInManagedNamespaces(limit int64, vmsFunc func(v
 		return nil
 	}
 
-	for _, namespace := range managedNamespaces {
+	for namespace := range managedNamespaces {
 		log.V(1).Info("processing VMs in managed namespace", "namespace", namespace)
 		err := p.paginateVmsInNamespace(namespace, limit, vmsFunc)
 		if err != nil {

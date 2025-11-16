@@ -193,7 +193,7 @@ func (p *PoolManager) allocatePodFromPool(network *multus.NetworkSelectionElemen
 	return macAddr.String(), nil
 }
 
-// paginatePodsInManagedNamespaces performs pod list requests with pagination, but only for managed namespaces
+// paginatePodsInManagedNamespaces performs pod list requests with pagination cluster-wide, filtering for managed namespaces
 func (p *PoolManager) paginatePodsInManagedNamespaces(limit int64, f func(pods *corev1.PodList) error) error {
 	managedNamespaces, err := p.getManagedNamespaces(podsWebhookName)
 	if err != nil {
@@ -205,42 +205,48 @@ func (p *PoolManager) paginatePodsInManagedNamespaces(limit int64, f func(pods *
 		return nil
 	}
 
-	for namespace := range managedNamespaces {
-		log.V(1).Info("processing pods in managed namespace", "namespace", namespace)
-		err := p.paginatePodsInNamespace(namespace, limit, f)
-		if err != nil {
-			return errors.Wrapf(err, "failed to process pods in namespace %s", namespace)
-		}
-	}
-
-	return nil
-}
-
-// paginatePodsInNamespace performs pods list request with pagination for a specific namespace
-func (p *PoolManager) paginatePodsInNamespace(namespace string, limit int64, f func(pods *corev1.PodList) error) error {
 	continueFlag := ""
+	totalProcessed := 0
+	totalFiltered := 0
+
 	for {
-		pods := corev1.PodList{}
-		err := p.kubeClient.List(context.TODO(), &pods, &client.ListOptions{
-			Namespace: namespace,
-			Limit:     limit,
-			Continue:  continueFlag,
+		pods := &corev1.PodList{}
+		err := p.kubeClient.List(context.TODO(), pods, &client.ListOptions{
+			Limit:    limit,
+			Continue: continueFlag,
 		})
 		if err != nil {
-			return err
+			return errors.Wrap(err, "failed to list pods cluster-wide")
 		}
 
-		err = f(&pods)
-		if err != nil {
-			return err
+		filteredPods := &corev1.PodList{}
+		for _, pod := range pods.Items {
+			if _, ok := managedNamespaces[pod.Namespace]; ok {
+				filteredPods.Items = append(filteredPods.Items, pod)
+			}
+		}
+
+		totalProcessed += len(pods.Items)
+		totalFiltered += len(filteredPods.Items)
+
+		if len(filteredPods.Items) > 0 {
+			err = f(filteredPods)
+			if err != nil {
+				return err
+			}
 		}
 
 		continueFlag = pods.GetContinue()
-		log.V(1).Info("limit Pod list in namespace", "namespace", namespace, "pods len", len(pods.Items), "remaining", pods.GetRemainingItemCount(), "continue", continueFlag)
 		if continueFlag == "" {
 			break
 		}
 	}
+
+	log.Info("completed pod listing",
+		"totalPodsProcessed", totalProcessed,
+		"totalPodsInManagedNamespaces", totalFiltered,
+		"managedNamespaces", len(managedNamespaces))
+
 	return nil
 }
 

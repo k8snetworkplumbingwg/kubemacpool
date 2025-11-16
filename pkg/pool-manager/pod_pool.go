@@ -252,7 +252,7 @@ func (p *PoolManager) paginatePodsInManagedNamespaces(limit int64, f func(pods *
 
 func (p *PoolManager) initPodMap() error {
 	log.V(1).Info("start InitMaps to reserve existing mac addresses before allocation new ones")
-	err := p.paginatePodsInManagedNamespaces(100, func(pods *corev1.PodList) error {
+	err := p.paginatePodsInManagedNamespaces(500, func(pods *corev1.PodList) error {
 		for _, pod := range pods.Items {
 			log.V(1).Info("InitMaps for pod", "podName", pod.Name, "podNamespace", pod.Namespace)
 			if pod.Annotations == nil {

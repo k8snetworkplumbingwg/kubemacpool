@@ -154,7 +154,7 @@ func (p *PoolManager) IsReady() bool {
 }
 
 // getManagedNamespaces pre-computes which namespaces are managed by kubemacpool for a specific webhook
-func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error) {
+func (p *PoolManager) getManagedNamespaces(webhookName string) (map[string]struct{}, error) {
 	log.V(1).Info("computing managed namespaces for initialization", "webhookName", webhookName)
 
 	webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
@@ -167,7 +167,7 @@ func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error)
 		return nil, errors.Wrapf(err, "failed to get opt-mode for webhook %s", webhookName)
 	}
 
-	var managedNamespaces []string
+	managedNamespaces := make(map[string]struct{})
 	continueFlag := ""
 	const pageSize int64 = 500
 
@@ -188,7 +188,7 @@ func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error)
 				continue
 			}
 			if managed {
-				managedNamespaces = append(managedNamespaces, ns.Name)
+				managedNamespaces[ns.Name] = struct{}{}
 			}
 		}
 

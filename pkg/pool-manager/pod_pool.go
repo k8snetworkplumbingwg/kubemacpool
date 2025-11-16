@@ -205,7 +205,7 @@ func (p *PoolManager) paginatePodsInManagedNamespaces(limit int64, f func(pods *
 		return nil
 	}
 
-	for _, namespace := range managedNamespaces {
+	for namespace := range managedNamespaces {
 		log.V(1).Info("processing pods in managed namespace", "namespace", namespace)
 		err := p.paginatePodsInNamespace(namespace, limit, f)
 		if err != nil {

@@ -374,7 +374,7 @@ func (p *PoolManager) paginateVmsInManagedNamespaces(limit int64, vmsFunc func(v
 // forEachManagedVmInterfaceInClusterRunFunction gets all the macs from all the supported interfaces in all the managed cluster vms, and runs
 // a function vmInterfacesFunc on it
 func (p *PoolManager) forEachManagedVmInterfaceInClusterRunFunction(vmInterfacesFunc func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error) error {
-	err := p.paginateVmsInManagedNamespaces(100, func(vms *kubevirt.VirtualMachineList) error {
+	err := p.paginateVmsInManagedNamespaces(500, func(vms *kubevirt.VirtualMachineList) error {
 		logger := log.WithName("forEachManagedVmInterfaceInClusterRunFunction")
 		for _, vm := range vms.Items {
 			vmFullName := VmNamespaced(&vm)

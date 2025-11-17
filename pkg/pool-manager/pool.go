@@ -154,7 +154,7 @@ func (p *PoolManager) IsReady() bool {
 }
 
 // getManagedNamespaces pre-computes which namespaces are managed by kubemacpool for a specific webhook
-func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error) {
+func (p *PoolManager) getManagedNamespaces(webhookName string) (map[string]struct{}, error) {
 	log.V(1).Info("computing managed namespaces for initialization", "webhookName", webhookName)
 
 	webhook, err := p.lookupWebhookInMutatingWebhookConfig(mutatingWebhookConfigName, webhookName)
@@ -167,25 +167,38 @@ func (p *PoolManager) getManagedNamespaces(webhookName string) ([]string, error)
 		return nil, errors.Wrapf(err, "failed to get opt-mode for webhook %s", webhookName)
 	}
 
-	namespaces := &v1.NamespaceList{}
-	err = p.kubeClient.List(context.TODO(), namespaces)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list namespaces for webhook %s", webhookName)
-	}
+	managedNamespaces := make(map[string]struct{})
+	continueFlag := ""
+	const pageSize int64 = 500
 
-	var managedNamespaces []string
-	for _, ns := range namespaces.Items {
-		managed, err := isNamespaceManagedFromObject(&ns, webhook.NamespaceSelector, vmOptMode)
+	for {
+		namespaces := &v1.NamespaceList{}
+		err = p.kubeClient.List(context.TODO(), namespaces, &client.ListOptions{
+			Limit:    pageSize,
+			Continue: continueFlag,
+		})
 		if err != nil {
-			log.Error(err, "failed to check if namespace is managed, skipping", "namespace", ns.Name, "webhookName", webhookName)
-			continue
+			return nil, errors.Wrapf(err, "failed to list namespaces for webhook %s", webhookName)
 		}
-		if managed {
-			managedNamespaces = append(managedNamespaces, ns.Name)
+
+		for _, ns := range namespaces.Items {
+			managed, err := isNamespaceManagedFromObject(&ns, webhook.NamespaceSelector, vmOptMode)
+			if err != nil {
+				log.Error(err, "failed to check if namespace is managed, skipping", "namespace", ns.Name, "webhookName", webhookName)
+				continue
+			}
+			if managed {
+				managedNamespaces[ns.Name] = struct{}{}
+			}
+		}
+
+		continueFlag = namespaces.GetContinue()
+		if continueFlag == "" {
+			break
 		}
 	}
 
-	log.Info("computed managed namespaces", "webhookName", webhookName, "count", len(managedNamespaces), "namespaces", managedNamespaces)
+	log.Info("computed managed namespaces", "webhookName", webhookName, "count", len(managedNamespaces))
 	return managedNamespaces, nil
 }
 

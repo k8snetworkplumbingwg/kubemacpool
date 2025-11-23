@@ -90,7 +90,7 @@ func (r *ReconcilePolicy) Reconcile(ctx context.Context, request reconcile.Reque
 	//used for multi thread log separation
 	reconcileRequestId := rand.Intn(100000)
 	logger := log.WithName("Reconcile").WithValues("RequestId", reconcileRequestId, "vmFullName", fmt.Sprintf("vm/%s/%s", request.Namespace, request.Name))
-	logger.Info("got a virtual machine event in the controller")
+	logger.V(1).Info("got a virtual machine event in the controller")
 
 	instance := &kubevirt.VirtualMachine{}
 	err := r.Get(ctx, request.NamespacedName, instance)

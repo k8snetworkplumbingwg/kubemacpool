@@ -94,7 +94,7 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Processing ConfigMap for MAC range update")
+	logger.V(2).Info("Processing ConfigMap for MAC range update")
 
 	// Extract and validate new MAC ranges from ConfigMap
 	rangeConfig, err := r.extractRangesFromConfigMap(configMap)
@@ -115,7 +115,7 @@ func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Check if the new ranges are different from current ranges
 	currentStart, currentEnd := r.PoolManager.GetCurrentRanges()
 	if rangeConfig.Start.String() == currentStart && rangeConfig.End.String() == currentEnd {
-		logger.Info("MAC address ranges unchanged, skipping update",
+		logger.V(2).Info("MAC address ranges unchanged, skipping update",
 			"currentRangeStart", currentStart,
 			"currentRangeEnd", currentEnd)
 		return ctrl.Result{}, nil

@@ -460,7 +460,7 @@ func (p *PoolManager) MarkVMAsReady(vm *kubevirt.VirtualMachine, latestPersisted
 	if err != nil {
 		return errors.Wrapf(err, "Failed to get VmMacMap for vm %s", vmFullName)
 	}
-	logger.Info("Macs currently set on vm", "vmMacMap", vmMacMap)
+	logger.V(1).Info("Macs currently set on vm", "vmMacMap", vmMacMap)
 
 	err = vmMacMap.filterMacsThatRequireCommit(latestPersistedTransactionTimeStamp, logger)
 	if err != nil {

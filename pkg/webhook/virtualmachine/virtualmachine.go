@@ -139,7 +139,7 @@ func patchVMChanges(originalVirtualMachine, currentVirtualMachine *kubevirt.Virt
 		}
 	}
 
-	logger.Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
+	logger.V(1).Info("patchVMChanges", "kubemapcoolJsonPatches", kubemapcoolJsonPatches)
 	if len(kubemapcoolJsonPatches) == 0 {
 		return admission.Response{
 			Patches: kubemapcoolJsonPatches,
@@ -206,7 +206,7 @@ func (a *virtualMachineAnnotator) mutateCreateVirtualMachinesFn(virtualMachine *
 // mutateUpdateVirtualMachinesFn calls the update allocation function
 func (a *virtualMachineAnnotator) mutateUpdateVirtualMachinesFn(virtualMachine *kubevirt.VirtualMachine, isNotDryRun bool, parentLogger logr.Logger) error {
 	logger := parentLogger.WithName("mutateUpdateVirtualMachinesFn")
-	logger.Info("got an update mutate virtual machine event")
+	logger.V(1).Info("got an update mutate virtual machine event")
 	previousVirtualMachine := &kubevirt.VirtualMachine{}
 	err := a.client.Get(context.TODO(), client.ObjectKey{Namespace: virtualMachine.Namespace, Name: virtualMachine.Name}, previousVirtualMachine)
 	if err != nil {

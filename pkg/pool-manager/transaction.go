@@ -17,7 +17,7 @@ func CreateTransactionTimestamp() time.Time {
 func SetTransactionTimestampAnnotationToVm(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp time.Time) {
 	timeStampAnnotationValue := transactionTimestamp.Format(time.RFC3339Nano)
 	virtualMachine.Annotations[TransactionTimestampAnnotation] = timeStampAnnotationValue
-	log.Info("added TransactionTimestamp Annotation", "ts", timeStampAnnotationValue)
+	log.V(1).Info("added TransactionTimestamp Annotation", "ts", timeStampAnnotationValue)
 }
 
 func GetTransactionTimestampAnnotationFromVm(virtualMachine *kubevirt.VirtualMachine) (time.Time, error) {

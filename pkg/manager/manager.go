@@ -27,6 +27,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	kubevirt_api "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -37,6 +38,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/vmicollision"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
@@ -91,11 +93,6 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		err = k.initRuntimeManager()
 		if err != nil {
 			return errors.Wrap(err, "unable to set up manager")
-		}
-
-		err = kubevirt_api.AddToScheme(k.runtimeManager.GetScheme())
-		if err != nil {
-			return errors.Wrap(err, "unable to register kubevirt scheme")
 		}
 
 		isKubevirtInstalled := checkForKubevirt(k.clientset)
@@ -169,6 +166,12 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 	log.Info("Setting up Manager")
 	var err error
 
+	// Register kubevirt types in the scheme before creating the manager
+	// This is required because we reference VMI in the cache config
+	if err := kubevirt_api.AddToScheme(scheme.Scheme); err != nil {
+		return errors.Wrap(err, "unable to register kubevirt scheme")
+	}
+
 	configMapNameFieldSelector := fields.OneTermEqualSelector("metadata.name", names.MAC_RANGE_CONFIGMAP)
 
 	cacheOptions := cache.Options{
@@ -179,10 +182,14 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 				},
 				Field: configMapNameFieldSelector,
 			},
+			&kubevirt_api.VirtualMachineInstance{}: {
+				Transform: vmicollision.StripVMIForCollisionDetection,
+			},
 		},
 	}
 
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
+		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
 			BindAddress: k.metricsAddr,
 		},

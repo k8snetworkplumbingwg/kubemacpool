@@ -27,8 +27,16 @@ var (
 			Name: "kubevirt_kmp_duplicate_macs",
 			Help: "Kubemacpool duplicate macs counter",
 		})
+
+	MACCollisionGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "kmp_mac_collisions",
+			Help: "Count of running objects sharing the same MAC address (collision when > 1)",
+		},
+		[]string{"mac"})
 )
 
 func init() {
 	metrics.Registry.MustRegister(DuplicateMacGauge)
+	metrics.Registry.MustRegister(MACCollisionGauge)
 }

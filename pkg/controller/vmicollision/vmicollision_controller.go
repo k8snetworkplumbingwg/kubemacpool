@@ -31,19 +31,27 @@ import (
 	"k8s.io/client-go/tools/record"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 var log = logf.Log.WithName("VMICollision Controller")
 
+// PoolManagerInterface defines the methods required by VMICollisionReconciler
+type PoolManagerInterface interface {
+	IsVirtualMachineManaged(namespace string) (bool, error)
+}
+
 // VMICollisionReconciler watches VirtualMachineInstance objects and detects MAC address collisions
 type VMICollisionReconciler struct {
 	client.Client
-	poolManager *pool_manager.PoolManager
+	poolManager PoolManagerInterface
 	recorder    record.EventRecorder
 }
 
@@ -68,10 +76,26 @@ func SetupWithManager(mgr manager.Manager, poolManager *pool_manager.PoolManager
 
 	log.Info("Successfully registered MAC address indexer for VMI collision detection")
 
-	// TODO: Build controller with watches and event handlers
-	// This will be implemented in subsequent commits
+	c, err := controller.New("vmicollision-controller", mgr, controller.Options{
+		Reconciler: r,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create VMI collision controller: %w", err)
+	}
 
-	_ = r // Suppress unused warning until we register the controller
+	err = c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&kubevirtv1.VirtualMachineInstance{},
+			&handler.TypedEnqueueRequestForObject[*kubevirtv1.VirtualMachineInstance]{},
+			collisionRelevantChanges(),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to watch VMIs: %w", err)
+	}
+
+	log.Info("Successfully registered VMI collision controller")
 	return nil
 }
 

@@ -10,11 +10,16 @@ import (
 )
 
 // clearMacTransactionFromMacEntry clears mac entry's transactionTimestamp, signalling that no further update is needed
-func (m *macMap) clearMacTransactionFromMacEntry(macAddress string) {
-	macEntry, exist := m.findByMacAddress(macAddress)
-	if exist {
-		(*m)[NewMacKey(macAddress)] = macEntry.resetTransaction()
+func (m *macMap) clearMacTransactionFromMacEntry(macAddress, instanceFullName string) {
+	entry, index, err := m.findByMacAddressAndInstanceName(macAddress, instanceFullName)
+	if err != nil {
+		log.Error(err, "clearMacTransactionFromMacEntry fail: entry by MAC and instanceName not found", "macAddress", macAddress, "instanceFullName", instanceFullName, "macmap", m)
+		return
 	}
+
+	entries, _ := m.findByMacAddress(macAddress)
+	entries[index] = entry.resetTransaction()
+	(*m)[NewMacKey(macAddress)] = entries
 }
 
 func (m macMap) findByMacAddress(macAddress string) ([]macEntry, bool) {
@@ -120,7 +125,7 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 		if NewMacKey(iface.MacAddress).String() == macAddress {
 			if iface.Name == macEntry.macInstanceKey {
 				logger.Info("marked mac as allocated", "macAddress", macAddress)
-				m.clearMacTransactionFromMacEntry(macAddress)
+				m.clearMacTransactionFromMacEntry(macAddress, instanceFullName)
 				return
 			}
 		}

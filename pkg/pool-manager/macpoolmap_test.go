@@ -234,54 +234,71 @@ var _ = Describe("mac-pool-map", func() {
 		)
 
 		type clearMacTransactionFromMacEntryParams struct {
-			macAddress string
+			macAddress       string
+			instanceFullName string
 		}
 		DescribeTable("and performing clearMacTransactionFromMacEntry on macPoolMap entry",
 			func(c *clearMacTransactionFromMacEntryParams) {
-				macPoolMapCopy := map[macKey]macEntry{}
-				for macAddress, macEntry := range poolManager.macPoolMap {
-					macPoolMapCopy[macAddress] = macEntry
+				macPoolMapCopy := map[macKey][]macEntry{}
+				for macAddress, entries := range poolManager.macPoolMap {
+					entriesCopy := make([]macEntry, len(entries))
+					copy(entriesCopy, entries)
+					macPoolMapCopy[macAddress] = entriesCopy
 				}
 
-				poolManager.macPoolMap.clearMacTransactionFromMacEntry(c.macAddress)
-				for macAddress, originalMacEntry := range macPoolMapCopy {
-					updatedMacEntry, exist := poolManager.macPoolMap[macAddress]
-					Expect(exist).To(BeTrue(), fmt.Sprintf("mac %s's entry should not be deleted from macPoolMap after running clearMacTransactionFromMacEntry", macAddress))
+				poolManager.macPoolMap.clearMacTransactionFromMacEntry(c.macAddress, c.instanceFullName)
+				for macAddress, originalEntries := range macPoolMapCopy {
+					updatedEntries, exist := poolManager.macPoolMap[macAddress]
+					Expect(exist).To(BeTrue(), fmt.Sprintf("mac %s's entries should not be deleted from macPoolMap after running clearMacTransactionFromMacEntry", macAddress))
+					Expect(updatedEntries).To(HaveLen(len(originalEntries)), fmt.Sprintf("mac %s should have same number of entries", macAddress))
+
 					if macAddress.String() == c.macAddress {
-						expectedMacEntry := macEntry{
-							instanceName:         originalMacEntry.instanceName,
-							macInstanceKey:       originalMacEntry.macInstanceKey,
-							transactionTimestamp: nil,
+						for i, originalEntry := range originalEntries {
+							if originalEntry.instanceName == c.instanceFullName {
+								expectedEntry := macEntry{
+									instanceName:         originalEntry.instanceName,
+									macInstanceKey:       originalEntry.macInstanceKey,
+									transactionTimestamp: nil,
+								}
+								Expect(updatedEntries[i]).To(Equal(expectedEntry), fmt.Sprintf("cleaned mac entry %s for instance %s should only remove transactionTimestamp", macAddress, c.instanceFullName))
+							} else {
+								Expect(updatedEntries[i]).To(Equal(originalEntry), fmt.Sprintf("other entries for mac %s should remain unchanged", macAddress))
+							}
 						}
-						Expect(updatedMacEntry).To(Equal(expectedMacEntry), fmt.Sprintf("cleaned mac entry %s should only remove transactionTimestamp from entry", macAddress))
 					} else {
-						Expect(updatedMacEntry).To(Equal(originalMacEntry), fmt.Sprintf("untouched mac entry %s should remain the same", macAddress))
+						Expect(updatedEntries).To(Equal(originalEntries), fmt.Sprintf("untouched mac %s entries should remain the same", macAddress))
 					}
 				}
 			},
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:00",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:00",
+					macAddress:       "02:00:00:00:00:00",
+					instanceFullName: "vm/default/vm0",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:01",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:01",
+					macAddress:       "02:00:00:00:00:01",
+					instanceFullName: "vm/ns0/vm1",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:02",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:02",
+					macAddress:       "02:00:00:00:00:02",
+					instanceFullName: "vm/ns2/vm2",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:03",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:03",
+					macAddress:       "02:00:00:00:00:03",
+					instanceFullName: "vm/ns3-4/vm3-4",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:04",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:04",
+					macAddress:       "02:00:00:00:00:04",
+					instanceFullName: "vm/ns3-4/vm3-4",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:05",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:05",
+					macAddress:       "02:00:00:00:00:05",
+					instanceFullName: "vm/default/vm0",
 				}),
 		)
 

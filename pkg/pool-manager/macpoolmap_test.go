@@ -356,14 +356,24 @@ var _ = Describe("mac-pool-map", func() {
 		DescribeTable("and adding a new mac to macPoolMap",
 			func(c *createOrUpdateInMacPoolMapParams) {
 				poolManager.macPoolMap.createOrUpdateEntry(c.macAddress, c.vmName, c.interfaceName)
-				updatedMacEntry, exist := poolManager.macPoolMap[NewMacKey(c.macAddress)]
+				updatedMacEntries, exist := poolManager.macPoolMap[NewMacKey(c.macAddress)]
 				Expect(exist).To(BeTrue(), "mac entry should exist after added/updated")
-				expectedMacEntry := macEntry{
-					instanceName:         c.vmName,
-					macInstanceKey:       c.interfaceName,
-					transactionTimestamp: nil,
+
+				// Find the entry for this VM+interface
+				found := false
+				for _, entry := range updatedMacEntries {
+					if entry.instanceName == c.vmName && entry.macInstanceKey == c.interfaceName {
+						expectedMacEntry := macEntry{
+							instanceName:         c.vmName,
+							macInstanceKey:       c.interfaceName,
+							transactionTimestamp: nil,
+						}
+						Expect(entry).To(Equal(expectedMacEntry), "macEntry should be added/updated")
+						found = true
+						break
+					}
 				}
-				Expect(updatedMacEntry).To(Equal(expectedMacEntry), "macEntry should be added/updated")
+				Expect(found).To(BeTrue(), "entry for VM+interface should exist")
 			},
 			Entry("Should succeed Adding a mac if mac is not in macPoolMap",
 				&createOrUpdateInMacPoolMapParams{
@@ -378,6 +388,37 @@ var _ = Describe("mac-pool-map", func() {
 					macAddress:    "02:00:00:00:00:00",
 				}),
 		)
+
+		It("should not create duplicate entries when called twice with same VM+interface", func() {
+			macAddr := "02:00:00:00:00:10"
+			vmName := "vm/test/vm1"
+			ifaceName := "eth0"
+
+			// Call twice
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vmName, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vmName, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(1), "should only have one entry, not duplicates")
+			Expect(entries[0].instanceName).To(Equal(vmName))
+			Expect(entries[0].macInstanceKey).To(Equal(ifaceName))
+		})
+
+		It("should allow multiple VMs to share same MAC with different entries", func() {
+			macAddr := "02:00:00:00:00:11"
+			vm1Name := "vm/ns1/vm1"
+			vm2Name := "vm/ns2/vm2"
+			ifaceName := "eth0"
+
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm1Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm2Name, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(2), "should have two entries for two different VMs")
+
+			vmNames := []string{entries[0].instanceName, entries[1].instanceName}
+			Expect(vmNames).To(ContainElements(vm1Name, vm2Name))
+		})
 
 		type filterMacsThatRequireCommitParams struct {
 			latestPersistedTimestamp *time.Time

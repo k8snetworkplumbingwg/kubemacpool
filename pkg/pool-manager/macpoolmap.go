@@ -57,11 +57,25 @@ func (m macMap) filterInByInstanceName(instanceName string) (*macMap, error) {
 }
 
 func (m *macMap) createOrUpdateEntry(macAddress, instanceFullName, macInstanceKey string) {
-	(*m)[NewMacKey(macAddress)] = macEntry{
+	newEntry := macEntry{
 		instanceName:         instanceFullName,
 		macInstanceKey:       macInstanceKey,
 		transactionTimestamp: nil,
 	}
+
+	entries := (*m)[NewMacKey(macAddress)]
+	// Check if entry for this VM+interface already exists
+	for i, entry := range entries {
+		if entry.instanceName == instanceFullName && entry.macInstanceKey == macInstanceKey {
+			// Update existing entry (reset transaction timestamp)
+			entries[i] = newEntry
+			(*m)[NewMacKey(macAddress)] = entries
+			return
+		}
+	}
+
+	// No existing entry, append new one
+	(*m)[NewMacKey(macAddress)] = append(entries, newEntry)
 }
 
 // updateMacTransactionTimestampForUpdatedMacs updates the macEntry with the current transactionTimestamp

@@ -48,9 +48,11 @@ func (m *macMap) removeMacEntry(macAddress string) {
 func (m macMap) filterInByInstanceName(instanceName string) (*macMap, error) {
 	instanceMacMap := macMap{}
 
-	for macAddress, macEntry := range m {
-		if macEntry.instanceName == instanceName {
-			instanceMacMap[macAddress] = macEntry
+	for macAddress, entries := range m {
+		for _, entry := range entries {
+			if entry.instanceName == instanceName {
+				instanceMacMap[macAddress] = append(instanceMacMap[macAddress], entry)
+			}
 		}
 	}
 	return &instanceMacMap, nil

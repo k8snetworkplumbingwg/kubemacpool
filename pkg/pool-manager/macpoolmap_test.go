@@ -189,8 +189,17 @@ var _ = Describe("mac-pool-map", func() {
 					Expect(err).ToNot(HaveOccurred(), "should not fail updating macEntry")
 
 					for _, macAddress := range u.updatedInterfaceMap {
-						Expect(poolManager.macPoolMap[NewMacKey(macAddress)].transactionTimestamp).To(Equal(u.transactionTimestamp))
-						Expect(poolManager.macPoolMap[NewMacKey(macAddress)].instanceName).To(Equal(u.vmName))
+						entries := poolManager.macPoolMap[NewMacKey(macAddress)]
+						Expect(entries).ToNot(BeEmpty(), "mac entry should exist")
+						found := false
+						for _, entry := range entries {
+							if entry.instanceName == u.vmName {
+								Expect(entry.transactionTimestamp).To(Equal(u.transactionTimestamp))
+								found = true
+								break
+							}
+						}
+						Expect(found).To(BeTrue(), "entry for vm should exist")
 					}
 				}
 			},

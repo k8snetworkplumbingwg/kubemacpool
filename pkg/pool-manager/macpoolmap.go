@@ -67,11 +67,13 @@ func (m *macMap) createOrUpdateEntry(macAddress, instanceFullName, macInstanceKe
 // updateMacTransactionTimestampForUpdatedMacs updates the macEntry with the current transactionTimestamp
 func (m *macMap) updateMacTransactionTimestampForUpdatedMacs(instanceFullName string, transactionTimestamp *time.Time, macByInterfaceUpdated map[string]string) error {
 	for _, macAddress := range macByInterfaceUpdated {
-		entry, err := m.findByMacAddressAndInstanceName(macAddress, instanceFullName)
+		entry, index, err := m.findByMacAddressAndInstanceName(macAddress, instanceFullName)
 		if err != nil {
 			return err
 		}
-		(*m)[NewMacKey(macAddress)] = entry.setTransaction(transactionTimestamp)
+		entries := (*m)[NewMacKey(macAddress)]
+		entries[index] = entry.setTransaction(transactionTimestamp)
+		(*m)[NewMacKey(macAddress)] = entries
 	}
 	return nil
 }

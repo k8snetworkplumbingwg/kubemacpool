@@ -17,24 +17,25 @@ func (m *macMap) clearMacTransactionFromMacEntry(macAddress string) {
 	}
 }
 
-func (m macMap) findByMacAddress(macAddress string) (macEntry, bool) {
-	macEntry, exist := m[NewMacKey(macAddress)]
-	return macEntry, exist
+func (m macMap) findByMacAddress(macAddress string) ([]macEntry, bool) {
+	entries, exist := m[NewMacKey(macAddress)]
+	return entries, exist
 }
 
-func (m macMap) findByMacAddressAndInstanceName(macAddress, instanceFullName string) (macEntry, error) {
-	if entry, exist := m.findByMacAddress(macAddress); exist {
-		if entry.instanceName == instanceFullName {
-			return entry, nil
-		} else {
-			err := errors.New("updateMacTransactionTimestampForUpdatedMacs failed")
-			log.Error(err, "mac address does not belong to instance", "instanceFullName", instanceFullName, "macmap", m)
-			return macEntry{}, err
+func (m macMap) findByMacAddressAndInstanceName(macAddress, instanceFullName string) (macEntry, int, error) {
+	if entries, exist := m.findByMacAddress(macAddress); exist {
+		for i, entry := range entries {
+			if entry.instanceName == instanceFullName {
+				return entry, i, nil
+			}
 		}
+		err := errors.New("updateMacTransactionTimestampForUpdatedMacs failed")
+		log.Error(err, "mac address does not contain instance", "instanceFullName", instanceFullName, "macmap", m)
+		return macEntry{}, -1, err
 	} else {
 		err := errors.New("updateMacTransactionTimestampForUpdatedMacs failed")
 		log.Error(err, "mac address does not exist in macPoolMap", "instanceFullName", instanceFullName, "macmap", m)
-		return macEntry{}, err
+		return macEntry{}, -1, err
 	}
 }
 

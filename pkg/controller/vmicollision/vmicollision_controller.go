@@ -46,6 +46,7 @@ var log = logf.Log.WithName("VMICollision Controller")
 // PoolManagerInterface defines the methods required by VMICollisionReconciler
 type PoolManagerInterface interface {
 	IsVirtualMachineManaged(namespace string) (bool, error)
+	UpdateCollisionsMap(objectRef pool_manager.ObjectReference, collisions map[string][]pool_manager.ObjectReference)
 }
 
 // VMICollisionReconciler watches VirtualMachineInstance objects and detects MAC address collisions
@@ -110,10 +111,8 @@ func (r *VMICollisionReconciler) Reconcile(ctx context.Context, req reconcile.Re
 	err := r.Get(ctx, req.NamespacedName, vmi)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// VMI was deleted
-			logger.V(1).Info("VMI not found, assuming deleted")
-			// TODO: Handle VMI deletion (remove from duplicate tracking)
-			// This will be implemented when PoolManager methods are added
+			logger.V(1).Info("VMI not found, assuming deleted, removing from collision tracking")
+			r.removeVMIFromAllCollisions(req.Namespace, req.Name)
 			return reconcile.Result{}, nil
 		}
 		logger.Error(err, "Failed to get VMI")
@@ -142,7 +141,8 @@ func (r *VMICollisionReconciler) Reconcile(ctx context.Context, req reconcile.Re
 // checkMACCollisions detects MAC collisions for the given VMI
 func (r *VMICollisionReconciler) checkMACCollisions(ctx context.Context, vmi *kubevirtv1.VirtualMachineInstance, logger logr.Logger) error {
 	if vmi.Status.Phase != kubevirtv1.Running {
-		logger.V(1).Info("VMI not running, skipping collision check", "phase", vmi.Status.Phase)
+		logger.V(1).Info("VMI not running, removing from collision tracking", "phase", vmi.Status.Phase)
+		r.removeVMIFromAllCollisions(vmi.Namespace, vmi.Name)
 		return nil
 	}
 
@@ -152,7 +152,7 @@ func (r *VMICollisionReconciler) checkMACCollisions(ctx context.Context, vmi *ku
 		return nil
 	}
 
-	allDuplicates := make(map[string][]*kubevirtv1.VirtualMachineInstance)
+	otherVMIsCollidingPerMAC := make(map[string][]*kubevirtv1.VirtualMachineInstance)
 	for mac := range macs {
 		collisionCandidates, err := r.findRunningVMIsWithMAC(ctx, mac, vmi.UID, logger)
 		if err != nil {
@@ -166,11 +166,14 @@ func (r *VMICollisionReconciler) checkMACCollisions(ctx context.Context, vmi *ku
 
 		if len(actualCollisions) > 0 {
 			logger.Info("Found MAC collision", "mac", mac, "collisionCount", len(actualCollisions))
-			allDuplicates[mac] = actualCollisions
+			otherVMIsCollidingPerMAC[mac] = actualCollisions
 
 			r.emitCollisionEvents(vmi, mac, actualCollisions)
 		}
 	}
+
+	collisions := convertToObjectReferenceMap(otherVMIsCollidingPerMAC)
+	r.poolManager.UpdateCollisionsMap(vmiObjectRef(vmi.Namespace, vmi.Name), collisions)
 
 	return nil
 }
@@ -289,4 +292,30 @@ func (r *VMICollisionReconciler) filterOutUnmanagedNamespaces(collisionCandidate
 	}
 
 	return managedCollisions
+}
+
+// convertToObjectReferenceMap converts a map of VMIs to a map of ObjectReferences
+func convertToObjectReferenceMap(duplicates map[string][]*kubevirtv1.VirtualMachineInstance) map[string][]pool_manager.ObjectReference {
+	collisions := make(map[string][]pool_manager.ObjectReference)
+	for mac, vmis := range duplicates {
+		refs := make([]pool_manager.ObjectReference, len(vmis))
+		for i, v := range vmis {
+			refs[i] = vmiObjectRef(v.Namespace, v.Name)
+		}
+		collisions[mac] = refs
+	}
+	return collisions
+}
+
+// removeVMIFromAllCollisions removes a VMI from all collision tracking
+func (r *VMICollisionReconciler) removeVMIFromAllCollisions(namespace, name string) {
+	r.poolManager.UpdateCollisionsMap(vmiObjectRef(namespace, name), nil)
+}
+
+func vmiObjectRef(namespace, name string) pool_manager.ObjectReference {
+	return pool_manager.ObjectReference{
+		Type:      pool_manager.ObjectTypeVMI,
+		Namespace: namespace,
+		Name:      name,
+	}
 }

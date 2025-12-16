@@ -24,36 +24,36 @@ var _ = Describe("mac-pool-map", func() {
 		BeforeEach(func() {
 			poolManager.waitTime = waitTimeSeconds
 			poolManager.macPoolMap = macMap{
-				NewMacKey("02:00:00:00:00:00"): macEntry{
+				NewMacKey("02:00:00:00:00:00"): []macEntry{{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:01"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:01"): []macEntry{{
 					instanceName:         "vm/ns0/vm1",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:02"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:02"): []macEntry{{
 					instanceName:         "vm/ns2/vm2",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:03"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:03"): []macEntry{{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:04"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:04"): []macEntry{{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:05"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:05"): []macEntry{{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: nil,
-				},
+				}},
 			}
 		})
 
@@ -283,9 +283,14 @@ var _ = Describe("mac-pool-map", func() {
 		}
 		DescribeTable("and performing findByMacAddress on macPoolMap",
 			func(f *findByMacAddressParams) {
-				macEntry, exist := poolManager.macPoolMap.findByMacAddress(f.macAddress)
+				entries, exist := poolManager.macPoolMap.findByMacAddress(f.macAddress)
 				Expect(exist).To(Equal(f.shouldExist), fmt.Sprintf("mac %s's entry existance should be as expected", f.macAddress))
-				Expect(macEntry).To(Equal(f.expectedEntry), fmt.Sprintf("mac %s's entry should be as expected", f.macAddress))
+				if f.shouldExist {
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0]).To(Equal(f.expectedEntry), fmt.Sprintf("mac %s's entry should be as expected", f.macAddress))
+				} else {
+					Expect(entries).To(BeEmpty())
+				}
 			},
 			Entry("Should not find non existent mac: 02:00:00:00:00:0F",
 				&findByMacAddressParams{

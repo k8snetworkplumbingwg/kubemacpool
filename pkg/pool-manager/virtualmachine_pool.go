@@ -246,11 +246,11 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		return err
 	}
 
-	if macEntry, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
-		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, macEntry) {
+	if entries, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
+		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, entries) {
 			err := fmt.Errorf("failed to allocate requested mac address")
-			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %s, %s, conflict with: %s, %s",
-				iface.MacAddress, macEntry.instanceName, macEntry.macInstanceKey, vmFullName, iface.Name))
+			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %+v, conflict with: %s:%s",
+				iface.MacAddress, entries, vmFullName, iface.Name))
 
 			return err
 		}
@@ -263,9 +263,11 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 	return nil
 }
 
-func macAlreadyBelongsToVmAndInterface(vmFullName, interfaceName string, macEntry macEntry) bool {
-	if macEntry.instanceName == vmFullName && macEntry.macInstanceKey == interfaceName {
-		return true
+func macAlreadyBelongsToVmAndInterface(vmFullName, interfaceName string, entries []macEntry) bool {
+	for _, entry := range entries {
+		if entry.instanceName == vmFullName && entry.macInstanceKey == interfaceName {
+			return true
+		}
 	}
 	return false
 }

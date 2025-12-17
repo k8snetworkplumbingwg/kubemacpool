@@ -444,7 +444,7 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 
 	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
 	for _, macAddress := range allocations {
-		p.macPoolMap.removeMacEntry(macAddress)
+		p.macPoolMap.removeInstanceFromMac(macAddress, vmName)
 	}
 }
 
@@ -491,7 +491,7 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("healStaleMacEntries")
-	var macsToRemove []string
+	macsToRemove := map[string]string{} // macAddress -> instanceName
 	macsToAlign := map[string]*kubevirt.VirtualMachine{}
 	for macAddress, macEntry := range p.macPoolMap {
 		isEntryStale, err := macEntry.hasExpiredTransaction(p.waitTime)
@@ -502,7 +502,7 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
-					macsToRemove = append(macsToRemove, macAddress.String())
+					macsToRemove[macAddress.String()] = macEntry.instanceName
 					continue
 				} else {
 					return err
@@ -516,8 +516,8 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 		return nil
 	}
 	logger.Info("macMap is self healing", "macsToRemove", macsToRemove, "macsToAlign", macsToAlign)
-	for _, macAddress := range macsToRemove {
-		p.macPoolMap.removeMacEntry(macAddress)
+	for macAddress, instanceName := range macsToRemove {
+		p.macPoolMap.removeInstanceFromMac(macAddress, instanceName)
 	}
 	for macAddress, vm := range macsToAlign {
 		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), getVirtualMachineInterfaces(vm))

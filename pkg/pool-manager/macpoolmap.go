@@ -44,9 +44,25 @@ func (m macMap) findByMacAddressAndInstanceName(macAddress, instanceFullName str
 	}
 }
 
-// removeMacEntry deletes a macEntry from macPoolMap
-func (m *macMap) removeMacEntry(macAddress string) {
-	delete(*m, NewMacKey(macAddress))
+// removeInstanceFromMac removes a specific instance's entry for a MAC from macPoolMap
+// If no entries remain for the MAC, the MAC is deleted entirely
+func (m *macMap) removeInstanceFromMac(macAddress, instanceFullName string) {
+	_, index, err := m.findByMacAddressAndInstanceName(macAddress, instanceFullName)
+	if err != nil {
+		// Entry not found, nothing to remove
+		return
+	}
+
+	entries, _ := m.findByMacAddress(macAddress)
+
+	// Remove the entry at index
+	entries = append(entries[:index], entries[index+1:]...)
+
+	if len(entries) == 0 {
+		delete(*m, NewMacKey(macAddress))
+	} else {
+		(*m)[NewMacKey(macAddress)] = entries
+	}
 }
 
 // filterInByInstanceName creates a subset map from macPoolMap, holding only macs that belongs to a specific instance (pod/vm)
@@ -133,5 +149,5 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 
 	// if not match found, then it means that the mac was removed. also remove from macPoolMap
 	logger.Info("released a mac from macMap", "macAddress", macAddress)
-	m.removeMacEntry(macAddress)
+	m.removeInstanceFromMac(macAddress, instanceFullName)
 }

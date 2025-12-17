@@ -356,13 +356,56 @@ var _ = Describe("mac-pool-map", func() {
 				}),
 		)
 
-		It("Should remove mac entry when running removeMacEntry", func() {
-			for macAddress := range poolManager.macPoolMap {
-				poolManager.macPoolMap.removeMacEntry(macAddress.String())
+		It("Should remove instance's mac entry when running removeInstanceFromMac", func() {
+			for macAddress, macEntries := range poolManager.macPoolMap {
+				for _, entry := range macEntries {
+					poolManager.macPoolMap.removeInstanceFromMac(macAddress.String(), entry.instanceName)
+				}
 				_, exist := poolManager.macPoolMap[macAddress]
-				Expect(exist).To(BeFalse(), "mac entry should be deleted by removeMacEntry")
+				Expect(exist).To(BeFalse(), "mac entry should be deleted after removing all instances")
 			}
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "macPoolMap should be empty after removing all its entries")
+		})
+
+		It("Should remove only specific instance's entry when MAC is shared by multiple instances", func() {
+			macAddr := "02:00:00:00:00:20"
+			vm1Name := "vm/ns1/vm1"
+			vm2Name := "vm/ns2/vm2"
+			vm3Name := "vm/ns3/vm3"
+			ifaceName := "eth0"
+
+			// Setup: Three VMs sharing the same MAC
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm1Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm2Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm3Name, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(3), "should have 3 entries for shared MAC")
+
+			// Remove VM2's entry
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm2Name)
+
+			// Verify VM2's entry was removed
+			entries = poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(2), "should have 2 entries after removing one")
+
+			// Verify VM1 and VM3 still exist
+			vmNames := []string{entries[0].instanceName, entries[1].instanceName}
+			Expect(vmNames).To(ContainElements(vm1Name, vm3Name))
+			Expect(vmNames).NotTo(ContainElement(vm2Name))
+
+			// Remove VM1's entry
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm1Name)
+
+			entries = poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(1), "should have 1 entry after removing second")
+			Expect(entries[0].instanceName).To(Equal(vm3Name))
+
+			// Remove last entry - MAC should be deleted entirely
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm3Name)
+
+			_, exist := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(exist).To(BeFalse(), "MAC should be deleted when last entry is removed")
 		})
 
 		type createOrUpdateInMacPoolMapParams struct {

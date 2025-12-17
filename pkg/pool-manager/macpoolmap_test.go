@@ -138,9 +138,12 @@ var _ = Describe("mac-pool-map", func() {
 		DescribeTable("and performing alignMacEntryAccordingToVmInterface on macPoolMap entry",
 			func(a *alignMacEntryAccordingToVmInterfaceParams) {
 				poolManager.macPoolMap.alignMacEntryAccordingToVmInterface(a.macAddress, a.vmName, a.vmInterfaces)
-				macEntry, exist := poolManager.macPoolMap[NewMacKey(a.macAddress)]
+				entries, exist := poolManager.macPoolMap[NewMacKey(a.macAddress)]
 				Expect(exist).To(Equal(a.expectedExist))
-				Expect(macEntry).To(Equal(a.expectedMacEntry), "should align mac entry according to current interface")
+				if a.expectedExist {
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0]).To(Equal(a.expectedMacEntry), "should align mac entry according to current interface")
+				}
 			},
 			Entry("Should keep the mac entry and remove the transaction timestamp when interface exists in the vm interfaces list",
 				&alignMacEntryAccordingToVmInterfaceParams{

@@ -136,10 +136,17 @@ func (m *macMap) filterMacsThatRequireCommit(latestPersistedTransactionTimeStamp
 // alignMacEntryAccordingToVmInterface compares the mac entry with the current vm yaml interface and aligns itself to it
 func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullName string, vmInterfaces []kubevirt.Interface) {
 	logger := log.WithName("alignMacEntryAccordingToVmInterface")
-	macEntry, _ := m.findByMacAddress(macAddress)
+
+	vmEntry, _, err := m.findByMacAddressAndInstanceName(macAddress, instanceFullName)
+	if err != nil {
+		// No entry for this VM, nothing to align
+		return
+	}
+
+	// Check if the VM's current interfaces still contain this MAC with the same interface name
 	for _, iface := range vmInterfaces {
 		if NewMacKey(iface.MacAddress).String() == macAddress {
-			if iface.Name == macEntry.macInstanceKey {
+			if iface.Name == vmEntry.macInstanceKey {
 				logger.Info("marked mac as allocated", "macAddress", macAddress)
 				m.clearMacTransactionFromMacEntry(macAddress, instanceFullName)
 				return
@@ -147,7 +154,7 @@ func (m *macMap) alignMacEntryAccordingToVmInterface(macAddress, instanceFullNam
 		}
 	}
 
-	// if not match found, then it means that the mac was removed. also remove from macPoolMap
+	// No match found, the mac was removed from this VM
 	logger.Info("released a mac from macMap", "macAddress", macAddress)
 	m.removeInstanceFromMac(macAddress, instanceFullName)
 }

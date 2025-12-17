@@ -497,78 +497,78 @@ var _ = Describe("mac-pool-map", func() {
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &timestampBeforeCurrentTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should only get all pending mac entries if latestPersistedTimestamp equals the current timestamp",
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &currentTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:00"): macEntry{
+						NewMacKey("02:00:00:00:00:00"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:02"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:02"): []macEntry{{
 							instanceName:         "vm/ns2/vm2",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:04"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:04"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should only get all pending mac entries if latestPersistedTimestamp is after current timestamp",
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &newTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:00"): macEntry{
+						NewMacKey("02:00:00:00:00:00"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:02"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:02"): []macEntry{{
 							instanceName:         "vm/ns2/vm2",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:04"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:04"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 		)

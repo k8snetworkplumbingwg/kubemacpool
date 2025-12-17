@@ -118,15 +118,21 @@ func (m *macMap) updateMacTransactionTimestampForUpdatedMacs(instanceFullName st
 func (m *macMap) filterMacsThatRequireCommit(latestPersistedTransactionTimeStamp *time.Time, parentLogger logr.Logger) error {
 	filteredMap := macMap{}
 	parentLogger.V(1).Info("checking macMap Alignment", "macMap", *m, "latestPersistedTransactionTimeStamp", latestPersistedTransactionTimeStamp)
-	for macAddress, macEntry := range *m {
-		if macEntry.hasPendingTransaction() {
-			parentLogger.V(1).Info("macAddress params:", "interfaceName", macEntry.macInstanceKey, "transactionTimeStamp", macEntry.transactionTimestamp)
-			if macEntry.hasReadyTransaction(latestPersistedTransactionTimeStamp) {
-				parentLogger.V(1).Info("macAddress ready for update", "macAddress", macAddress)
-				filteredMap[macAddress] = macEntry
-			} else {
-				parentLogger.V(1).Info("change for mac Address did not persist yet", "macAddress", macAddress)
+	for macAddress, entries := range *m {
+		var filteredEntries []macEntry
+		for _, entry := range entries {
+			if entry.hasPendingTransaction() {
+				parentLogger.V(1).Info("macAddress params:", "interfaceName", entry.macInstanceKey, "transactionTimeStamp", entry.transactionTimestamp)
+				if entry.hasReadyTransaction(latestPersistedTransactionTimeStamp) {
+					parentLogger.V(1).Info("macAddress ready for update", "macAddress", macAddress, "instanceName", entry.instanceName)
+					filteredEntries = append(filteredEntries, entry)
+				} else {
+					parentLogger.V(1).Info("change for mac Address did not persist yet", "macAddress", macAddress, "instanceName", entry.instanceName)
+				}
 			}
+		}
+		if len(filteredEntries) > 0 {
+			filteredMap[macAddress] = filteredEntries
 		}
 	}
 	*m = filteredMap

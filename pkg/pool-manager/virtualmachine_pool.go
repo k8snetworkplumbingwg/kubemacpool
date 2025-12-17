@@ -253,6 +253,24 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		return err
 	}
 
+	if isNotDryRun {
+		p.macPoolMap.createOrUpdateEntry(requestedMac, vmFullName, iface.Name)
+	}
+	logger.V(1).Info("requested mac was allocated for virtual machine", "requestedMap", requestedMac)
+	return nil
+}
+
+// checkRequestedVirtualMachineInterfaceMac checks a requested MAC for duplicates
+// and returns an error if a duplicate is found.
+// This is used during initialization to track existing duplicates in the cluster.
+func (p *PoolManager) checkRequestedVirtualMachineInterfaceMac(vmFullName string, iface kubevirt.Interface, isNotDryRun bool, parentLogger logr.Logger) error {
+	logger := parentLogger.WithName("checkRequestedVirtualMachineInterfaceMac")
+	requestedMac := iface.MacAddress
+
+	if _, err := net.ParseMAC(requestedMac); err != nil {
+		return err
+	}
+
 	if entries, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
 		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, entries) {
 			err := fmt.Errorf("failed to allocate requested mac address")
@@ -263,10 +281,6 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		}
 	}
 
-	if isNotDryRun {
-		p.macPoolMap.createOrUpdateEntry(requestedMac, vmFullName, iface.Name)
-	}
-	logger.V(1).Info("requested mac was allocated for virtual machine", "requestedMap", requestedMac)
 	return nil
 }
 
@@ -322,14 +336,17 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 		}
 
 		if iface.MacAddress != "" {
-			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, true, parentLogger); err != nil {
+			// TODO remove check once gauge is deprecated
+			if err := p.checkRequestedVirtualMachineInterfaceMac(vmFullName, iface, true, parentLogger); err != nil {
 				if strings.Contains(err.Error(), "failed to allocate requested mac address") {
 					gauges.DuplicateMacGauge.Inc()
 				}
-				// Dont return an error here if we can't allocate a mac for a configured vm
-				parentLogger.Error(err, "Invalid/Duplicate mac address for virtual machine",
+				parentLogger.Error(err, "Duplicate mac address for virtual machine",
 					"virtualMachineFullName", vmFullName,
 					"virtualMachineInterfaceMac", iface.MacAddress)
+			}
+			if err := p.allocateRequestedVirtualMachineInterfaceMac(vmFullName, iface, true, parentLogger); err != nil {
+				return err
 			}
 		}
 		return nil

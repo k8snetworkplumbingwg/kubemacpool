@@ -46,8 +46,12 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 		return nil
 	}
 
-	// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
 	if isNotDryRun {
+		if err := checkIntraVMDuplicateMACs(virtualMachine, logger); err != nil {
+			return err
+		}
+
+		// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
 		if err := checkVmForInterfaceDuplication(virtualMachine); err != nil {
 			return err
 		}
@@ -132,8 +136,11 @@ func (p *PoolManager) UpdateMacAddressesForVirtualMachine(previousVirtualMachine
 	}
 	defer p.poolMutex.Unlock()
 
-	// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
 	if isNotDryRun {
+		if err := checkIntraVMDuplicateMACs(virtualMachine, logger); err != nil {
+			return err
+		}
+		// We can't allow for duplicate interfaces names, as interface.Name is macMap's key.
 		if err := checkVmForInterfaceDuplication(virtualMachine); err != nil {
 			return err
 		}
@@ -270,6 +277,28 @@ func macAlreadyBelongsToVmAndInterface(vmFullName, interfaceName string, entries
 		}
 	}
 	return false
+}
+
+func checkIntraVMDuplicateMACs(virtualMachine *kubevirt.VirtualMachine, logger logr.Logger) error {
+	macToInterface := make(map[string]string)
+
+	for _, iface := range virtualMachine.Spec.Template.Spec.Domain.Devices.Interfaces {
+		if iface.MacAddress == "" {
+			continue
+		}
+
+		if _, err := net.ParseMAC(iface.MacAddress); err != nil {
+			return fmt.Errorf("invalid MAC address format for interface %s: %s: %w", iface.Name, iface.MacAddress, err)
+		}
+
+		normalizedMac := NewMacKey(iface.MacAddress).String()
+		if existingInterface, exists := macToInterface[normalizedMac]; exists {
+			return fmt.Errorf("duplicate MAC address %s found on interfaces: %s and %s", normalizedMac, existingInterface, iface.Name)
+		}
+		macToInterface[normalizedMac] = iface.Name
+	}
+
+	return nil
 }
 
 func (p *PoolManager) initVirtualMachineMap() error {

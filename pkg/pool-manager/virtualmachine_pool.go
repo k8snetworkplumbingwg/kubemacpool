@@ -493,24 +493,27 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("healStaleMacEntries")
-	macsToRemove := map[string]string{} // macAddress -> instanceName
-	macsToAlign := map[string]*kubevirt.VirtualMachine{}
-	for macAddress, macEntry := range p.macPoolMap {
-		isEntryStale, err := macEntry.hasExpiredTransaction(p.waitTime)
-		if err == nil && isEntryStale {
-			logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", macEntry.instanceName, "interfaceName", macEntry.macInstanceKey, "stale TS", macEntry.transactionTimestamp)
+	macsToRemove := map[string]string{}                    // macAddress -> instanceName
+	macsToAlign := map[string][]*kubevirt.VirtualMachine{} // macAddress -> []vm
 
-			vm, err := p.getvmInstance(macEntry.instanceName)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
-					macsToRemove[macAddress.String()] = macEntry.instanceName
-					continue
-				} else {
-					return err
+	for macAddress, entries := range p.macPoolMap {
+		for _, entry := range entries {
+			isEntryStale, err := entry.hasExpiredTransaction(p.waitTime)
+			if err == nil && isEntryStale {
+				logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", entry.instanceName, "interfaceName", entry.macInstanceKey, "stale TS", entry.transactionTimestamp)
+
+				vm, err := p.getvmInstance(entry.instanceName)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", entry)
+						macsToRemove[macAddress.String()] = entry.instanceName
+						continue
+					} else {
+						return err
+					}
 				}
+				macsToAlign[macAddress.String()] = append(macsToAlign[macAddress.String()], vm)
 			}
-			macsToAlign[macAddress.String()] = vm
 		}
 	}
 
@@ -521,8 +524,11 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 	for macAddress, instanceName := range macsToRemove {
 		p.macPoolMap.removeInstanceFromMac(macAddress, instanceName)
 	}
-	for macAddress, vm := range macsToAlign {
-		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), getVirtualMachineInterfaces(vm))
+	for macAddress, vms := range macsToAlign {
+		for _, vm := range vms {
+			instanceFullName := VmNamespaced(vm)
+			p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, instanceFullName, getVirtualMachineInterfaces(vm))
+		}
 	}
 
 	logger.V(1).Info("macMap is updated", "macPoolMap", p.macPoolMap)

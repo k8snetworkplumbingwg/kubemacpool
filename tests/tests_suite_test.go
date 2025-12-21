@@ -14,6 +14,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/reporter"
@@ -97,6 +98,30 @@ func dumpKubemacpoolLogs(failureCount int) {
 	}
 
 	if err := logConfigMaps(managerNamespace, failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logVirtualMachines(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logVirtualMachineInstances(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logAllPods(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logNetworkAttachmentDefinitions(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logNamespaces(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logVirtualMachineInstanceMigrations(failureCount); err != nil {
 		fmt.Println(err)
 	}
 }
@@ -239,5 +264,189 @@ func logConfigMaps(namespace string, failureCount int) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("multiple configmap logging errors: %v", errs)
 	}
+	return nil
+}
+
+func logVirtualMachines(failureCount int) error {
+	var errs []error
+	vmList := &kubevirtv1.VirtualMachineList{}
+	err := testClient.CRClient.List(context.TODO(), vmList)
+	if err != nil {
+		return err
+	}
+
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
+		bytes, err := json.MarshalIndent(*vm, "", "  ")
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		err = reporter.LogToFile(fmt.Sprintf("vm_%s_%s", vm.Namespace, vm.Name), string(bytes), artifactDir, failureCount)
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+		events, err := testClient.K8sClient.CoreV1().Events(vm.Namespace).List(context.TODO(), metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=VirtualMachine", vm.Name),
+		})
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		eventBytes, err := json.MarshalIndent(*events, "", "  ")
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		err = reporter.LogToFile(fmt.Sprintf("vm_events_%s_%s", vm.Namespace, vm.Name), string(eventBytes), artifactDir, failureCount)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple VM logging errors: %v", errs)
+	}
+	return nil
+}
+
+func logVirtualMachineInstances(failureCount int) error {
+	vmiList := &kubevirtv1.VirtualMachineInstanceList{}
+	err := testClient.CRClient.List(context.TODO(), vmiList)
+	if err != nil {
+		return err
+	}
+
+	// Log all VMIs to a single file
+	vmiBytes, err := json.MarshalIndent(*vmiList, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal VMI list: %v", err)
+	}
+
+	err = reporter.LogToFile("vmis", string(vmiBytes), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log VMIs: %v", err)
+	}
+
+	// Collect all VMI events
+	var allEvents []corev1.Event
+	for i := range vmiList.Items {
+		vmi := &vmiList.Items[i]
+		events, eventsErr := testClient.K8sClient.CoreV1().Events(vmi.Namespace).List(context.TODO(), metav1.ListOptions{
+			FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=VirtualMachineInstance", vmi.Name),
+		})
+		if eventsErr != nil {
+			return fmt.Errorf("failed to get events for VMI %s/%s: %v", vmi.Namespace, vmi.Name, err)
+		}
+		allEvents = append(allEvents, events.Items...)
+	}
+
+	// Log all VMI events to a single file
+	eventBytes, err := json.MarshalIndent(allEvents, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal VMI events: %v", err)
+	}
+
+	err = reporter.LogToFile("vmi_events", string(eventBytes), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log VMI events: %v", err)
+	}
+
+	return nil
+}
+
+func logAllPods(failureCount int) error {
+	// Log all pods from all namespaces
+	podList, err := testClient.K8sClient.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list all pods: %v", err)
+	}
+
+	podBytes, err := json.MarshalIndent(*podList, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal pod list: %v", err)
+	}
+
+	err = reporter.LogToFile("pods", string(podBytes), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log all pods: %v", err)
+	}
+
+	return nil
+}
+
+func logNetworkAttachmentDefinitions(failureCount int) error {
+	// Log all NADs from all namespaces using REST client
+	result := testClient.K8sClient.ExtensionsV1beta1().RESTClient().
+		Get().
+		RequestURI("/apis/k8s.cni.cncf.io/v1/network-attachment-definitions").
+		Do(context.TODO())
+
+	if result.Error() != nil {
+		return fmt.Errorf("failed to list network attachment definitions: %v", result.Error())
+	}
+
+	nadBytes, err := result.Raw()
+	if err != nil {
+		return fmt.Errorf("failed to get raw NAD response: %v", err)
+	}
+
+	// Pretty print the JSON
+	var prettyJSON bytes.Buffer
+	err = json.Indent(&prettyJSON, nadBytes, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to indent NAD JSON: %v", err)
+	}
+
+	err = reporter.LogToFile("nads", prettyJSON.String(), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log NADs: %v", err)
+	}
+
+	return nil
+}
+
+func logNamespaces(failureCount int) error {
+	// Log all namespaces
+	namespaceList, err := testClient.K8sClient.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list namespaces: %v", err)
+	}
+
+	namespaceBytes, err := json.MarshalIndent(*namespaceList, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal namespace list: %v", err)
+	}
+
+	err = reporter.LogToFile("namespaces", string(namespaceBytes), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log namespaces: %v", err)
+	}
+
+	return nil
+}
+
+func logVirtualMachineInstanceMigrations(failureCount int) error {
+	// Log all VMIMs from all namespaces
+	vmimList := &kubevirtv1.VirtualMachineInstanceMigrationList{}
+	err := testClient.CRClient.List(context.TODO(), vmimList)
+	if err != nil {
+		return fmt.Errorf("failed to list virtual machine instance migrations: %v", err)
+	}
+
+	vmimBytes, err := json.MarshalIndent(*vmimList, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal VMIM list: %v", err)
+	}
+
+	err = reporter.LogToFile("vmims", string(vmimBytes), artifactDir, failureCount)
+	if err != nil {
+		return fmt.Errorf("failed to log VMIMs: %v", err)
+	}
+
 	return nil
 }

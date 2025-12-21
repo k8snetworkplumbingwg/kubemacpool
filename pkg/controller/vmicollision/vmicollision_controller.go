@@ -32,6 +32,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -46,6 +47,7 @@ var log = logf.Log.WithName("VMICollision Controller")
 // PoolManagerInterface defines the methods required by VMICollisionReconciler
 type PoolManagerInterface interface {
 	IsVirtualMachineManaged(namespace string) (bool, error)
+	GetManagedVirtualMachineNamespaces() (map[string]struct{}, error)
 }
 
 // VMICollisionReconciler watches VirtualMachineInstance objects and detects MAC address collisions
@@ -95,7 +97,40 @@ func SetupWithManager(mgr manager.Manager, poolManager *pool_manager.PoolManager
 		return fmt.Errorf("failed to watch VMIs: %w", err)
 	}
 
-	log.Info("Successfully registered VMI collision controller")
+	log.Info("Successfully registered VMI watch with collision-relevant predicates")
+
+	startupChan := make(chan event.GenericEvent, 1000)
+
+	if err := c.Watch(
+		source.Channel(startupChan, &handler.EnqueueRequestForObject{}),
+	); err != nil {
+		return fmt.Errorf("failed to watch startup channel: %w", err)
+	}
+
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		logger := log.WithName("startup-enqueue")
+		logger.Info("Waiting for informer cache to sync")
+
+		if !mgr.GetCache().WaitForCacheSync(ctx) {
+			select {
+			case <-ctx.Done():
+				logger.Info("Context cancelled during cache sync, shutting down startup enqueuing")
+			default:
+				logger.Error(nil, "Cache sync failed, skipping startup collision detection")
+			}
+			return nil
+		}
+
+		logger.Info("Cache synced successfully, enqueuing Running VMIs for collision detection")
+		if err := enqueueAllRunningVMIs(ctx, r.Client, r.poolManager, startupChan, logger); err != nil {
+			logger.Error(err, "Failed to enqueue VMIs at startup, continuing anyway")
+		}
+		return nil
+	})); err != nil {
+		return fmt.Errorf("failed to add startup enqueuer: %w", err)
+	}
+
+	log.Info("Successfully registered startup enqueuing for VMI collision detection")
 	return nil
 }
 
@@ -285,4 +320,51 @@ func (r *VMICollisionReconciler) filterOutUnmanagedNamespaces(collisionCandidate
 	}
 
 	return managedCollisions
+}
+
+func enqueueAllRunningVMIs(ctx context.Context, kubeClient client.Client, poolManager PoolManagerInterface, eventChan chan<- event.GenericEvent, logger logr.Logger) error {
+	logger.Info("Enqueuing all Running VMIs for collision detection")
+
+	managedNamespaces, err := poolManager.GetManagedVirtualMachineNamespaces()
+	if err != nil {
+		logger.Error(err, "Failed to get managed namespaces")
+		return err
+	}
+
+	logger.Info("Retrieved managed namespaces", "count", len(managedNamespaces))
+
+	vmiList := &kubevirtv1.VirtualMachineInstanceList{}
+	if err := kubeClient.List(ctx, vmiList); err != nil {
+		logger.Error(err, "Failed to list VMIs at startup")
+		return err
+	}
+
+	enqueuedCount := 0
+	skippedNotRunning := 0
+	skippedNotManaged := 0
+
+	for i := range vmiList.Items {
+		vmi := &vmiList.Items[i]
+
+		if vmi.Status.Phase != kubevirtv1.Running {
+			skippedNotRunning++
+			continue
+		}
+
+		if _, isManaged := managedNamespaces[vmi.Namespace]; !isManaged {
+			skippedNotManaged++
+			continue
+		}
+
+		eventChan <- event.GenericEvent{Object: vmi}
+		enqueuedCount++
+	}
+
+	logger.Info("Completed enqueuing VMIs for startup collision detection",
+		"totalVMIs", len(vmiList.Items),
+		"enqueued", enqueuedCount,
+		"skippedNotRunning", skippedNotRunning,
+		"skippedNotManaged", skippedNotManaged)
+
+	return nil
 }

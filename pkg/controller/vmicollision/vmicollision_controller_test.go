@@ -13,6 +13,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -27,6 +28,20 @@ func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error
 		return true, nil
 	}
 	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) GetManagedVirtualMachineNamespaces() (map[string]struct{}, error) {
+	result := make(map[string]struct{})
+	if m.managedNamespaces == nil {
+		// Default behavior: all namespaces are managed
+		return result, nil
+	}
+	for ns, managed := range m.managedNamespaces {
+		if managed {
+			result[ns] = struct{}{}
+		}
+	}
+	return result, nil
 }
 
 type MockEventRecorder struct {
@@ -808,6 +823,171 @@ var _ = Describe("VMI Collision Controller", func() {
 					Reason:          "MACCollision",
 					Message:         expectedMessage,
 				}))
+			})
+		})
+	})
+
+	Describe("Startup Enqueuing", func() {
+		Context("enqueueAllRunningVMIs", func() {
+			It("should enqueue all Running VMIs in managed namespaces", func() {
+				vmi1 := newVMI("managed-ns", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI("managed-ns", "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC2))
+
+				mockPoolManager.managedNamespaces = map[string]bool{"managed-ns": true}
+				_, _, fakeClient := setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(HaveLen(2))
+
+				// Verify both VMIs were enqueued
+				enqueuedVMIs := make(map[string]bool)
+				for len(eventChan) > 0 {
+					event := <-eventChan
+					vmi := event.Object.(*kubevirtv1.VirtualMachineInstance)
+					enqueuedVMIs[vmi.Name] = true
+				}
+
+				Expect(enqueuedVMIs).To(HaveKey("vmi1"))
+				Expect(enqueuedVMIs).To(HaveKey("vmi2"))
+			})
+
+			It("should skip VMIs in non-managed namespaces", func() {
+				vmi1 := newVMI("managed-ns", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI("unmanaged-ns", "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC2))
+
+				mockPoolManager.managedNamespaces = map[string]bool{
+					"managed-ns":   true,
+					"unmanaged-ns": false,
+				}
+				_, _, fakeClient := setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(HaveLen(1))
+
+				// Verify only managed VMI was enqueued
+				event := <-eventChan
+				vmi := event.Object.(*kubevirtv1.VirtualMachineInstance)
+				Expect(vmi.Name).To(Equal("vmi1"))
+				Expect(vmi.Namespace).To(Equal("managed-ns"))
+			})
+
+			It("should skip non-Running VMIs", func() {
+				vmi1 := newVMI("managed-ns", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI("managed-ns", "vmi2",
+					withPhase(kubevirtv1.Pending),
+					withMACs(testMAC2))
+				vmi3 := newVMI("managed-ns", "vmi3",
+					withPhase(kubevirtv1.Succeeded),
+					withMACs(testMAC2))
+
+				mockPoolManager.managedNamespaces = map[string]bool{"managed-ns": true}
+				_, _, fakeClient := setupReconciler(mockPoolManager, vmi1, vmi2, vmi3)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(HaveLen(1))
+
+				// Verify only Running VMI was enqueued
+				event := <-eventChan
+				vmi := event.Object.(*kubevirtv1.VirtualMachineInstance)
+				Expect(vmi.Name).To(Equal("vmi1"))
+				Expect(vmi.Status.Phase).To(Equal(kubevirtv1.Running))
+			})
+
+			It("should handle empty cluster", func() {
+				mockPoolManager.managedNamespaces = map[string]bool{"managed-ns": true}
+				_, _, fakeClient := setupReconciler(mockPoolManager)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(BeEmpty())
+			})
+
+			It("should enqueue VMIs across multiple managed namespaces", func() {
+				vmi1 := newVMI("managed-ns1", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI("managed-ns2", "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC2))
+				vmi3 := newVMI("unmanaged-ns", "vmi3",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+
+				mockPoolManager.managedNamespaces = map[string]bool{
+					"managed-ns1":  true,
+					"managed-ns2":  true,
+					"unmanaged-ns": false,
+				}
+				_, _, fakeClient := setupReconciler(mockPoolManager, vmi1, vmi2, vmi3)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(HaveLen(2))
+
+				// Verify correct VMIs were enqueued
+				enqueuedVMIs := make(map[string]bool)
+				for len(eventChan) > 0 {
+					event := <-eventChan
+					vmi := event.Object.(*kubevirtv1.VirtualMachineInstance)
+					enqueuedVMIs[vmi.Namespace+"/"+vmi.Name] = true
+				}
+
+				Expect(enqueuedVMIs).To(HaveKey("managed-ns1/vmi1"))
+				Expect(enqueuedVMIs).To(HaveKey("managed-ns2/vmi2"))
+				Expect(enqueuedVMIs).NotTo(HaveKey("unmanaged-ns/vmi3"))
+			})
+
+			It("should enqueue VMIs with collisions", func() {
+				// Two VMIs with the same MAC in managed namespace
+				vmi1 := newVMI("managed-ns", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI("managed-ns", "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+
+				mockPoolManager.managedNamespaces = map[string]bool{"managed-ns": true}
+				_, _, fakeClient := setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				eventChan := make(chan event.GenericEvent, 10)
+				logger := log.WithName("test")
+
+				Expect(enqueueAllRunningVMIs(ctx, fakeClient, mockPoolManager, eventChan, logger)).To(Succeed())
+				Expect(eventChan).To(HaveLen(2))
+
+				// Verify both VMIs with collision are enqueued
+				enqueuedVMIs := make(map[string]bool)
+				for len(eventChan) > 0 {
+					event := <-eventChan
+					vmi := event.Object.(*kubevirtv1.VirtualMachineInstance)
+					enqueuedVMIs[vmi.Name] = true
+				}
+
+				Expect(enqueuedVMIs).To(HaveKey("vmi1"))
+				Expect(enqueuedVMIs).To(HaveKey("vmi2"))
 			})
 		})
 	})

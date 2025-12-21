@@ -19,10 +19,18 @@ package reporter
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 func LogToFile(topic, logBody, artifactDir string, failureCount int) error {
 	fileName := fmt.Sprintf(artifactDir+"%d_%s.log", failureCount, topic)
+
+	// Ensure parent directory exists (supports subfolders)
+	const dirPermissions = 0755
+	if err := os.MkdirAll(filepath.Dir(fileName), dirPermissions); err != nil {
+		return fmt.Errorf("error creating directory for %v, err %w", fileName, err)
+	}
+
 	file, err := os.Create(fileName)
 	if err != nil {
 		return fmt.Errorf("error creating log file %v, err %w", fileName, err)

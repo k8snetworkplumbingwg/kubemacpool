@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"regexp"
-	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -196,39 +194,6 @@ func initKubemacpoolParams() error {
 		return fmt.Errorf("should succeed resetting the kubemacpool pods: %w", err)
 	}
 	return nil
-}
-
-func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
-	r := regexp.MustCompile(fmt.Sprintf("--%s=(\\d+)", names.WAIT_TIME_ARG))
-	for _, arg := range args {
-		match := r.FindStringSubmatch(arg)
-		if match != nil {
-			waitTimeValue, err := strconv.Atoi(match[1])
-			Expect(err).ToNot(HaveOccurred(), "Should successfully parse wait-time argument")
-			return time.Duration(waitTimeValue) * time.Second, true
-		}
-	}
-
-	return 0, false
-}
-
-func getVMFailCleanupWaitTime() time.Duration {
-	managerDeployment, err := testClient.K8sClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
-		names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
-	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
-	Expect(managerDeployment.Spec.Template.Spec.Containers).ToNot(BeEmpty(), "Manager's deployment should contain containers")
-
-	for _, container := range managerDeployment.Spec.Template.Spec.Containers {
-		if container.Name == deploymentContainerName {
-			if waitTimeDuration, found := getWaitTimeValueFromArguments(container.Args); found {
-				return waitTimeDuration
-			}
-		}
-	}
-
-	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment",
-		deploymentContainerName, names.MANAGER_DEPLOYMENT))
-	return 0
 }
 
 func checkKubemacpoolCrash() error {

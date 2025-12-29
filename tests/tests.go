@@ -192,6 +192,63 @@ func initKubemacpoolParams() error {
 	return nil
 }
 
+func enableKubeVirtFeatureGate(featureGate string) error {
+	kvList := &kubevirtv1.KubeVirtList{}
+	err := testClient.CRClient.List(context.TODO(), kvList)
+	if err != nil {
+		return fmt.Errorf("failed to list KubeVirt resources: %v", err)
+	}
+
+	if len(kvList.Items) == 0 {
+		return fmt.Errorf("no KubeVirt resource found in cluster")
+	}
+
+	kv := &kvList.Items[0]
+	if kv.Spec.Configuration.DeveloperConfiguration == nil {
+		kv.Spec.Configuration.DeveloperConfiguration = &kubevirtv1.DeveloperConfiguration{}
+	}
+
+	// Check if feature gate is already enabled
+	for _, fg := range kv.Spec.Configuration.DeveloperConfiguration.FeatureGates {
+		if fg == featureGate {
+			return nil // Already enabled
+		}
+	}
+
+	// Add the feature gate
+	kv.Spec.Configuration.DeveloperConfiguration.FeatureGates = append(
+		kv.Spec.Configuration.DeveloperConfiguration.FeatureGates,
+		featureGate,
+	)
+
+	err = testClient.CRClient.Update(context.TODO(), kv)
+	if err != nil {
+		return fmt.Errorf("failed to update KubeVirt resource with feature gate %s: %v", featureGate, err)
+	}
+
+	const kvPollingInterval = 10 * time.Second
+	const kvTimeout = 5 * time.Minute
+	Eventually(func() bool {
+		updatedKV := &kubevirtv1.KubeVirt{}
+		err := testClient.CRClient.Get(context.TODO(),
+			client.ObjectKey{Name: kv.Name, Namespace: kv.Namespace},
+			updatedKV)
+		if err != nil {
+			return false
+		}
+
+		for _, condition := range updatedKV.Status.Conditions {
+			if condition.Type == kubevirtv1.KubeVirtConditionAvailable &&
+				condition.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+	}, kvTimeout, kvPollingInterval).Should(BeTrue(),
+		fmt.Sprintf("KubeVirt should become Available after enabling feature gate %s", featureGate))
+	return nil
+}
+
 func checkKubemacpoolCrash() error {
 	kubemacpoolPods, err := getKubemacpoolPods()
 	if err != nil {
@@ -538,14 +595,6 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 										},
 									},
 								},
-								{
-									Name: "cloudinitdisk",
-									DiskDevice: kubevirtv1.DiskDevice{
-										Disk: &kubevirtv1.DiskTarget{
-											Bus: kubevirtv1.VirtIO,
-										},
-									},
-								},
 							},
 						},
 					},
@@ -555,15 +604,7 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 							Name: "containerdisk",
 							VolumeSource: kubevirtv1.VolumeSource{
 								ContainerDisk: &kubevirtv1.ContainerDiskSource{
-									Image: "registry:5000/kubevirt/cirros-container-disk-demo:devel",
-								},
-							},
-						},
-						{
-							Name: "cloudinitdisk",
-							VolumeSource: kubevirtv1.VolumeSource{
-								CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-									UserData: "#!/bin/sh\n\necho 'printed from cloud-init userdata'\n",
+									Image: "quay.io/kubevirt/cirros-container-disk-demo:latest",
 								},
 							},
 						},

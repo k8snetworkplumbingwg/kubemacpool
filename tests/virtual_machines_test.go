@@ -186,25 +186,25 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 				})
 			})
-			Context("and the client tries to assign the same MAC address for two different interfaces in a single VM.", func() {
+			Context("and the client tries to assign the same MAC address for two different interfaces in the same VM.", func() {
 				Context("and when the MAC address is within range", func() {
-					It("[test_id:2199]should reject a VM creation with two interfaces that share the same MAC address", func() {
+					It("[test_id:2199]should reject a VM creation with intra-VM duplicate MAC addresses", func() {
 						var err error
 						vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "02:00:00:00:ff:ff"),
 							newInterface("br2", "02:00:00:00:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 						err = testClient.CRClient.Create(context.TODO(), vm)
 						Expect(err).To(HaveOccurred())
-						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
+						Expect(err).To(MatchError(ContainSubstring("duplicate MAC address")))
 					})
 				})
 				Context("and when the MAC address is out of range", func() {
-					It("[test_id:2200]should reject a VM creation with two interfaces that share the same MAC address", func() {
+					It("[test_id:2200]should reject a VM creation with intra-VM duplicate MAC addresses", func() {
 						var err error
-						vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "03:ff:ff:ff:ff:ff"),
-							newInterface("br2", "03:ff:ff:ff:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
+						vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "06:00:00:00:00:00"),
+							newInterface("br2", "06:00:00:00:00:00")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
 						err = testClient.CRClient.Create(context.TODO(), vm)
 						Expect(err).To(HaveOccurred())
-						Expect(err).To(MatchError(ContainSubstring("failed to allocate requested mac address")))
+						Expect(err).To(MatchError(ContainSubstring("duplicate MAC address")))
 					})
 				})
 			})

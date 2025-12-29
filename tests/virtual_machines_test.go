@@ -25,6 +25,8 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
+const MACAllocationLabel = "mac-allocation"
+
 const timeout = 2 * time.Minute
 const pollingInterval = 5 * time.Second
 const testMacAddress = "02:00:ff:ff:ff:ff"
@@ -122,7 +124,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and a simple vm is applied", func() {
-				It("should not remove the transactions timestamp annotation", func() {
+				It("should not remove the transactions timestamp annotation", Label(MACAllocationLabel), func() {
 					vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
 					err := testClient.CRClient.Create(context.TODO(), vm)
 					Expect(err).ToNot(HaveOccurred())
@@ -140,7 +142,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			Context("and the client tries to assign the same MAC address for two different interfaces in the same VM.", func() {
 				Context("and when the MAC address is within range", func() {
-					It("[test_id:2199]should reject a VM creation with intra-VM duplicate MAC addresses", func() {
+					It("[test_id:2199]should reject a VM creation with intra-VM duplicate MAC addresses", Label(MACAllocationLabel), func() {
 						var err error
 						vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "02:00:00:00:ff:ff"),
 							newInterface("br2", "02:00:00:00:ff:ff")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
@@ -150,7 +152,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 				})
 				Context("and when the MAC address is out of range", func() {
-					It("[test_id:2200]should reject a VM creation with intra-VM duplicate MAC addresses", func() {
+					It("[test_id:2200]should reject a VM creation with intra-VM duplicate MAC addresses", Label(MACAllocationLabel), func() {
 						var err error
 						vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br1", "06:00:00:00:00:00"),
 							newInterface("br2", "06:00:00:00:00:00")}, []kubevirtv1.Network{newNetwork("br1"), newNetwork("br2")})
@@ -162,7 +164,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and we re-apply a VM yaml", func() {
-				It("[test_id:2243]should preserve MAC addresses when re-applying VM", func() {
+				It("[test_id:2243]should preserve MAC addresses when re-applying VM", Label(MACAllocationLabel), func() {
 					intrefaces := make([]kubevirtv1.Interface, 5)
 					networks := make([]kubevirtv1.Network, 5)
 					for i := 0; i < 5; i++ {
@@ -219,7 +221,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(err).ToNot(HaveOccurred())
 						Expect(vm.GetFinalizers()).To(ContainElements(pool_manager.RuntimeObjectFinalizerName), "vm should have a finalizer")
 					})
-					It("should allow vm removal", func() {
+					It("should allow vm removal", Label(MACAllocationLabel), func() {
 						By("deleting the vm")
 						err := testClient.CRClient.Delete(context.TODO(), vm)
 						Expect(err).ToNot(HaveOccurred())
@@ -267,7 +269,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				BeforeEach(func() {
 					optOutNamespaceForVMs(unmanagedNamespace)
 				})
-				It("should create a VM object without a MAC assigned", func() {
+				It("should create a VM object without a MAC assigned", Label(MACAllocationLabel), func() {
 					vm := CreateVMObject(unmanagedNamespace, []kubevirtv1.Interface{newInterface("br", "")},
 						[]kubevirtv1.Network{newNetwork("br")})
 					err := testClient.CRClient.Create(context.TODO(), vm)
@@ -302,7 +304,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						"Should successfully parse mac address")
 				})
 
-				It("should detect duplicate macs gauge after restarting kubemacpool, and then mitigating that", func() {
+				It("should detect duplicate macs gauge after restarting kubemacpool, and then mitigating that", Label(MACAllocationLabel), func() {
 					By("moving the unmanaged namespace to be managed")
 					err := cleanNamespaceLabels(OtherTestNamespace)
 					Expect(err).ToNot(HaveOccurred(), "should be able to remove the namespace labels")

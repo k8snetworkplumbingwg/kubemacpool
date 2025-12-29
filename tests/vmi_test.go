@@ -133,6 +133,144 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						waitForVMIsRunning(conflictingVMIs)
 						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
 					})
+
+					It("should detect collision for 3+ VMIs with same MAC", func() {
+						const sharedMAC = "02:00:00:00:00:10"
+
+						vmi1 := NewVMI(TestNamespace, "test-vmi-multi-1",
+							WithInterface(newInterface(nadName1, sharedMAC)),
+							WithNetwork(newNetwork(nadName1)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed(), "First VMI should be created successfully")
+
+						vmi2 := NewVMI(TestNamespace, "test-vmi-multi-2",
+							WithInterface(newInterface(nadName2, sharedMAC)),
+							WithNetwork(newNetwork(nadName2)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed(), "Second VMI should be created successfully")
+
+						vmi3 := NewVMI(TestNamespace, "test-vmi-multi-3",
+							WithInterface(newInterface(nadName1, sharedMAC)),
+							WithNetwork(newNetwork(nadName1)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi3)).To(Succeed(), "Third VMI should be created successfully")
+
+						normalizedMAC, err := net.ParseMAC(sharedMAC)
+						Expect(err).ToNot(HaveOccurred(), "Should parse shared MAC")
+
+						conflictingVMIs := []vmiReference{
+							{vmi1.Namespace, vmi1.Name},
+							{vmi2.Namespace, vmi2.Name},
+							{vmi3.Namespace, vmi3.Name},
+						}
+
+						waitForVMIsRunning(conflictingVMIs)
+						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+					})
+				})
+			})
+
+			Context("and VMIs have multiple interfaces with partial MAC collisions", Label(MACCollisionDetectionLabel), func() {
+				var net1Name, net2Name, net3Name string
+
+				BeforeEach(func() {
+					net1Name = randName("net1")
+					net2Name = randName("net2")
+					net3Name = randName("net3")
+					By(fmt.Sprintf("Creating network attachment definitions: %s, %s, %s", net1Name, net2Name, net3Name))
+					Expect(createNetworkAttachmentDefinition(TestNamespace, net1Name)).To(Succeed())
+					Expect(createNetworkAttachmentDefinition(TestNamespace, net2Name)).To(Succeed())
+					Expect(createNetworkAttachmentDefinition(TestNamespace, net3Name)).To(Succeed())
+				})
+
+				AfterEach(func() {
+					By("Deleting network attachment definitions")
+					Expect(deleteNetworkAttachmentDefinition(TestNamespace, net1Name)).To(Succeed())
+					Expect(deleteNetworkAttachmentDefinition(TestNamespace, net2Name)).To(Succeed())
+					Expect(deleteNetworkAttachmentDefinition(TestNamespace, net3Name)).To(Succeed())
+				})
+
+				It("should detect collision only for the colliding MAC when VMI has multiple interfaces", func() {
+					const (
+						collidingMAC = "02:00:00:00:00:20"
+						uniqueMAC1   = "02:00:00:00:00:21"
+						uniqueMAC2   = "02:00:00:00:00:22"
+					)
+
+					// VMI1: has collidingMAC and uniqueMAC1
+					vmi1 := NewVMI(TestNamespace, "test-vmi-partial-1",
+						WithInterface(newInterface(net1Name, collidingMAC)),
+						WithNetwork(newNetwork(net1Name)),
+						WithInterface(newInterface(net2Name, uniqueMAC1)),
+						WithNetwork(newNetwork(net2Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					// VMI2: has collidingMAC and uniqueMAC2
+					vmi2 := NewVMI(TestNamespace, "test-vmi-partial-2",
+						WithInterface(newInterface(net1Name, collidingMAC)),
+						WithNetwork(newNetwork(net1Name)),
+						WithInterface(newInterface(net3Name, uniqueMAC2)),
+						WithNetwork(newNetwork(net3Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					conflictingVMIs := []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					}
+
+					waitForVMIsRunning(conflictingVMIs)
+
+					By("Verifying collision event only for the colliding MAC")
+					normalizedCollidingMAC, err := net.ParseMAC(collidingMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					expectMACCollisionEvents(normalizedCollidingMAC.String(), conflictingVMIs)
+				})
+
+				It("should detect multiple collisions on same VMI when it has multiple colliding MACs", func() {
+					const (
+						macA = "02:00:00:00:00:30"
+						macB = "02:00:00:00:00:31"
+					)
+
+					// VMI1: has both macA and macB
+					vmi1 := NewVMI(TestNamespace, "test-vmi-double-1",
+						WithInterface(newInterface(net1Name, macA)),
+						WithNetwork(newNetwork(net1Name)),
+						WithInterface(newInterface(net2Name, macB)),
+						WithNetwork(newNetwork(net2Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					// VMI2: has macA (collides with VMI1)
+					vmi2 := NewVMI(TestNamespace, "test-vmi-double-2",
+						WithInterface(newInterface(net1Name, macA)),
+						WithNetwork(newNetwork(net1Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					// VMI3: has macB (collides with VMI1)
+					vmi3 := NewVMI(TestNamespace, "test-vmi-double-3",
+						WithInterface(newInterface(net2Name, macB)),
+						WithNetwork(newNetwork(net2Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi3)).To(Succeed())
+
+					waitForVMIsRunning([]vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+						{vmi3.Namespace, vmi3.Name},
+					})
+
+					By("Verifying collision events for macA")
+					normalizedMacA, err := net.ParseMAC(macA)
+					Expect(err).ToNot(HaveOccurred())
+					expectMACCollisionEvents(normalizedMacA.String(), []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					})
+
+					By("Verifying collision events for macB")
+					normalizedMacB, err := net.ParseMAC(macB)
+					Expect(err).ToNot(HaveOccurred())
+					expectMACCollisionEvents(normalizedMacB.String(), []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi3.Namespace, vmi3.Name},
+					})
 				})
 			})
 

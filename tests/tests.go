@@ -32,12 +32,8 @@ import (
 )
 
 const (
-	TestNamespace      = "kubemacpool-test"
-	OtherTestNamespace = "kubemacpool-test-alternative"
-	nadPostURL         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition",` +
-		`"metadata":{"name":"%s","namespace":"%s"},` +
-		`"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	TestNamespace                = "kubemacpool-test"
+	OtherTestNamespace           = "kubemacpool-test-alternative"
 	podNamespaceOptInLabel       = "mutatepods.kubemacpool.io"
 	vmNamespaceOptInLabel        = "mutatevirtualmachines.kubemacpool.io"
 	deploymentContainerName      = "manager"
@@ -437,7 +433,8 @@ func getOptMode(webhookName string) (string, error) {
 	return "", fmt.Errorf("webhook %s not found in mutatingWebhookConfiguration", webhookName)
 }
 
-func setWebhookOptMode(webhookName, optMode string) error {
+func setVMWebhookOptMode(optMode string) error {
+	const webhookName = vmNamespaceOptInLabel
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		mutatingWebhook, err := testClient.K8sClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),

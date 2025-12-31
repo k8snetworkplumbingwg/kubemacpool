@@ -246,11 +246,11 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 		return err
 	}
 
-	if macEntry, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
-		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, macEntry) {
+	if entries, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
+		if !macAlreadyBelongsToVmAndInterface(vmFullName, iface.Name, entries) {
 			err := fmt.Errorf("failed to allocate requested mac address")
-			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %s, %s, conflict with: %s, %s",
-				iface.MacAddress, macEntry.instanceName, macEntry.macInstanceKey, vmFullName, iface.Name))
+			logger.Error(err, fmt.Sprintf("mac address %s already allocated to %+v, conflict with: %s:%s",
+				iface.MacAddress, entries, vmFullName, iface.Name))
 
 			return err
 		}
@@ -263,9 +263,11 @@ func (p *PoolManager) allocateRequestedVirtualMachineInterfaceMac(vmFullName str
 	return nil
 }
 
-func macAlreadyBelongsToVmAndInterface(vmFullName, interfaceName string, macEntry macEntry) bool {
-	if macEntry.instanceName == vmFullName && macEntry.macInstanceKey == interfaceName {
-		return true
+func macAlreadyBelongsToVmAndInterface(vmFullName, interfaceName string, entries []macEntry) bool {
+	for _, entry := range entries {
+		if entry.instanceName == vmFullName && entry.macInstanceKey == interfaceName {
+			return true
+		}
 	}
 	return false
 }
@@ -444,7 +446,7 @@ func (p *PoolManager) revertAllocationOnVm(vmName string, allocations map[string
 
 	log.V(1).Info("Revert vm allocation", "vmName", vmName, "allocations", allocations)
 	for _, macAddress := range allocations {
-		p.macPoolMap.removeMacEntry(macAddress)
+		p.macPoolMap.removeInstanceFromMac(macAddress, vmName)
 	}
 }
 
@@ -491,24 +493,27 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 	p.poolMutex.Lock()
 	defer p.poolMutex.Unlock()
 	logger := parentLogger.WithName("healStaleMacEntries")
-	var macsToRemove []string
-	macsToAlign := map[string]*kubevirt.VirtualMachine{}
-	for macAddress, macEntry := range p.macPoolMap {
-		isEntryStale, err := macEntry.hasExpiredTransaction(p.waitTime)
-		if err == nil && isEntryStale {
-			logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", macEntry.instanceName, "interfaceName", macEntry.macInstanceKey, "stale TS", macEntry.transactionTimestamp)
+	macsToRemove := map[string]string{}                    // macAddress -> instanceName
+	macsToAlign := map[string][]*kubevirt.VirtualMachine{} // macAddress -> []vm
 
-			vm, err := p.getvmInstance(macEntry.instanceName)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", macEntry)
-					macsToRemove = append(macsToRemove, macAddress.String())
-					continue
-				} else {
-					return err
+	for macAddress, entries := range p.macPoolMap {
+		for _, entry := range entries {
+			isEntryStale, err := entry.hasExpiredTransaction(p.waitTime)
+			if err == nil && isEntryStale {
+				logger.Info("entry is stale", "macAddress", macAddress, "vmFullName", entry.instanceName, "interfaceName", entry.macInstanceKey, "stale TS", entry.transactionTimestamp)
+
+				vm, err := p.getvmInstance(entry.instanceName)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						logger.Info("vm no longer exists. Removing mac from pool", "macAddress", macAddress, "entry", entry)
+						macsToRemove[macAddress.String()] = entry.instanceName
+						continue
+					} else {
+						return err
+					}
 				}
+				macsToAlign[macAddress.String()] = append(macsToAlign[macAddress.String()], vm)
 			}
-			macsToAlign[macAddress.String()] = vm
 		}
 	}
 
@@ -516,11 +521,14 @@ func (p *PoolManager) healStaleMacEntries(parentLogger logr.Logger) error {
 		return nil
 	}
 	logger.Info("macMap is self healing", "macsToRemove", macsToRemove, "macsToAlign", macsToAlign)
-	for _, macAddress := range macsToRemove {
-		p.macPoolMap.removeMacEntry(macAddress)
+	for macAddress, instanceName := range macsToRemove {
+		p.macPoolMap.removeInstanceFromMac(macAddress, instanceName)
 	}
-	for macAddress, vm := range macsToAlign {
-		p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, VmNamespaced(vm), getVirtualMachineInterfaces(vm))
+	for macAddress, vms := range macsToAlign {
+		for _, vm := range vms {
+			instanceFullName := VmNamespaced(vm)
+			p.macPoolMap.alignMacEntryAccordingToVmInterface(macAddress, instanceFullName, getVirtualMachineInterfaces(vm))
+		}
 	}
 
 	logger.V(1).Info("macMap is updated", "macPoolMap", p.macPoolMap)

@@ -24,36 +24,36 @@ var _ = Describe("mac-pool-map", func() {
 		BeforeEach(func() {
 			poolManager.waitTime = waitTimeSeconds
 			poolManager.macPoolMap = macMap{
-				NewMacKey("02:00:00:00:00:00"): macEntry{
+				NewMacKey("02:00:00:00:00:00"): []macEntry{{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:01"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:01"): []macEntry{{
 					instanceName:         "vm/ns0/vm1",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:02"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:02"): []macEntry{{
 					instanceName:         "vm/ns2/vm2",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:03"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:03"): []macEntry{{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "staleInterface",
 					transactionTimestamp: &staleTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:04"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:04"): []macEntry{{
 					instanceName:         "vm/ns3-4/vm3-4",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: &currentTimestamp,
-				},
-				NewMacKey("02:00:00:00:00:05"): macEntry{
+				}},
+				NewMacKey("02:00:00:00:00:05"): []macEntry{{
 					instanceName:         "vm/default/vm0",
 					macInstanceKey:       "validInterface",
 					transactionTimestamp: nil,
-				},
+				}},
 			}
 		})
 
@@ -76,54 +76,54 @@ var _ = Describe("mac-pool-map", func() {
 				&filterInByInstanceNameParams{
 					vmName: "vm/default/vm0",
 					expectedVmMacMap: &macMap{
-						NewMacKey("02:00:00:00:00:00"): macEntry{
+						NewMacKey("02:00:00:00:00:00"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:05"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:05"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: nil,
-						},
+						}},
 					},
 				}),
 			Entry("Should return sub map of vm name: vm/ns0/vm1",
 				&filterInByInstanceNameParams{
 					vmName: "vm/ns0/vm1",
 					expectedVmMacMap: &macMap{
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should return sub map of vm name: vm/ns2/vm2",
 				&filterInByInstanceNameParams{
 					vmName: "vm/ns2/vm2",
 					expectedVmMacMap: &macMap{
-						NewMacKey("02:00:00:00:00:02"): macEntry{
+						NewMacKey("02:00:00:00:00:02"): []macEntry{{
 							instanceName:         "vm/ns2/vm2",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should return sub map of vm name: vm/ns3-4/vm3-4",
 				&filterInByInstanceNameParams{
 					vmName: "vm/ns3-4/vm3-4",
 					expectedVmMacMap: &macMap{
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:04"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:04"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 		)
@@ -138,9 +138,12 @@ var _ = Describe("mac-pool-map", func() {
 		DescribeTable("and performing alignMacEntryAccordingToVmInterface on macPoolMap entry",
 			func(a *alignMacEntryAccordingToVmInterfaceParams) {
 				poolManager.macPoolMap.alignMacEntryAccordingToVmInterface(a.macAddress, a.vmName, a.vmInterfaces)
-				macEntry, exist := poolManager.macPoolMap[NewMacKey(a.macAddress)]
+				entries, exist := poolManager.macPoolMap[NewMacKey(a.macAddress)]
 				Expect(exist).To(Equal(a.expectedExist))
-				Expect(macEntry).To(Equal(a.expectedMacEntry), "should align mac entry according to current interface")
+				if a.expectedExist {
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0]).To(Equal(a.expectedMacEntry), "should align mac entry according to current interface")
+				}
 			},
 			Entry("Should keep the mac entry and remove the transaction timestamp when interface exists in the vm interfaces list",
 				&alignMacEntryAccordingToVmInterfaceParams{
@@ -189,8 +192,17 @@ var _ = Describe("mac-pool-map", func() {
 					Expect(err).ToNot(HaveOccurred(), "should not fail updating macEntry")
 
 					for _, macAddress := range u.updatedInterfaceMap {
-						Expect(poolManager.macPoolMap[NewMacKey(macAddress)].transactionTimestamp).To(Equal(u.transactionTimestamp))
-						Expect(poolManager.macPoolMap[NewMacKey(macAddress)].instanceName).To(Equal(u.vmName))
+						entries := poolManager.macPoolMap[NewMacKey(macAddress)]
+						Expect(entries).ToNot(BeEmpty(), "mac entry should exist")
+						found := false
+						for _, entry := range entries {
+							if entry.instanceName == u.vmName {
+								Expect(entry.transactionTimestamp).To(Equal(u.transactionTimestamp))
+								found = true
+								break
+							}
+						}
+						Expect(found).To(BeTrue(), "entry for vm should exist")
 					}
 				}
 			},
@@ -225,54 +237,71 @@ var _ = Describe("mac-pool-map", func() {
 		)
 
 		type clearMacTransactionFromMacEntryParams struct {
-			macAddress string
+			macAddress       string
+			instanceFullName string
 		}
 		DescribeTable("and performing clearMacTransactionFromMacEntry on macPoolMap entry",
 			func(c *clearMacTransactionFromMacEntryParams) {
-				macPoolMapCopy := map[macKey]macEntry{}
-				for macAddress, macEntry := range poolManager.macPoolMap {
-					macPoolMapCopy[macAddress] = macEntry
+				macPoolMapCopy := map[macKey][]macEntry{}
+				for macAddress, entries := range poolManager.macPoolMap {
+					entriesCopy := make([]macEntry, len(entries))
+					copy(entriesCopy, entries)
+					macPoolMapCopy[macAddress] = entriesCopy
 				}
 
-				poolManager.macPoolMap.clearMacTransactionFromMacEntry(c.macAddress)
-				for macAddress, originalMacEntry := range macPoolMapCopy {
-					updatedMacEntry, exist := poolManager.macPoolMap[macAddress]
-					Expect(exist).To(BeTrue(), fmt.Sprintf("mac %s's entry should not be deleted from macPoolMap after running clearMacTransactionFromMacEntry", macAddress))
+				poolManager.macPoolMap.clearMacTransactionFromMacEntry(c.macAddress, c.instanceFullName)
+				for macAddress, originalEntries := range macPoolMapCopy {
+					updatedEntries, exist := poolManager.macPoolMap[macAddress]
+					Expect(exist).To(BeTrue(), fmt.Sprintf("mac %s's entries should not be deleted from macPoolMap after running clearMacTransactionFromMacEntry", macAddress))
+					Expect(updatedEntries).To(HaveLen(len(originalEntries)), fmt.Sprintf("mac %s should have same number of entries", macAddress))
+
 					if macAddress.String() == c.macAddress {
-						expectedMacEntry := macEntry{
-							instanceName:         originalMacEntry.instanceName,
-							macInstanceKey:       originalMacEntry.macInstanceKey,
-							transactionTimestamp: nil,
+						for i, originalEntry := range originalEntries {
+							if originalEntry.instanceName == c.instanceFullName {
+								expectedEntry := macEntry{
+									instanceName:         originalEntry.instanceName,
+									macInstanceKey:       originalEntry.macInstanceKey,
+									transactionTimestamp: nil,
+								}
+								Expect(updatedEntries[i]).To(Equal(expectedEntry), fmt.Sprintf("cleaned mac entry %s for instance %s should only remove transactionTimestamp", macAddress, c.instanceFullName))
+							} else {
+								Expect(updatedEntries[i]).To(Equal(originalEntry), fmt.Sprintf("other entries for mac %s should remain unchanged", macAddress))
+							}
 						}
-						Expect(updatedMacEntry).To(Equal(expectedMacEntry), fmt.Sprintf("cleaned mac entry %s should only remove transactionTimestamp from entry", macAddress))
 					} else {
-						Expect(updatedMacEntry).To(Equal(originalMacEntry), fmt.Sprintf("untouched mac entry %s should remain the same", macAddress))
+						Expect(updatedEntries).To(Equal(originalEntries), fmt.Sprintf("untouched mac %s entries should remain the same", macAddress))
 					}
 				}
 			},
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:00",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:00",
+					macAddress:       "02:00:00:00:00:00",
+					instanceFullName: "vm/default/vm0",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:01",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:01",
+					macAddress:       "02:00:00:00:00:01",
+					instanceFullName: "vm/ns0/vm1",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:02",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:02",
+					macAddress:       "02:00:00:00:00:02",
+					instanceFullName: "vm/ns2/vm2",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:03",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:03",
+					macAddress:       "02:00:00:00:00:03",
+					instanceFullName: "vm/ns3-4/vm3-4",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:04",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:04",
+					macAddress:       "02:00:00:00:00:04",
+					instanceFullName: "vm/ns3-4/vm3-4",
 				}),
 			Entry("Should only remove the timestamp from the mac entry mac: 02:00:00:00:00:05",
 				&clearMacTransactionFromMacEntryParams{
-					macAddress: "02:00:00:00:00:05",
+					macAddress:       "02:00:00:00:00:05",
+					instanceFullName: "vm/default/vm0",
 				}),
 		)
 
@@ -283,9 +312,14 @@ var _ = Describe("mac-pool-map", func() {
 		}
 		DescribeTable("and performing findByMacAddress on macPoolMap",
 			func(f *findByMacAddressParams) {
-				macEntry, exist := poolManager.macPoolMap.findByMacAddress(f.macAddress)
+				entries, exist := poolManager.macPoolMap.findByMacAddress(f.macAddress)
 				Expect(exist).To(Equal(f.shouldExist), fmt.Sprintf("mac %s's entry existance should be as expected", f.macAddress))
-				Expect(macEntry).To(Equal(f.expectedEntry), fmt.Sprintf("mac %s's entry should be as expected", f.macAddress))
+				if f.shouldExist {
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0]).To(Equal(f.expectedEntry), fmt.Sprintf("mac %s's entry should be as expected", f.macAddress))
+				} else {
+					Expect(entries).To(BeEmpty())
+				}
 			},
 			Entry("Should not find non existent mac: 02:00:00:00:00:0F",
 				&findByMacAddressParams{
@@ -325,13 +359,56 @@ var _ = Describe("mac-pool-map", func() {
 				}),
 		)
 
-		It("Should remove mac entry when running removeMacEntry", func() {
-			for macAddress := range poolManager.macPoolMap {
-				poolManager.macPoolMap.removeMacEntry(macAddress.String())
+		It("Should remove instance's mac entry when running removeInstanceFromMac", func() {
+			for macAddress, macEntries := range poolManager.macPoolMap {
+				for _, entry := range macEntries {
+					poolManager.macPoolMap.removeInstanceFromMac(macAddress.String(), entry.instanceName)
+				}
 				_, exist := poolManager.macPoolMap[macAddress]
-				Expect(exist).To(BeFalse(), "mac entry should be deleted by removeMacEntry")
+				Expect(exist).To(BeFalse(), "mac entry should be deleted after removing all instances")
 			}
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "macPoolMap should be empty after removing all its entries")
+		})
+
+		It("Should remove only specific instance's entry when MAC is shared by multiple instances", func() {
+			macAddr := "02:00:00:00:00:20"
+			vm1Name := "vm/ns1/vm1"
+			vm2Name := "vm/ns2/vm2"
+			vm3Name := "vm/ns3/vm3"
+			ifaceName := "eth0"
+
+			// Setup: Three VMs sharing the same MAC
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm1Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm2Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm3Name, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(3), "should have 3 entries for shared MAC")
+
+			// Remove VM2's entry
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm2Name)
+
+			// Verify VM2's entry was removed
+			entries = poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(2), "should have 2 entries after removing one")
+
+			// Verify VM1 and VM3 still exist
+			vmNames := []string{entries[0].instanceName, entries[1].instanceName}
+			Expect(vmNames).To(ContainElements(vm1Name, vm3Name))
+			Expect(vmNames).NotTo(ContainElement(vm2Name))
+
+			// Remove VM1's entry
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm1Name)
+
+			entries = poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(1), "should have 1 entry after removing second")
+			Expect(entries[0].instanceName).To(Equal(vm3Name))
+
+			// Remove last entry - MAC should be deleted entirely
+			poolManager.macPoolMap.removeInstanceFromMac(macAddr, vm3Name)
+
+			_, exist := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(exist).To(BeFalse(), "MAC should be deleted when last entry is removed")
 		})
 
 		type createOrUpdateInMacPoolMapParams struct {
@@ -342,14 +419,24 @@ var _ = Describe("mac-pool-map", func() {
 		DescribeTable("and adding a new mac to macPoolMap",
 			func(c *createOrUpdateInMacPoolMapParams) {
 				poolManager.macPoolMap.createOrUpdateEntry(c.macAddress, c.vmName, c.interfaceName)
-				updatedMacEntry, exist := poolManager.macPoolMap[NewMacKey(c.macAddress)]
+				updatedMacEntries, exist := poolManager.macPoolMap[NewMacKey(c.macAddress)]
 				Expect(exist).To(BeTrue(), "mac entry should exist after added/updated")
-				expectedMacEntry := macEntry{
-					instanceName:         c.vmName,
-					macInstanceKey:       c.interfaceName,
-					transactionTimestamp: nil,
+
+				// Find the entry for this VM+interface
+				found := false
+				for _, entry := range updatedMacEntries {
+					if entry.instanceName == c.vmName && entry.macInstanceKey == c.interfaceName {
+						expectedMacEntry := macEntry{
+							instanceName:         c.vmName,
+							macInstanceKey:       c.interfaceName,
+							transactionTimestamp: nil,
+						}
+						Expect(entry).To(Equal(expectedMacEntry), "macEntry should be added/updated")
+						found = true
+						break
+					}
 				}
-				Expect(updatedMacEntry).To(Equal(expectedMacEntry), "macEntry should be added/updated")
+				Expect(found).To(BeTrue(), "entry for VM+interface should exist")
 			},
 			Entry("Should succeed Adding a mac if mac is not in macPoolMap",
 				&createOrUpdateInMacPoolMapParams{
@@ -365,6 +452,37 @@ var _ = Describe("mac-pool-map", func() {
 				}),
 		)
 
+		It("should not create duplicate entries when called twice with same VM+interface", func() {
+			macAddr := "02:00:00:00:00:10"
+			vmName := "vm/test/vm1"
+			ifaceName := "eth0"
+
+			// Call twice
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vmName, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vmName, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(1), "should only have one entry, not duplicates")
+			Expect(entries[0].instanceName).To(Equal(vmName))
+			Expect(entries[0].macInstanceKey).To(Equal(ifaceName))
+		})
+
+		It("should allow multiple VMs to share same MAC with different entries", func() {
+			macAddr := "02:00:00:00:00:11"
+			vm1Name := "vm/ns1/vm1"
+			vm2Name := "vm/ns2/vm2"
+			ifaceName := "eth0"
+
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm1Name, ifaceName)
+			poolManager.macPoolMap.createOrUpdateEntry(macAddr, vm2Name, ifaceName)
+
+			entries := poolManager.macPoolMap[NewMacKey(macAddr)]
+			Expect(entries).To(HaveLen(2), "should have two entries for two different VMs")
+
+			vmNames := []string{entries[0].instanceName, entries[1].instanceName}
+			Expect(vmNames).To(ContainElements(vm1Name, vm2Name))
+		})
+
 		type filterMacsThatRequireCommitParams struct {
 			latestPersistedTimestamp *time.Time
 			expectedMacMap           macMap
@@ -379,78 +497,78 @@ var _ = Describe("mac-pool-map", func() {
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &timestampBeforeCurrentTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should only get all pending mac entries if latestPersistedTimestamp equals the current timestamp",
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &currentTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:00"): macEntry{
+						NewMacKey("02:00:00:00:00:00"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:02"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:02"): []macEntry{{
 							instanceName:         "vm/ns2/vm2",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:04"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:04"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 			Entry("Should only get all pending mac entries if latestPersistedTimestamp is after current timestamp",
 				&filterMacsThatRequireCommitParams{
 					latestPersistedTimestamp: &newTimestamp,
 					expectedMacMap: macMap{
-						NewMacKey("02:00:00:00:00:00"): macEntry{
+						NewMacKey("02:00:00:00:00:00"): []macEntry{{
 							instanceName:         "vm/default/vm0",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:01"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:01"): []macEntry{{
 							instanceName:         "vm/ns0/vm1",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:02"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:02"): []macEntry{{
 							instanceName:         "vm/ns2/vm2",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:03"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:03"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "staleInterface",
 							transactionTimestamp: &staleTimestamp,
-						},
-						NewMacKey("02:00:00:00:00:04"): macEntry{
+						}},
+						NewMacKey("02:00:00:00:00:04"): []macEntry{{
 							instanceName:         "vm/ns3-4/vm3-4",
 							macInstanceKey:       "validInterface",
 							transactionTimestamp: &currentTimestamp,
-						},
+						}},
 					},
 				}),
 		)

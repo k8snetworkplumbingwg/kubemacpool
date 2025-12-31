@@ -86,10 +86,10 @@ type macEntry struct {
 	transactionTimestamp *time.Time
 }
 
-type macMap map[macKey]macEntry
+type macMap map[macKey][]macEntry
 
 func (m macMap) MarshalJSON() ([]byte, error) {
-	mm := make(map[string]macEntry, len(m))
+	mm := make(map[string][]macEntry, len(m))
 	for k, v := range m {
 		mm[k.String()] = v
 	}

@@ -148,10 +148,17 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 		}
 		return nil
 	}
-	if macEntry, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
-		if !macAlreadyBelongsToPodAndNetwork(podFullName, network.Name, macEntry) {
+	if entries, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
+		if !macAlreadyBelongsToPodAndNetwork(podFullName, network.Name, entries) {
 			err := fmt.Errorf("failed to allocate requested mac address")
-			log.Error(err, "mac address already allocated")
+			conflictInfo := ""
+			for _, entry := range entries {
+				if conflictInfo != "" {
+					conflictInfo += ", "
+				}
+				conflictInfo += fmt.Sprintf("%s:%s", entry.instanceName, entry.macInstanceKey)
+			}
+			log.Error(err, fmt.Sprintf("mac address already allocated to [%s]", conflictInfo))
 
 			return err
 		}
@@ -306,13 +313,15 @@ func (p *PoolManager) initPodMap() error {
 	return nil
 }
 
-func macAlreadyBelongsToPodAndNetwork(podFullName, networkName string, macEntry macEntry) bool {
-	if macEntry.instanceName == tempPodName {
-		// do not block macs with not yet updated pod names.
-		return false
-	}
-	if macEntry.instanceName == podFullName && macEntry.macInstanceKey == networkName {
-		return true
+func macAlreadyBelongsToPodAndNetwork(podFullName, networkName string, entries []macEntry) bool {
+	for _, entry := range entries {
+		if entry.instanceName == tempPodName {
+			// do not block macs with not yet updated pod names.
+			return false
+		}
+		if entry.instanceName == podFullName && entry.macInstanceKey == networkName {
+			return true
+		}
 	}
 	return false
 }
@@ -323,9 +332,9 @@ func (p *PoolManager) revertAllocationOnPod(podFullName string, allocations map[
 		return
 	}
 
-	log.V(1).Info("Revert vm allocation", "podFullName", podFullName, "allocations", allocations)
+	log.V(1).Info("Revert pod allocation", "podFullName", podFullName, "allocations", allocations)
 	for _, macAddress := range allocations {
-		p.macPoolMap.removeMacEntry(macAddress)
+		p.macPoolMap.removeInstanceFromMac(macAddress, podFullName)
 	}
 }
 

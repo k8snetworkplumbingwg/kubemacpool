@@ -198,14 +198,15 @@ var _ = Describe("Pool", func() {
 				})
 				It("Should initialize the macPoolmap only with macs on the mananged pods", func() {
 					Expect(poolManager.macPoolMap).To(HaveLen(1))
-					entry, exist := poolManager.macPoolMap[NewMacKey(managedNamespaceMAC)]
+					entries, exist := poolManager.macPoolMap[NewMacKey(managedNamespaceMAC)]
 					Expect(exist).To(BeTrue(), "should include the mac allocated by the managed pod")
+					Expect(entries).To(HaveLen(1))
 					expectMacEntry := macEntry{
 						instanceName:         fmt.Sprintf("pod/%s/%s", managedPodWithMacAllocated.Namespace, managedPodWithMacAllocated.Name),
 						macInstanceKey:       "ovs-conf",
 						transactionTimestamp: nil,
 					}
-					Expect(entry).To(Equal(expectMacEntry))
+					Expect(entries[0]).To(Equal(expectMacEntry))
 				})
 
 			})
@@ -555,9 +556,10 @@ var _ = Describe("Pool", func() {
 				err := poolManager.AllocateVirtualMachineMac(vm, &vmCreationTimestamp, true, logger)
 				Expect(err).ToNot(HaveOccurred())
 				allocatedMac = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
-				macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+				entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 				Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap")
-				Expect(macEntry.transactionTimestamp).To(Equal(&vmCreationTimestamp), "mac Entry should update transaction timestamp")
+				Expect(entries).To(HaveLen(1))
+				Expect(entries[0].transactionTimestamp).To(Equal(&vmCreationTimestamp), "mac Entry should update transaction timestamp")
 
 				By("simulating the vm creation as persisted")
 				vmLastPersistedTransactionTimestampAnnotation = &vmCreationTimestamp
@@ -565,9 +567,10 @@ var _ = Describe("Pool", func() {
 				By("marking the vm mac as allocated")
 				err = poolManager.MarkVMAsReady(vm, vmLastPersistedTransactionTimestampAnnotation, log.WithName("fake-Reconcile"))
 				Expect(err).ToNot(HaveOccurred(), "should mark allocated macs as valid")
-				macEntry, exist = poolManager.macPoolMap[NewMacKey(allocatedMac)]
+				entries, exist = poolManager.macPoolMap[NewMacKey(allocatedMac)]
 				Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap")
-				Expect(macEntry.transactionTimestamp).To(BeNil(), "mac Entry should update transaction timestamp")
+				Expect(entries).To(HaveLen(1))
+				Expect(entries[0].transactionTimestamp).To(BeNil(), "mac Entry should update transaction timestamp")
 			})
 			Context("and a first update is set to the vm after the vm creation persisted, removing the mac", func() {
 				BeforeEach(func() {
@@ -578,9 +581,10 @@ var _ = Describe("Pool", func() {
 					By("updating the vm, removing the interface")
 					err := poolManager.UpdateMacAddressesForVirtualMachine(vm, vmFirstUpdate, &vmFirstUpdateTimestamp, true, logger)
 					Expect(err).ToNot(HaveOccurred(), "should update vm with no error")
-					macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+					entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 					Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap after first update")
-					Expect(macEntry.transactionTimestamp).To(Equal(&vmFirstUpdateTimestamp), "mac Entry should update transaction timestamp")
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0].transactionTimestamp).To(Equal(&vmFirstUpdateTimestamp), "mac Entry should update transaction timestamp")
 
 					By("simulating the vm first update as persisted")
 					vmLastPersistedTransactionTimestampAnnotation = &vmFirstUpdateTimestamp
@@ -601,9 +605,10 @@ var _ = Describe("Pool", func() {
 						By("updating the vm, removing the interface")
 						err := poolManager.UpdateMacAddressesForVirtualMachine(vmFirstUpdate, vmSecondUpdate, &vmSecondUpdateTimestamp, true, logger)
 						Expect(err).ToNot(HaveOccurred(), "should update vm with no error")
-						macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+						entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 						Expect(exist).To(BeTrue(), "mac should be updated in the macPoolMap after first update")
-						Expect(macEntry.transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should update transaction timestamp")
+						Expect(entries).To(HaveLen(1))
+						Expect(entries[0].transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should update transaction timestamp")
 					})
 					Context("and the first update's controller reconcile is set before second update is persisted", func() {
 						BeforeEach(func() {
@@ -615,9 +620,10 @@ var _ = Describe("Pool", func() {
 							Expect(err).ToNot(HaveOccurred(), "should not mark vm as ready with no errors")
 						})
 						It("Should keep the entry since the last persisted timestamp annotation is still prior to the mac's transaction timestamp", func() {
-							macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+							entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 							Expect(exist).To(BeTrue(), "mac should be in macMap until last update is persisted to make sure mac is safe from collisions from other updates")
-							Expect(macEntry.transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should not change until change is persisted")
+							Expect(entries).To(HaveLen(1))
+							Expect(entries[0].transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should not change until change is persisted")
 						})
 					})
 					Context("and the first update's controller reconcile is set after the second update is persisted", func() {
@@ -630,9 +636,10 @@ var _ = Describe("Pool", func() {
 							Expect(err).ToNot(HaveOccurred(), "should not mark vm as ready with no errors")
 						})
 						It("Should update the entry since the last persisted timestamp annotation is equal or later than the mac's transaction timestamp", func() {
-							macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+							entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 							Expect(exist).To(BeTrue(), "mac should be in macMap since the last persisted change includes this mac")
-							Expect(macEntry.transactionTimestamp).To(BeNil(), "mac Entry should change to ready after change persisted")
+							Expect(entries).To(HaveLen(1))
+							Expect(entries[0].transactionTimestamp).To(BeNil(), "mac Entry should change to ready after change persisted")
 						})
 					})
 					Context("and the first update's controller reconcile is set and the second update is rejected", func() {
@@ -645,9 +652,10 @@ var _ = Describe("Pool", func() {
 							Expect(err).ToNot(HaveOccurred(), "should not mark vm as ready with no errors")
 						})
 						It("Should keep the entry until a newer change is persisted or until the entry goes stale and removed by handleStaleLegacyConfigMapEntries", func() {
-							macEntry, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+							entries, exist := poolManager.macPoolMap[NewMacKey(allocatedMac)]
 							Expect(exist).To(BeTrue(), "mac should be in macMap until last update is persisted to make sure mac is safe from collisions from other updates")
-							Expect(macEntry.transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should not change")
+							Expect(entries).To(HaveLen(1))
+							Expect(entries[0].transactionTimestamp).To(Equal(&vmSecondUpdateTimestamp), "mac Entry should not change")
 						})
 					})
 				})
@@ -681,7 +689,9 @@ var _ = Describe("Pool", func() {
 
 			It("should set a mac in pool cache with updated transaction timestamp", func() {
 				Expect(poolManager.macPoolMap).To(HaveLen(1), "macPoolMap should hold the mac address waiting for approval")
-				Expect(poolManager.macPoolMap[NewMacKey(allocatedMac)]).To(Equal(expectedMacEntry), "macPoolMap's mac's entry should be as expected")
+				entries := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+				Expect(entries).To(HaveLen(1))
+				Expect(entries[0]).To(Equal(expectedMacEntry), "macPoolMap's mac's entry should be as expected")
 			})
 			Context("and creating a dry run VM", func() {
 				var macPoolMapCopy macMap
@@ -722,7 +732,9 @@ var _ = Describe("Pool", func() {
 
 				It("should properly update the pool cache after vm creation", func() {
 					By("check allocated pool is populated and set to AllocationStatusAllocated status")
-					Expect(poolManager.macPoolMap[NewMacKey(allocatedMac)]).To(Equal(expectedMacEntry), "updated macPoolMap's mac's entry should remove transaction timestamp")
+					entries := poolManager.macPoolMap[NewMacKey(allocatedMac)]
+					Expect(entries).To(HaveLen(1))
+					Expect(entries[0]).To(Equal(expectedMacEntry), "updated macPoolMap's mac's entry should remove transaction timestamp")
 				})
 				It("should check no mac is inserted if the pool does not contain the mac address", func() {
 					By("deleting the mac from the pool")
@@ -761,7 +773,9 @@ var _ = Describe("Pool", func() {
 				instanceName:         podNamespaced(&newPod),
 				macInstanceKey:       "ovs-conf",
 			}
-			Expect(poolManager.macPoolMap[NewMacKey(allocatedMAC)]).To(Equal(expectedMacEntry))
+			entries := poolManager.macPoolMap[NewMacKey(allocatedMAC)]
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0]).To(Equal(expectedMacEntry))
 
 			err = poolManager.ReleaseAllPodMacs(podNamespaced(&newPod))
 			Expect(err).ToNot(HaveOccurred())
@@ -1104,26 +1118,32 @@ func createPoolManager(startMacAddr, endMacAddr string, optMode OptMode, fakeObj
 	return poolManager
 }
 
-func checkMacPoolMapEntries(macPoolMap map[macKey]macEntry, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
+func checkMacPoolMapEntries(macPoolMap macMap, updatedTransactionTimestamp *time.Time, updatedMacs, notUpdatedMacs []string) error {
 	if len(macPoolMap) != len(updatedMacs)+len(notUpdatedMacs) {
 		return fmt.Errorf("mac pool size %d is not as expected %d, should only contain MACs %v, macPoolMap %+v", len(macPoolMap), len(updatedMacs)+len(notUpdatedMacs), append(updatedMacs, notUpdatedMacs...), macPoolMap)
 	}
 	for _, macAddress := range updatedMacs {
-		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		entries, exist := macPoolMap[NewMacKey(macAddress)]
 		if !exist {
 			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
 		}
-		if macEntry.transactionTimestamp != updatedTransactionTimestamp {
-			return fmt.Errorf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
+		if len(entries) != 1 {
+			return fmt.Errorf("mac %s should have exactly one entry, has %d", macAddress, len(entries))
+		}
+		if entries[0].transactionTimestamp != updatedTransactionTimestamp {
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should have an updated transactionTimestamp %s", macAddress, entries[0].transactionTimestamp, updatedTransactionTimestamp)
 		}
 	}
 	for _, macAddress := range notUpdatedMacs {
-		macEntry, exist := macPoolMap[NewMacKey(macAddress)]
+		entries, exist := macPoolMap[NewMacKey(macAddress)]
 		if !exist {
 			return fmt.Errorf("mac %s should exist in macPoolMap %v", macAddress, macPoolMap)
 		}
-		if macEntry.transactionTimestamp == updatedTransactionTimestamp {
-			return fmt.Errorf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, macEntry.transactionTimestamp, updatedTransactionTimestamp)
+		if len(entries) != 1 {
+			return fmt.Errorf("mac %s should have exactly one entry, has %d", macAddress, len(entries))
+		}
+		if entries[0].transactionTimestamp == updatedTransactionTimestamp {
+			return fmt.Errorf("mac %s has transactionTimestamp %s, should not have an updated transactionTimestamp %s", macAddress, entries[0].transactionTimestamp, updatedTransactionTimestamp)
 		}
 	}
 	return nil

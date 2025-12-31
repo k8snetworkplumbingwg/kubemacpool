@@ -235,6 +235,76 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 
+			Context("and a VM is rebooted", Label(MACCollisionDetectionLabel), func() {
+				var nadName string
+
+				BeforeEach(func() {
+					nadName = randName("br-reboot")
+					By(fmt.Sprintf("Creating network attachment definition: %s", nadName))
+					Expect(createNetworkAttachmentDefinition(TestNamespace, nadName)).To(Succeed())
+				})
+
+				AfterEach(func() {
+					By("Deleting network attachment definition")
+					Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName)).To(Succeed())
+				})
+
+				It("should not report collision when VM with set MAC is rebooted", func() {
+					const vmMAC = "02:00:00:00:00:99"
+
+					By("Creating VM with RunStrategy Always and set MAC")
+					vm := CreateVMObject(TestNamespace,
+						[]kubevirtv1.Interface{newInterface(nadName, vmMAC)},
+						[]kubevirtv1.Network{newNetwork(nadName)})
+					runStrategyAlways := kubevirtv1.RunStrategyAlways
+					vm.Spec.RunStrategy = &runStrategyAlways
+					Expect(testClient.CRClient.Create(context.TODO(), vm)).To(Succeed())
+
+					By("Waiting for initial VMI to reach Running phase")
+					vmNamespace := vm.Namespace
+					vmName := vm.Name
+					var initialVMIUID string
+					Eventually(func() kubevirtv1.VirtualMachineInstancePhase {
+						phase := getVMIPhase(vmNamespace, vmName)
+						if phase == kubevirtv1.Running {
+							// Capture the UID of the initial VMI
+							vmi := &kubevirtv1.VirtualMachineInstance{}
+							err := testClient.CRClient.Get(context.TODO(),
+								client.ObjectKey{Namespace: vmNamespace, Name: vmName}, vmi)
+							if err == nil {
+								initialVMIUID = string(vmi.UID)
+							}
+						}
+						return phase
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(Equal(kubevirtv1.Running))
+
+					By(fmt.Sprintf("Initial VMI is running with UID: %s", initialVMIUID))
+
+					By("Restarting the VM")
+					Expect(restartVirtualMachine(vmNamespace, vmName)).To(Succeed())
+
+					By("Waiting for VMI to be restarted (UID should change)")
+					var newVMIUID string
+					Eventually(func(g Gomega) {
+						vmi := &kubevirtv1.VirtualMachineInstance{}
+						err := testClient.CRClient.Get(context.TODO(),
+							client.ObjectKey{Namespace: vmNamespace, Name: vmName}, vmi)
+						g.Expect(err).ToNot(HaveOccurred())
+
+						// Only consider it restarted if it's Running AND has a different UID
+						g.Expect(vmi.Status.Phase).To(Equal(kubevirtv1.Running))
+						newVMIUID = string(vmi.UID)
+						g.Expect(newVMIUID).ToNot(Equal(initialVMIUID))
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(Succeed(), "VMI should be restarted with new UID and reach Running phase")
+
+					By(fmt.Sprintf("New VMI is running with UID: %s (old UID was: %s)", newVMIUID, initialVMIUID))
+
+					By("Verifying that the new VMI does not have collision events")
+					vmiRef := []vmiReference{{vmNamespace, vmName}}
+					expectNoMACCollisionEvents(vmiRef, "after VM reboot")
+				})
+			})
+
 		})
 
 		Context("When all the VMs are not serviced by default (opt-in mode)", Label("vm-opt-in"), func() {

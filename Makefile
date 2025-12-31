@@ -42,6 +42,7 @@ export E2E_TEST_TIMEOUT ?= 100m
 E2E_TEST_ARGS ?= $(strip -test.v -test.timeout=$(E2E_TEST_TIMEOUT) -ginkgo.timeout=$(E2E_TEST_TIMEOUT) -ginkgo.v $(E2E_TEST_EXTRA_ARGS))
 
 export KUBECTL ?= cluster/kubectl.sh
+VIRTCTL := $(BIN_DIR)/virtctl
 
 all: generate
 
@@ -52,8 +53,17 @@ $(GO):
 test: $(GO)
 	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
 
-functest: $(GO)
+functest: $(GO) virtctl
 	GO=$(GO) TEST_ARGS="$(E2E_TEST_ARGS)" ./hack/functest.sh
+
+.PHONY: virtctl
+virtctl: $(VIRTCTL)
+$(VIRTCTL):
+	@echo "Installing virtctl..."
+	@mkdir -p $(BIN_DIR)
+	@export VERSION=$$(curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt) && \
+	wget -q https://github.com/kubevirt/kubevirt/releases/download/$${VERSION}/virtctl-$${VERSION}-linux-amd64 -O $(VIRTCTL) && \
+	chmod +x $(VIRTCTL)
 
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy

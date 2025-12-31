@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
 	"time"
 
@@ -246,6 +247,15 @@ func enableKubeVirtFeatureGate(featureGate string) error {
 		return false
 	}, kvTimeout, kvPollingInterval).Should(BeTrue(),
 		fmt.Sprintf("KubeVirt should become Available after enabling feature gate %s", featureGate))
+	return nil
+}
+
+func restartVirtualMachine(namespace, name string) error {
+	cmd := exec.Command("virtctl", "restart", name, "-n", namespace)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to restart VM %s/%s: %v, output: %s", namespace, name, err, string(output))
+	}
 	return nil
 }
 

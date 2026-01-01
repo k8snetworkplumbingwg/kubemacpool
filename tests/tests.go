@@ -5,9 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
-	"regexp"
-	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -34,12 +33,8 @@ import (
 )
 
 const (
-	TestNamespace      = "kubemacpool-test"
-	OtherTestNamespace = "kubemacpool-test-alternative"
-	nadPostURL         = "/apis/k8s.cni.cncf.io/v1/namespaces/%s/network-attachment-definitions/%s"
-	linuxBridgeConfCRD = `{"apiVersion":"k8s.cni.cncf.io/v1","kind":"NetworkAttachmentDefinition",` +
-		`"metadata":{"name":"%s","namespace":"%s"},` +
-		`"spec":{"config":"{ \"cniVersion\": \"0.3.1\", \"type\": \"bridge\", \"bridge\": \"br1\"}"}}`
+	TestNamespace                = "kubemacpool-test"
+	OtherTestNamespace           = "kubemacpool-test-alternative"
 	podNamespaceOptInLabel       = "mutatepods.kubemacpool.io"
 	vmNamespaceOptInLabel        = "mutatevirtualmachines.kubemacpool.io"
 	deploymentContainerName      = "manager"
@@ -198,37 +193,70 @@ func initKubemacpoolParams() error {
 	return nil
 }
 
-func getWaitTimeValueFromArguments(args []string) (time.Duration, bool) {
-	r := regexp.MustCompile(fmt.Sprintf("--%s=(\\d+)", names.WAIT_TIME_ARG))
-	for _, arg := range args {
-		match := r.FindStringSubmatch(arg)
-		if match != nil {
-			waitTimeValue, err := strconv.Atoi(match[1])
-			Expect(err).ToNot(HaveOccurred(), "Should successfully parse wait-time argument")
-			return time.Duration(waitTimeValue) * time.Second, true
+func enableKubeVirtFeatureGate(featureGate string) error {
+	kvList := &kubevirtv1.KubeVirtList{}
+	err := testClient.CRClient.List(context.TODO(), kvList)
+	if err != nil {
+		return fmt.Errorf("failed to list KubeVirt resources: %v", err)
+	}
+
+	if len(kvList.Items) == 0 {
+		return fmt.Errorf("no KubeVirt resource found in cluster")
+	}
+
+	kv := &kvList.Items[0]
+	if kv.Spec.Configuration.DeveloperConfiguration == nil {
+		kv.Spec.Configuration.DeveloperConfiguration = &kubevirtv1.DeveloperConfiguration{}
+	}
+
+	// Check if feature gate is already enabled
+	for _, fg := range kv.Spec.Configuration.DeveloperConfiguration.FeatureGates {
+		if fg == featureGate {
+			return nil // Already enabled
 		}
 	}
 
-	return 0, false
-}
+	// Add the feature gate
+	kv.Spec.Configuration.DeveloperConfiguration.FeatureGates = append(
+		kv.Spec.Configuration.DeveloperConfiguration.FeatureGates,
+		featureGate,
+	)
 
-func getVMFailCleanupWaitTime() time.Duration {
-	managerDeployment, err := testClient.K8sClient.AppsV1().Deployments(managerNamespace).Get(context.TODO(),
-		names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
-	Expect(err).ToNot(HaveOccurred(), "Should successfully get manager's Deployment")
-	Expect(managerDeployment.Spec.Template.Spec.Containers).ToNot(BeEmpty(), "Manager's deployment should contain containers")
+	err = testClient.CRClient.Update(context.TODO(), kv)
+	if err != nil {
+		return fmt.Errorf("failed to update KubeVirt resource with feature gate %s: %v", featureGate, err)
+	}
 
-	for _, container := range managerDeployment.Spec.Template.Spec.Containers {
-		if container.Name == deploymentContainerName {
-			if waitTimeDuration, found := getWaitTimeValueFromArguments(container.Args); found {
-				return waitTimeDuration
+	const kvPollingInterval = 10 * time.Second
+	const kvTimeout = 5 * time.Minute
+	Eventually(func() bool {
+		updatedKV := &kubevirtv1.KubeVirt{}
+		err := testClient.CRClient.Get(context.TODO(),
+			client.ObjectKey{Name: kv.Name, Namespace: kv.Namespace},
+			updatedKV)
+		if err != nil {
+			return false
+		}
+
+		for _, condition := range updatedKV.Status.Conditions {
+			if condition.Type == kubevirtv1.KubeVirtConditionAvailable &&
+				condition.Status == corev1.ConditionTrue {
+				return true
 			}
 		}
-	}
+		return false
+	}, kvTimeout, kvPollingInterval).Should(BeTrue(),
+		fmt.Sprintf("KubeVirt should become Available after enabling feature gate %s", featureGate))
+	return nil
+}
 
-	Fail(fmt.Sprintf("Failed to find wait-time argument in %s container inside %s deployment",
-		deploymentContainerName, names.MANAGER_DEPLOYMENT))
-	return 0
+func restartVirtualMachine(namespace, name string) error {
+	cmd := exec.Command("virtctl", "restart", name, "-n", namespace)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to restart VM %s/%s: %v, output: %s", namespace, name, err, string(output))
+	}
+	return nil
 }
 
 func checkKubemacpoolCrash() error {
@@ -472,7 +500,8 @@ func getOptMode(webhookName string) (string, error) {
 	return "", fmt.Errorf("webhook %s not found in mutatingWebhookConfiguration", webhookName)
 }
 
-func setWebhookOptMode(webhookName, optMode string) error {
+func setVMWebhookOptMode(optMode string) error {
+	const webhookName = vmNamespaceOptInLabel
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		mutatingWebhook, err := testClient.K8sClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
@@ -576,14 +605,6 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 										},
 									},
 								},
-								{
-									Name: "cloudinitdisk",
-									DiskDevice: kubevirtv1.DiskDevice{
-										Disk: &kubevirtv1.DiskTarget{
-											Bus: kubevirtv1.VirtIO,
-										},
-									},
-								},
 							},
 						},
 					},
@@ -593,15 +614,7 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 							Name: "containerdisk",
 							VolumeSource: kubevirtv1.VolumeSource{
 								ContainerDisk: &kubevirtv1.ContainerDiskSource{
-									Image: "registry:5000/kubevirt/cirros-container-disk-demo:devel",
-								},
-							},
-						},
-						{
-							Name: "cloudinitdisk",
-							VolumeSource: kubevirtv1.VolumeSource{
-								CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-									UserData: "#!/bin/sh\n\necho 'printed from cloud-init userdata'\n",
+									Image: "quay.io/kubevirt/cirros-container-disk-demo:latest",
 								},
 							},
 						},

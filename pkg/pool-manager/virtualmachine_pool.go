@@ -566,6 +566,12 @@ func (p *PoolManager) IsVirtualMachineManaged(namespaceName string) (bool, error
 	return p.IsNamespaceManaged(namespaceName, virtualMachnesWebhookName)
 }
 
+// GetManagedVirtualMachineNamespaces returns all namespaces managed by the VirtualMachine webhook
+// This is useful for batch operations to avoid repeatedly checking each namespace
+func (p *PoolManager) GetManagedVirtualMachineNamespaces() (map[string]struct{}, error) {
+	return p.getManagedNamespaces(virtualMachnesWebhookName)
+}
+
 func VmNamespaced(machine *kubevirt.VirtualMachine) string {
 	return fmt.Sprintf("vm/%s/%s", machine.Namespace, machine.Name)
 }

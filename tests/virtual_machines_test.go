@@ -863,6 +863,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					err = testClient.CRClient.Delete(context.TODO(), conflictingVM)
 					Expect(err).ToNot(HaveOccurred())
 
+					By("waiting for VM to be fully deleted")
+					Eventually(func() bool {
+						err = testClient.CRClient.Get(context.TODO(),
+							client.ObjectKey{Namespace: conflictingVM.Namespace, Name: conflictingVM.Name}, conflictingVM)
+						return apierrors.IsNotFound(err)
+					}, timeout, pollingInterval).Should(BeTrue(), "conflicting VM should be deleted")
+
 					By("restarting Kubemacpool")
 					err = initKubemacpoolParams()
 					Expect(err).ToNot(HaveOccurred())

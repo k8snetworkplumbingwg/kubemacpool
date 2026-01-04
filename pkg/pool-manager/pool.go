@@ -56,19 +56,21 @@ var log = logf.Log.WithName("PoolManager")
 var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
-	cachedKubeClient client.Client
-	kubeClient       client.Client
-	rangeStart       net.HardwareAddr // fist mac in range
-	rangeEnd         net.HardwareAddr // last mac in range
-	currentMac       net.HardwareAddr // last given mac
-	managerNamespace string
-	macPoolMap       macMap                       // allocated mac map and macEntry
-	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	poolMutex        sync.Mutex                   // mutex for allocation an release
-	rangeMutex       sync.RWMutex                 // mutex for range operations to support dynamic updates
-	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
-	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
-	isPoolReady      atomic.Bool                  // indicates whether the pool manager has completed initialization
+	cachedKubeClient       client.Client
+	kubeClient             client.Client
+	rangeStart             net.HardwareAddr // fist mac in range
+	rangeEnd               net.HardwareAddr // last mac in range
+	currentMac             net.HardwareAddr // last given mac
+	managerNamespace       string
+	macPoolMap             macMap                       // allocated mac map and macEntry
+	podToMacPoolMap        map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	collidingObjectsPerMAC map[string][]ObjectReference // track objects with colliding MACs: {"mac": [ObjectReference]}
+	collisionGauge         CollisionGauge               // gauge for tracking MAC collisions
+	poolMutex              sync.Mutex                   // mutex for allocation an release
+	rangeMutex             sync.RWMutex                 // mutex for range operations to support dynamic updates
+	isKubevirt             bool                         // bool if kubevirt virtualmachine crd exist in the cluster
+	waitTime               int                          // Duration in second to free macs of allocated vms that failed to start.
+	isPoolReady            atomic.Bool                  // indicates whether the pool manager has completed initialization
 }
 
 type OptMode string
@@ -109,6 +111,7 @@ func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rang
 		poolMutex:        sync.Mutex{},
 		rangeMutex:       sync.RWMutex{},
 		waitTime:         waitTime,
+		collisionGauge:   NewCollisionGauge(),
 	}
 
 	// Use UpdateRanges to set initial ranges with proper validation

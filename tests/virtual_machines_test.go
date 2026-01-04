@@ -5,22 +5,16 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
 
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
@@ -422,55 +416,3 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 		})
 	})
 })
-
-func getMetrics(token string) (string, error) {
-	podList, err := getManagerPods()
-	if err != nil {
-		return "", err
-	}
-
-	bearer := "Authorization: Bearer " + token
-	stdout, _, err := kubectl.Kubectl("exec", "-n", managerNamespace, podList.Items[0].Name, "--",
-		"curl", "-s", "-k", "--header", bearer, "https://127.0.0.1:8443/metrics")
-
-	return stdout, err
-}
-
-func getManagerPods() (*v1.PodList, error) {
-	deployment, err := testClient.K8sClient.AppsV1().Deployments(managerNamespace).Get(
-		context.TODO(), names.MANAGER_DEPLOYMENT, metav1.GetOptions{})
-	if err != nil {
-		return nil, err
-	}
-
-	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
-	podList, err := testClient.K8sClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
-		metav1.ListOptions{LabelSelector: labelSelector})
-	if err != nil {
-		return nil, err
-	}
-
-	return podList, err
-}
-
-func findMetric(metrics, expectedMetric string) string {
-	for _, line := range strings.Split(metrics, "\n") {
-		if strings.HasPrefix(line, expectedMetric+" ") {
-			return line
-		}
-	}
-
-	return ""
-}
-
-func getPrometheusToken() (token, stderr string, err error) {
-	const (
-		monitoringNamespace = "monitoring"
-		prometheusPod       = "prometheus-k8s-0"
-		container           = "prometheus"
-		tokenPath           = "/var/run/secrets/kubernetes.io/serviceaccount/token" // #nosec G101 --
-		// Standard Kubernetes service account token path, not hardcoded credentials
-	)
-
-	return kubectl.Kubectl("exec", "-n", monitoringNamespace, prometheusPod, "-c", container, "--", "cat", tokenPath)
-}

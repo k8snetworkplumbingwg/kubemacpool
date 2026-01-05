@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -278,6 +279,103 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					})
 					expectMACCollisionGauge(normalizedMacB.String(), 2)
 				})
+
+				It("[test_id:2164]should clear collision when colliding VMI is deleted", Label(MetricsLabel), func() {
+					const sharedMAC = "02:00:00:00:00:40"
+
+					vmi1 := NewVMI(TestNamespace, "test-vmi-delete-1",
+						WithInterface(newInterface(net1Name, sharedMAC)),
+						WithNetwork(newNetwork(net1Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					vmi2 := NewVMI(TestNamespace, "test-vmi-delete-2",
+						WithInterface(newInterface(net2Name, sharedMAC)),
+						WithNetwork(newNetwork(net2Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					normalizedMAC, err := net.ParseMAC(sharedMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					waitForVMIsRunning([]vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					})
+
+					By("Verifying collision is detected")
+					expectMACCollisionGauge(normalizedMAC.String(), 2)
+
+					By("Deleting one of the colliding VMIs")
+					Expect(testClient.CRClient.Delete(context.TODO(), vmi1)).To(Succeed())
+
+					By("Waiting for VMI to be deleted")
+					Eventually(func() bool {
+						return apierrors.IsNotFound(testClient.CRClient.Get(context.TODO(), client.ObjectKey{
+							Namespace: vmi1.Namespace,
+							Name:      vmi1.Name,
+						}, &kubevirtv1.VirtualMachineInstance{}))
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeTrue())
+
+					By("Verifying collision is cleared")
+					expectMACCollisionGauge(normalizedMAC.String(), 0)
+				})
+
+				It("[test_id:2995]should clear only specific collision where one of multiple colliding VMIs is deleted",
+					Label(MetricsLabel), func() {
+						const (
+							macA = "02:00:00:00:00:50"
+							macB = "02:00:00:00:00:51"
+						)
+
+						// VMI1: has both macA and macB - will be involved in two collisions
+						vmi1 := NewVMI(TestNamespace, "test-vmi-multi-collision-1",
+							WithInterface(newInterface(net1Name, macA)),
+							WithNetwork(newNetwork(net1Name)),
+							WithInterface(newInterface(net2Name, macB)),
+							WithNetwork(newNetwork(net2Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+						// VMI2: has macA - collides with VMI1 on macA
+						vmi2 := NewVMI(TestNamespace, "test-vmi-multi-collision-2",
+							WithInterface(newInterface(net1Name, macA)),
+							WithNetwork(newNetwork(net1Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+						// VMI3: has macB - collides with VMI1 on macB
+						vmi3 := NewVMI(TestNamespace, "test-vmi-multi-collision-3",
+							WithInterface(newInterface(net2Name, macB)),
+							WithNetwork(newNetwork(net2Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi3)).To(Succeed())
+
+						normalizedMacA, err := net.ParseMAC(macA)
+						Expect(err).ToNot(HaveOccurred())
+						normalizedMacB, err := net.ParseMAC(macB)
+						Expect(err).ToNot(HaveOccurred())
+
+						waitForVMIsRunning([]vmiReference{
+							{vmi1.Namespace, vmi1.Name},
+							{vmi2.Namespace, vmi2.Name},
+							{vmi3.Namespace, vmi3.Name},
+						})
+
+						By("Verifying both collisions are detected")
+						expectMACCollisionGauge(normalizedMacA.String(), 2)
+						expectMACCollisionGauge(normalizedMacB.String(), 2)
+
+						By("Deleting VMI2 (involved only in macA collision)")
+						Expect(testClient.CRClient.Delete(context.TODO(), vmi2)).To(Succeed())
+
+						By("Waiting for VMI2 to be deleted")
+						Eventually(func() bool {
+							return apierrors.IsNotFound(testClient.CRClient.Get(context.TODO(), client.ObjectKey{
+								Namespace: vmi2.Namespace,
+								Name:      vmi2.Name,
+							}, &kubevirtv1.VirtualMachineInstance{}))
+						}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeTrue())
+
+						By("Verifying macA collision is cleared but macB collision remains")
+						expectMACCollisionGauge(normalizedMacA.String(), 0)
+						expectMACCollisionGauge(normalizedMacB.String(), 2)
+					})
 			})
 
 			Context("and when restarting kubeMacPool and trying to create a VMI with the same manually configured MAC as an older VMI", func() {

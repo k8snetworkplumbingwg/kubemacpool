@@ -223,3 +223,34 @@ func (p *PromClient) IsAlertFiring(alertName string) bool {
 	}
 	return alert != nil && alert.State == promApiv1.AlertStateFiring
 }
+
+// patchPrometheusForKubemacpool patches the Prometheus instance to include kubemacpool PrometheusRules and ServiceMonitors,
+// then restarts the Prometheus pod to pick up the new configuration and RBAC permissions.
+func patchPrometheusForKubemacpool() error {
+	// Patch ruleSelector to load our PrometheusRule
+	_, stderr, err := kubectl.Kubectl("patch", "prometheus", "k8s", "-n", prometheusMonitoringNamespace, "--type=json", "-p",
+		`[{"op": "replace", "path": "/spec/ruleSelector", "value":{"matchLabels": {"prometheus.kubemacpool.io": "true"}}}]`)
+	if err != nil {
+		return fmt.Errorf("failed to patch ruleSelector: %s: %w", stderr, err)
+	}
+
+	// Patch serviceMonitorSelector to scrape our metrics
+	_, stderr, err = kubectl.Kubectl("patch", "prometheus", "k8s", "-n", prometheusMonitoringNamespace, "--type=json", "-p",
+		`[{"op": "replace", "path": "/spec/serviceMonitorSelector", "value":{"matchLabels": {"prometheus.kubemacpool.io": "true"}}}]`)
+	if err != nil {
+		return fmt.Errorf("failed to patch serviceMonitorSelector: %s: %w", stderr, err)
+	}
+
+	// Restart Prometheus to pick up new configuration and RBAC permissions
+	_, stderr, err = kubectl.Kubectl("rollout", "restart", "statefulset/prometheus-k8s", "-n", prometheusMonitoringNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to rollout prometheus: %s: %w", stderr, err)
+	}
+
+	_, stderr, err = kubectl.Kubectl("rollout", "status", "statefulset/prometheus-k8s", "-n", prometheusMonitoringNamespace, "--timeout=120s")
+	if err != nil {
+		return fmt.Errorf("failed to wait for prometheus rollout: %s: %w", stderr, err)
+	}
+
+	return nil
+}

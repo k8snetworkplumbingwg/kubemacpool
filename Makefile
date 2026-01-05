@@ -111,7 +111,18 @@ install-deep-copy: $(GO)
 generate-go: install-deep-copy fmt vet manifests
 	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
-generate: generate-go generate-deploy generate-test generate-external
+generate-monitoring: $(GO)
+	$(GO) run tools/prom-rule-ci/generate-rules.go -namespace kubemacpool-system -output config/monitoring/prometheus-rule.yaml
+
+verify-monitoring: $(GO) generate-monitoring
+	@if git diff --exit-code config/monitoring/prometheus-rule.yaml; then \
+		echo "PrometheusRule is up to date"; \
+	else \
+		echo "Error: PrometheusRule is out of date. Please run 'make generate-monitoring'"; \
+		exit 1; \
+	fi
+
+generate: generate-go generate-deploy generate-test generate-external generate-monitoring
 
 check: $(GO)
 	./hack/check.sh

@@ -186,6 +186,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				// Note: source VMI no longer exists after cross-namespace migration completes
 				expectNoMACCollisionEvents([]vmiReference{{targetVMINamespace, targetVMIName}},
 					"VMI is part of cross-namespace migration")
+				expectNoMACCollisionGaugeConsistently(sharedMAC)
 			})
 		})
 	})

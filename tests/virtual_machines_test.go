@@ -293,6 +293,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					By("Verifying that the new VMI does not have collision events")
 					vmiRef := []vmiReference{{vmNamespace, vmName}}
 					expectNoMACCollisionEvents(vmiRef, "after VM reboot")
+					expectNoMACCollisionGaugeConsistently(vmMAC)
 				})
 			})
 

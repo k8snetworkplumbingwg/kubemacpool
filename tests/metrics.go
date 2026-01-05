@@ -18,6 +18,8 @@ package tests
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
@@ -27,6 +29,8 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
 )
+
+const macCollisionMetric = "kmp_mac_collisions"
 
 func getMetrics(token string) (string, error) {
 	podList, err := getManagerPods()
@@ -66,6 +70,49 @@ func findMetric(metrics, expectedMetric string) string {
 	}
 
 	return ""
+}
+
+func findMetricWithMAC(metrics, metricName, mac string) string {
+	prefix := fmt.Sprintf(`%s{mac=%q}`, metricName, strings.ToLower(mac))
+	for _, line := range strings.Split(metrics, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+	return ""
+}
+
+// getMACCollisionCount returns the collision count for a specific MAC address.
+// Returns 0 if the MAC is not found in the metrics (no collision).
+func getMACCollisionCount(mac string) (int, error) {
+	token, stderr, err := getPrometheusToken()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get prometheus token: %s: %w", stderr, err)
+	}
+
+	metrics, err := getMetrics(token)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get metrics: %w", err)
+	}
+
+	line := findMetricWithMAC(metrics, macCollisionMetric, mac)
+	if line == "" {
+		return 0, nil // MAC not found means no collision tracked
+	}
+
+	// Parse value from line like: kmp_mac_collisions{mac="aa:bb:cc:dd:ee:ff"} 2
+	const expectedParts = 2
+	parts := strings.Split(line, "} ")
+	if len(parts) != expectedParts {
+		return 0, fmt.Errorf("unexpected metric format: %s", line)
+	}
+
+	count, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse metric value: %w", err)
+	}
+
+	return count, nil
 }
 
 func getPrometheusToken() (token, stderr string, err error) {

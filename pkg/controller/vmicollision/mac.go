@@ -16,9 +16,14 @@ limitations under the License.
 
 package vmicollision
 
-import "strings"
+import "net"
 
-// NormalizeMacAddress normalizes a MAC address string to lowercase for comparison.
-func NormalizeMacAddress(macAddress string) string {
-	return strings.ToLower(macAddress)
+// NormalizeMacAddress parses and normalizes a MAC address string for comparison.
+// Returns the normalized MAC address string and an error if parsing fails.
+func NormalizeMacAddress(macAddress string) (string, error) {
+	mac, err := net.ParseMAC(macAddress)
+	if err != nil {
+		return "", err
+	}
+	return mac.String(), nil
 }

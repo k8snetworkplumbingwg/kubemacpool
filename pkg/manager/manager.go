@@ -90,12 +90,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	}
 
 	for k.continueToRunManager {
-		err = k.initRuntimeManager()
+		isKubevirtInstalled := checkForKubevirt(k.clientset)
+
+		err = k.initRuntimeManager(isKubevirtInstalled)
 		if err != nil {
 			return errors.Wrap(err, "unable to set up manager")
 		}
 
-		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		log.Info("Building client")
 
 		client, err := client.New(k.config, client.Options{
@@ -162,12 +163,12 @@ func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
 	return false
 }
 
-func (k *KubeMacPoolManager) initRuntimeManager() error {
-	log.Info("Setting up Manager")
+func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error {
+	log.Info("Setting up Manager", "isKubevirtInstalled", isKubevirtInstalled)
 	var err error
 
 	// Register kubevirt types in the scheme before creating the manager
-	// This is required because we reference VMI in the cache config
+	// This is required because we reference VMI in the cache config when kubevirt is installed
 	if err := kubevirt_api.AddToScheme(scheme.Scheme); err != nil {
 		return errors.Wrap(err, "unable to register kubevirt scheme")
 	}
@@ -182,10 +183,16 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 				},
 				Field: configMapNameFieldSelector,
 			},
-			&kubevirt_api.VirtualMachineInstance{}: {
-				Transform: vmicollision.StripVMIForCollisionDetection,
-			},
 		},
+	}
+
+	// Only configure VMI cache when kubevirt is installed, otherwise
+	// manager.New() fails on REST mapping discovery for the missing CRD
+	// When kubevirt is installed then the Manager will restart.
+	if isKubevirtInstalled {
+		cacheOptions.ByObject[&kubevirt_api.VirtualMachineInstance{}] = cache.ByObject{
+			Transform: vmicollision.StripVMIForCollisionDetection,
+		}
 	}
 
 	k.runtimeManager, err = manager.New(k.config, manager.Options{

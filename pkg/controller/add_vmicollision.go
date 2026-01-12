@@ -28,5 +28,9 @@ func init() {
 }
 
 func addVMICollisionController(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	return vmicollision.SetupWithManager(mgr, poolManager)
+	if poolManager.IsKubevirtEnabled() {
+		return vmicollision.SetupWithManager(mgr, poolManager)
+	}
+
+	return nil
 }

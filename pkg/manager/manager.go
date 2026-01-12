@@ -26,6 +26,7 @@ import (
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -90,12 +91,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	}
 
 	for k.continueToRunManager {
-		err = k.initRuntimeManager()
+		isKubevirtInstalled := checkForKubevirt(k.clientset.Discovery())
+
+		err = k.initRuntimeManager(isKubevirtInstalled)
 		if err != nil {
 			return errors.Wrap(err, "unable to set up manager")
 		}
 
-		isKubevirtInstalled := checkForKubevirt(k.clientset)
 		log.Info("Building client")
 
 		client, err := client.New(k.config, client.Options{
@@ -153,21 +155,25 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 	return nil
 }
 
-func checkForKubevirt(kubeClient *kubernetes.Clientset) bool {
-	result := kubeClient.ExtensionsV1beta1().RESTClient().Get().RequestURI("/apis/apiextensions.k8s.io/v1/customresourcedefinitions/virtualmachines.kubevirt.io").Do(context.TODO())
-	if result.Error() == nil {
-		return true
+func checkForKubevirt(discoveryClient discovery.DiscoveryInterface) bool {
+	resourceList, err := discoveryClient.ServerResourcesForGroupVersion("kubevirt.io/v1")
+	if err != nil {
+		return false
 	}
-
+	for _, resource := range resourceList.APIResources {
+		if resource.Name == "virtualmachines" {
+			return true
+		}
+	}
 	return false
 }
 
-func (k *KubeMacPoolManager) initRuntimeManager() error {
-	log.Info("Setting up Manager")
+func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error {
+	log.Info("Setting up Manager", "isKubevirtInstalled", isKubevirtInstalled)
 	var err error
 
 	// Register kubevirt types in the scheme before creating the manager
-	// This is required because we reference VMI in the cache config
+	// This is required because we reference VMI in the cache config when kubevirt is installed
 	if err := kubevirt_api.AddToScheme(scheme.Scheme); err != nil {
 		return errors.Wrap(err, "unable to register kubevirt scheme")
 	}
@@ -182,10 +188,16 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 				},
 				Field: configMapNameFieldSelector,
 			},
-			&kubevirt_api.VirtualMachineInstance{}: {
-				Transform: vmicollision.StripVMIForCollisionDetection,
-			},
 		},
+	}
+
+	// Only configure VMI cache when kubevirt is installed, otherwise
+	// manager.New() fails on REST mapping discovery for the missing CRD
+	// When kubevirt is installed then the Manager will restart.
+	if isKubevirtInstalled {
+		cacheOptions.ByObject[&kubevirt_api.VirtualMachineInstance{}] = cache.ByObject{
+			Transform: vmicollision.StripVMIForCollisionDetection,
+		}
 	}
 
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
@@ -201,7 +213,7 @@ func (k *KubeMacPoolManager) initRuntimeManager() error {
 // Check for Kubevirt CRD to be available
 func (k *KubeMacPoolManager) waitForKubevirt() {
 	for _ = range time.Tick(5 * time.Second) {
-		kubevirtExist := checkForKubevirt(k.clientset)
+		kubevirtExist := checkForKubevirt(k.clientset.Discovery())
 		log.V(1).Info("kubevirt exist in the cluster", "kubevirtExist", kubevirtExist)
 		if kubevirtExist {
 			close(k.kubevirtInstalledChannel)

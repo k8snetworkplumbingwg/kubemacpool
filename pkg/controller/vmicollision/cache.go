@@ -20,7 +20,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+var cacheLog = logf.Log.WithName("VMICollision Cache")
 
 const (
 	// MacAddressIndexName is the index name for MAC address lookups
@@ -67,7 +70,12 @@ func IndexVMIByMAC(obj client.Object) []string {
 	macs := []string{}
 	for _, iface := range vmi.Status.Interfaces {
 		if iface.MAC != "" {
-			macs = append(macs, NormalizeMacAddress(iface.MAC))
+			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
+			if err != nil {
+				cacheLog.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
+				continue
+			}
+			macs = append(macs, normalizedMAC)
 		}
 	}
 

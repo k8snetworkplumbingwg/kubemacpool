@@ -21,8 +21,11 @@ import (
 
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
+
+var predicateLog = logf.Log.WithName("VMICollision Predicate")
 
 func collisionRelevantChanges() predicate.TypedPredicate[*kubevirtv1.VirtualMachineInstance] {
 	return predicate.TypedFuncs[*kubevirtv1.VirtualMachineInstance]{
@@ -64,7 +67,12 @@ func extractMACAddresses(vmi *kubevirtv1.VirtualMachineInstance) map[string]stru
 	macs := make(map[string]struct{})
 	for _, iface := range vmi.Status.Interfaces {
 		if iface.MAC != "" {
-			macs[NormalizeMacAddress(iface.MAC)] = struct{}{}
+			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
+			if err != nil {
+				predicateLog.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
+				continue
+			}
+			macs[normalizedMAC] = struct{}{}
 		}
 	}
 	return macs

@@ -146,14 +146,14 @@ func (r *VMICollisionReconciler) checkMACCollisions(ctx context.Context, vmi *ku
 		return nil
 	}
 
-	macs := r.extractMACsFromVMI(vmi)
+	macs := r.extractMACsFromVMI(vmi, logger)
 	if len(macs) == 0 {
 		logger.V(1).Info("VMI has no MAC addresses, skipping collision check")
 		return nil
 	}
 
 	allDuplicates := make(map[string][]*kubevirtv1.VirtualMachineInstance)
-	for _, mac := range macs {
+	for mac := range macs {
 		collisionCandidates, err := r.findRunningVMIsWithMAC(ctx, mac, vmi.UID, logger)
 		if err != nil {
 			return errors.Wrapf(err, "failed to find VMIs with MAC %s", mac)
@@ -225,17 +225,17 @@ func (r *VMICollisionReconciler) findRunningVMIsWithMAC(ctx context.Context, Nor
 	return runningVMIs, nil
 }
 
-// extractMACsFromVMI returns a list of normalized MAC addresses from a VMI's status interfaces
-func (r *VMICollisionReconciler) extractMACsFromVMI(vmi *kubevirtv1.VirtualMachineInstance) []string {
-	macs := make([]string, 0, len(vmi.Status.Interfaces))
+// extractMACsFromVMI returns a set of normalized MAC addresses from a VMI's status interfaces
+func (r *VMICollisionReconciler) extractMACsFromVMI(vmi *kubevirtv1.VirtualMachineInstance, logger logr.Logger) map[string]struct{} {
+	macs := make(map[string]struct{})
 	for _, iface := range vmi.Status.Interfaces {
 		if iface.MAC != "" {
 			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
 			if err != nil {
-				log.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
+				logger.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
 				continue
 			}
-			macs = append(macs, normalizedMAC)
+			macs[normalizedMAC] = struct{}{}
 		}
 	}
 	return macs

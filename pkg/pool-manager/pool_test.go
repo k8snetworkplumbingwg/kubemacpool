@@ -327,6 +327,89 @@ var _ = Describe("Pool", func() {
 			Expect(err).To(HaveOccurred(), "Should reject an allocation of a vm with duplicate interface names")
 			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate macs if there are duplicate interfaces")
 		})
+		It("should reject allocation if VM has duplicate MAC addresses across interfaces", func() {
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
+
+			duplicateMacInterface1 := kubevirt.Interface{Name: "iface1", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Masquerade: &kubevirt.InterfaceMasquerade{}}, MacAddress: "02:00:00:11:22:33"}
+			duplicateMacInterface2 := kubevirt.Interface{Name: "iface2", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Bridge: &kubevirt.InterfaceBridge{}}, MacAddress: "02:00:00:11:22:33"}
+
+			vmWithDuplicateMACs := kubevirt.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "vmWithDuplicateMACs", Namespace: "default"},
+				Spec: kubevirt.VirtualMachineSpec{
+					Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirt.VirtualMachineInstanceSpec{
+							Domain: kubevirt.DomainSpec{
+								Devices: kubevirt.Devices{
+									Interfaces: []kubevirt.Interface{duplicateMacInterface1, duplicateMacInterface2}}},
+							Networks: []kubevirt.Network{podNetwork, multusNetwork}}}}}
+
+			transactionTimestamp := updateTransactionTimestamp(0)
+			err := poolManager.AllocateVirtualMachineMac(&vmWithDuplicateMACs, &transactionTimestamp, true, logger)
+			Expect(err).To(HaveOccurred(), "Should reject allocation if VM has duplicate MAC addresses")
+			Expect(err.Error()).To(ContainSubstring("duplicate MAC address"))
+			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate any macs if there are duplicate MACs within the VM")
+		})
+		It("should reject allocation if VM has invalid MAC address format", func() {
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
+
+			invalidMacInterface := kubevirt.Interface{Name: "iface1", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Masquerade: &kubevirt.InterfaceMasquerade{}}, MacAddress: "invalid-mac"}
+
+			vmWithInvalidMAC := kubevirt.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "vmWithInvalidMAC", Namespace: "default"},
+				Spec: kubevirt.VirtualMachineSpec{
+					Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirt.VirtualMachineInstanceSpec{
+							Domain: kubevirt.DomainSpec{
+								Devices: kubevirt.Devices{
+									Interfaces: []kubevirt.Interface{invalidMacInterface}}},
+							Networks: []kubevirt.Network{podNetwork}}}}}
+
+			transactionTimestamp := updateTransactionTimestamp(0)
+			err := poolManager.AllocateVirtualMachineMac(&vmWithInvalidMAC, &transactionTimestamp, true, logger)
+			Expect(err).To(HaveOccurred(), "Should reject allocation if VM has invalid MAC format")
+			Expect(err.Error()).To(ContainSubstring("invalid MAC address format"))
+			Expect(poolManager.macPoolMap).To(BeEmpty(), "Should not allocate any macs if MAC format is invalid")
+		})
+		It("should allow multiple VMs to share the same MAC address", func() {
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
+			sharedMAC := "02:00:00:11:22:33"
+
+			sharedMacInterface := kubevirt.Interface{Name: "iface1", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Masquerade: &kubevirt.InterfaceMasquerade{}}, MacAddress: sharedMAC}
+
+			vm1 := kubevirt.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "vm1", Namespace: "ns1"},
+				Spec: kubevirt.VirtualMachineSpec{
+					Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirt.VirtualMachineInstanceSpec{
+							Domain: kubevirt.DomainSpec{
+								Devices: kubevirt.Devices{
+									Interfaces: []kubevirt.Interface{sharedMacInterface}}},
+							Networks: []kubevirt.Network{podNetwork}}}}}
+
+			vm2 := kubevirt.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "vm2", Namespace: "ns2"},
+				Spec: kubevirt.VirtualMachineSpec{
+					Template: &kubevirt.VirtualMachineInstanceTemplateSpec{
+						Spec: kubevirt.VirtualMachineInstanceSpec{
+							Domain: kubevirt.DomainSpec{
+								Devices: kubevirt.Devices{
+									Interfaces: []kubevirt.Interface{sharedMacInterface}}},
+							Networks: []kubevirt.Network{podNetwork}}}}}
+
+			transactionTimestamp := updateTransactionTimestamp(0)
+
+			err := poolManager.AllocateVirtualMachineMac(&vm1, &transactionTimestamp, true, logger)
+			Expect(err).ToNot(HaveOccurred(), "First VM should allocate the MAC successfully")
+
+			err = poolManager.AllocateVirtualMachineMac(&vm2, &transactionTimestamp, true, logger)
+			Expect(err).ToNot(HaveOccurred(), "Second VM should also allocate the same MAC successfully")
+
+			entries, exist := poolManager.macPoolMap[NewMacKey(sharedMAC)]
+			Expect(exist).To(BeTrue(), "MAC should exist in pool")
+			Expect(entries).To(HaveLen(2), "Should have two entries for the shared MAC")
+			Expect(entries[0].instanceName).To(Equal("vm/ns1/vm1"))
+			Expect(entries[1].instanceName).To(Equal("vm/ns2/vm2"))
+		})
 		It("should not allocate a new mac for bridge interface on pod network", func() {
 			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode)
 			newVM := sampleVM

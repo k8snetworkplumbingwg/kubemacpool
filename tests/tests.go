@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -195,6 +196,26 @@ func initKubemacpoolParams() error {
 	if err != nil {
 		return fmt.Errorf("should succeed resetting the kubemacpool pods: %w", err)
 	}
+
+	By("Waiting for webhook service endpoints to be ready")
+	Eventually(func(g Gomega) []discoveryv1.Endpoint {
+		endpointSlices, err := testClient.K8sClient.DiscoveryV1().EndpointSlices(managerNamespace).List(
+			context.Background(), metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("kubernetes.io/service-name=%s", names.WEBHOOK_SERVICE),
+			})
+		g.Expect(err).ToNot(HaveOccurred())
+
+		var endpoints []discoveryv1.Endpoint
+		for _, slice := range endpointSlices.Items {
+			endpoints = append(endpoints, slice.Endpoints...)
+		}
+		return endpoints
+	}).WithTimeout(webhookPropagationTimeout).WithPolling(webhookPropagationInterval).Should(
+		ContainElement(Satisfy(func(e discoveryv1.Endpoint) bool {
+			return e.Conditions.Ready != nil && *e.Conditions.Ready
+		})),
+		"at least one endpoint should be ready")
+
 	return nil
 }
 

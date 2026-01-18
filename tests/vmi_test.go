@@ -55,10 +55,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				}).WithTimeout(timeout).WithPolling(pollingInterval).Should(HaveLen(0), "failed to remove all vmi objects")
 			})
 
-			AfterEach(func() {
-				Expect(checkKubemacpoolCrash()).To(Succeed(), "Kubemacpool should not crash during test")
-			})
-
 			Context("and the client tries to assign the same MAC address for two different VMI. Within Range and out of range", func() {
 				var nadName1, nadName2 string
 

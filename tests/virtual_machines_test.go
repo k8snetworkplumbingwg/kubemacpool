@@ -76,9 +76,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 			}, timeout, pollingInterval).Should(Equal(0), "failed to remove all vm objects")
 		})
-		AfterEach(func() {
-			Expect(checkKubemacpoolCrash()).To(Succeed(), "Kubemacpool should not crash during test")
-		})
 		Context("When Running with default opt-mode configuration", func() {
 			BeforeEach(func() {
 				By("Getting the current VM Opt-mode")

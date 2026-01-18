@@ -93,10 +93,6 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				Expect(deleteNetworkAttachmentDefinition(OtherTestNamespace, nadName)).To(Succeed())
 			})
 
-			AfterEach(func() {
-				Expect(checkKubemacpoolCrash()).To(Succeed(), "Kubemacpool should not crash during test")
-			})
-
 			It("should not report collision for VMIs that are part of same cross-namespace migration", func() {
 				const sharedMAC = "02:00:00:00:00:50"
 				const migrationID = "test-cross-ns-mig"

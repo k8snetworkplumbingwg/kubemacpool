@@ -59,9 +59,6 @@ var _ = Describe("Day2 MAC Range Changes", Ordered, Label("mac-range-day2-update
 		}
 	})
 
-	AfterEach(func() {
-		Expect(checkKubemacpoolCrash()).To(Succeed(), "Kubemacpool should not crash during test")
-	})
 	Context("When updating MAC ranges via ConfigMap", func() {
 		It("should update ranges and allocate new MACs from updated range", func() {
 			By("Creating a VM before range update to get MAC from original range")

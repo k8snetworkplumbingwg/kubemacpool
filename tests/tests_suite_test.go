@@ -52,11 +52,16 @@ var _ = AfterSuite(func() {
 })
 
 var _ = JustAfterEach(func() {
-	if CurrentSpecReport().Failed() {
+	crashErr := checkKubemacpoolCrash()
+	testFailed := CurrentSpecReport().Failed() || crashErr != nil
+
+	if testFailed {
 		failureCount++
 		dumpKubemacpoolLogs(failureCount)
 		By(fmt.Sprintf("Test failed, collected logs and artifacts, failure count %d", failureCount))
 	}
+
+	Expect(crashErr).To(Succeed(), "Kubemacpool should not crash during test")
 })
 
 func getPodContainerLogs(podName, containerName string) (string, error) {

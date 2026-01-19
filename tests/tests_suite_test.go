@@ -479,7 +479,8 @@ func logKubevirtPods(failureCount int) error {
 		pod := &podList.Items[i]
 		if strings.Contains(pod.Name, "virt-controller") ||
 			strings.Contains(pod.Name, "virt-handler") ||
-			strings.Contains(pod.Name, "virt-api") {
+			strings.Contains(pod.Name, "virt-api") ||
+			strings.Contains(pod.Name, "virt-synchronization") {
 			for _, container := range pod.Spec.Containers {
 				containerName := container.Name
 				podLogs, err := getPodContainerLogsFromNamespace(pod.Name, containerName, kubevirtNamespace)

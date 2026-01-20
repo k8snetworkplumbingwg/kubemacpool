@@ -24,7 +24,10 @@ import (
 )
 
 func init() {
-	AddToManagerFuncs = append(AddToManagerFuncs, addVMICollisionController)
+	AddToManagerFuncs = append(AddToManagerFuncs, ControllerAdder{
+		Name: "vmicollision-controller",
+		Add:  addVMICollisionController,
+	})
 }
 
 func addVMICollisionController(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {

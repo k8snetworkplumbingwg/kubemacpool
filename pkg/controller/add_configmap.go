@@ -21,6 +21,8 @@ import (
 )
 
 func init() {
-	// AddToManagerFuncs is a list of functions to create controllers and add them to a manager.
-	AddToManagerFuncs = append(AddToManagerFuncs, configmap.Add)
+	AddToManagerFuncs = append(AddToManagerFuncs, ControllerAdder{
+		Name: "mac-range-configmap",
+		Add:  configmap.Add,
+	})
 }

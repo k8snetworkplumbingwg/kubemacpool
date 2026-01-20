@@ -26,7 +26,7 @@ import (
 
 type ControllerAdder struct {
 	Name string
-	Add  func(manager.Manager, *pool_manager.PoolManager) error
+	Add  func(manager.Manager, *pool_manager.PoolManager) (registered bool, err error)
 }
 
 var AddToManagerFuncs []ControllerAdder
@@ -37,8 +37,15 @@ func AddToManager(m manager.Manager, poolManager *pool_manager.PoolManager) erro
 		if c.Name == "" {
 			return fmt.Errorf("controller name is empty")
 		}
-		if err := c.Add(m, poolManager); err != nil {
+		if poolManager.IsControllerRegistered(c.Name) {
+			continue
+		}
+		registered, err := c.Add(m, poolManager)
+		if err != nil {
 			return err
+		}
+		if registered {
+			poolManager.MarkControllerRegistered(c.Name)
 		}
 	}
 	return nil

@@ -61,7 +61,7 @@ type RangeConfig struct {
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // Add creates a new ConfigMap Controller and adds it to the Manager with the given poolManager.
-func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) error {
+func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) (bool, error) {
 	// Get the namespace from the pool manager
 	podNamespace := poolManager.ManagerNamespace()
 
@@ -73,10 +73,14 @@ func Add(mgr manager.Manager, poolManager *poolmanager.PoolManager) error {
 		EventRecorder:      mgr.GetEventRecorderFor("configmap-controller"),
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	err := ctrl.NewControllerManagedBy(mgr).
 		Named("mac-range-configmap").
 		For(&corev1.ConfigMap{}).
 		Complete(reconciler)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *ConfigMapReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

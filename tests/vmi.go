@@ -3,13 +3,23 @@ package tests
 import (
 	"context"
 	"fmt"
+	"time"
+
+	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubevirtv1 "kubevirt.io/api/core/v1"
+)
+
+const (
+	vmiCleanupTimeout         = 2 * time.Minute
+	vmiCleanupPollingInterval = 5 * time.Second
 )
 
 type VMIOption func(*kubevirtv1.VirtualMachineInstance)
@@ -109,4 +119,80 @@ func getVMIPhase(namespace, name string) kubevirtv1.VirtualMachineInstancePhase 
 		return ""
 	}
 	return vmi.Status.Phase
+}
+
+// cleanupVMIsInNamespaces deletes all VMIs in the given namespaces
+func cleanupVMIsInNamespaces(namespaces []string) error {
+	for _, namespace := range namespaces {
+		if err := testClient.CRClient.DeleteAllOf(context.TODO(), &kubevirtv1.VirtualMachineInstance{},
+			client.InNamespace(namespace)); err != nil {
+			return fmt.Errorf("failed to delete VMIs in namespace %s: %w", namespace, err)
+		}
+	}
+	return nil
+}
+
+// removeFinalizersFromVMI patches a VMI to remove all finalizers
+func removeFinalizersFromVMI(namespace, name string) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		vmi := &kubevirtv1.VirtualMachineInstance{}
+		err := testClient.CRClient.Get(context.TODO(), client.ObjectKey{Namespace: namespace, Name: name}, vmi)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+
+		if len(vmi.Finalizers) == 0 {
+			return nil
+		}
+
+		vmi.Finalizers = []string{}
+		return testClient.CRClient.Update(context.TODO(), vmi)
+	})
+}
+
+// waitForVMIsDeleted waits for all VMIs in the given namespaces to be deleted
+func waitForVMIsDeleted(namespaces []string) {
+	Eventually(func(g Gomega) int {
+		totalVMIs := 0
+		for _, namespace := range namespaces {
+			vmiList := &kubevirtv1.VirtualMachineInstanceList{}
+			g.Expect(testClient.CRClient.List(context.TODO(), vmiList, client.InNamespace(namespace))).To(Succeed())
+			totalVMIs += len(vmiList.Items)
+		}
+		return totalVMIs
+	}).WithTimeout(vmiCleanupTimeout).WithPolling(vmiCleanupPollingInterval).Should(Equal(0), "All VMIs should be deleted")
+}
+
+// cleanupMigrationsInNamespaces deletes all VirtualMachineInstanceMigrations in the given namespaces
+func cleanupMigrationsInNamespaces(namespaces []string) error {
+	for _, namespace := range namespaces {
+		if err := testClient.CRClient.DeleteAllOf(context.TODO(), &kubevirtv1.VirtualMachineInstanceMigration{},
+			client.InNamespace(namespace)); err != nil {
+			return fmt.Errorf("failed to delete migrations in namespace %s: %w", namespace, err)
+		}
+	}
+	return nil
+}
+
+// forceCleanupStuckVMIs removes finalizers from any remaining VMIs that are stuck in terminating
+func forceCleanupStuckVMIs(namespaces []string) error {
+	for _, namespace := range namespaces {
+		vmiList := &kubevirtv1.VirtualMachineInstanceList{}
+		if err := testClient.CRClient.List(context.TODO(), vmiList, client.InNamespace(namespace)); err != nil {
+			return fmt.Errorf("failed to list VMIs in namespace %s: %w", namespace, err)
+		}
+
+		for i := range vmiList.Items {
+			vmi := &vmiList.Items[i]
+			if vmi.DeletionTimestamp != nil && len(vmi.Finalizers) > 0 {
+				if err := removeFinalizersFromVMI(vmi.Namespace, vmi.Name); err != nil {
+					return fmt.Errorf("failed to remove finalizers from stuck VMI %s/%s: %w", vmi.Namespace, vmi.Name, err)
+				}
+			}
+		}
+	}
+	return nil
 }

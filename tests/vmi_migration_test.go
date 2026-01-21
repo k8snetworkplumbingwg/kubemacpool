@@ -58,35 +58,24 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			AfterEach(func() {
-				By("Cleaning up VirtualMachineInstanceMigrations")
-				migrationList := &kubevirtv1.VirtualMachineInstanceMigrationList{}
-				Expect(testClient.CRClient.List(context.TODO(), migrationList)).To(Succeed())
+				testNamespaces := []string{TestNamespace, OtherTestNamespace}
 
-				for i := range migrationList.Items {
-					migrationObject := &migrationList.Items[i]
-					err := testClient.CRClient.Delete(context.TODO(), migrationObject)
-					if err != nil {
-						GinkgoWriter.Printf("Error deleting Migration %s/%s: %v\n", migrationObject.Namespace, migrationObject.Name, err)
-					}
-				}
+				By("Cleaning up VirtualMachineInstanceMigrations")
+				Expect(cleanupMigrationsInNamespaces(testNamespaces)).To(Succeed())
 
 				By("Cleaning up VMs")
-				vmList := &kubevirtv1.VirtualMachineList{}
-				Expect(testClient.CRClient.List(context.TODO(), vmList)).To(Succeed())
+				Expect(cleanupVMsInNamespaces(testNamespaces)).To(Succeed())
 
-				for i := range vmList.Items {
-					vmObject := &vmList.Items[i]
-					err := testClient.CRClient.Delete(context.TODO(), vmObject)
-					if err != nil {
-						GinkgoWriter.Printf("Error deleting VM %s/%s: %v\n", vmObject.Namespace, vmObject.Name, err)
-					}
-				}
+				By("Cleaning up VMIs")
+				Expect(cleanupVMIsInNamespaces(testNamespaces)).To(Succeed())
 
-				Eventually(func() []kubevirtv1.VirtualMachine {
-					vmList := &kubevirtv1.VirtualMachineList{}
-					Expect(testClient.CRClient.List(context.TODO(), vmList)).To(Succeed())
-					return vmList.Items
-				}).WithTimeout(timeout).WithPolling(pollingInterval).Should(HaveLen(0), "failed to remove all VM objects")
+				By("Force cleaning up any stuck VMs/VMIs")
+				Expect(forceCleanupStuckVMs(testNamespaces)).To(Succeed())
+				Expect(forceCleanupStuckVMIs(testNamespaces)).To(Succeed())
+
+				By("Waiting for VMs and VMIs to be deleted")
+				waitForVMsDeleted(testNamespaces)
+				waitForVMIsDeleted(testNamespaces)
 
 				By("Deleting network attachment definitions")
 				Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName)).To(Succeed())

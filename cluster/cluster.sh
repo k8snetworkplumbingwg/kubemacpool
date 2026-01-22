@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-'k8s-1.34'}
+export KUBEVIRT_PROVIDER=${KUBEVIRT_PROVIDER:-'k8s-1.33'}
 export KUBEVIRTCI_TAG=${KUBEVIRTCI_TAG:-2601202233-34e8650a}
 export KUBEVIRT_MEMORY_SIZE=${KUBEVIRT_MEMORY_SIZE:-10240M}
 export KUBEVIRT_NUM_NODES=${KUBEVIRT_NUM_NODES:-2}

@@ -43,12 +43,14 @@ var log = logf.Log.WithName("VirtualMachine Controller")
 
 // Add creates a new Policy Controller and adds it to the Manager with default RBAC. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
-func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	if poolManager.IsKubevirtEnabled() {
-		return add(mgr, newReconciler(mgr, poolManager))
+func Add(mgr manager.Manager, poolManager *pool_manager.PoolManager) (bool, error) {
+	if !poolManager.IsKubevirtEnabled() {
+		return false, nil
 	}
-
-	return nil
+	if err := add(mgr, newReconciler(mgr, poolManager)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // newReconciler returns a new reconcile.Reconciler

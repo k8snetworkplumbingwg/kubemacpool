@@ -24,18 +24,13 @@ import (
 )
 
 func init() {
-	AddToManagerFuncs = append(AddToManagerFuncs, ControllerAdder{
-		Name: "vmicollision-controller",
-		Add:  addVMICollisionController,
-	})
+	AddToManagerFuncs = append(AddToManagerFuncs, addVMICollisionController)
 }
 
-func addVMICollisionController(mgr manager.Manager, poolManager *pool_manager.PoolManager) (bool, error) {
-	if !poolManager.IsKubevirtEnabled() {
-		return false, nil
+func addVMICollisionController(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
+	if poolManager.IsKubevirtEnabled() {
+		return vmicollision.SetupWithManager(mgr, poolManager)
 	}
-	if err := vmicollision.SetupWithManager(mgr, poolManager); err != nil {
-		return false, err
-	}
-	return true, nil
+
+	return nil
 }

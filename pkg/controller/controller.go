@@ -17,35 +17,19 @@ limitations under the License.
 package controller
 
 import (
-	"fmt"
-
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
-type ControllerAdder struct {
-	Name string
-	Add  func(manager.Manager, *pool_manager.PoolManager) (registered bool, err error)
-}
-
-var AddToManagerFuncs []ControllerAdder
+// AddToManagerFuncs is a list of functions to add all Controllers to the Manager
+var AddToManagerFuncs []func(manager.Manager, *pool_manager.PoolManager) error
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(m manager.Manager, poolManager *pool_manager.PoolManager) error {
-	for _, c := range AddToManagerFuncs {
-		if c.Name == "" {
-			return fmt.Errorf("controller name is empty")
-		}
-		if poolManager.IsControllerRegistered(c.Name) {
-			continue
-		}
-		registered, err := c.Add(m, poolManager)
-		if err != nil {
+	for _, f := range AddToManagerFuncs {
+		if err := f(m, poolManager); err != nil {
 			return err
-		}
-		if registered {
-			poolManager.MarkControllerRegistered(c.Name)
 		}
 	}
 	return nil

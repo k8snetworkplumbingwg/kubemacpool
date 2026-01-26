@@ -56,20 +56,19 @@ var log = logf.Log.WithName("PoolManager")
 var now = func() time.Time { return time.Now() }
 
 type PoolManager struct {
-	cachedKubeClient      client.Client
-	kubeClient            client.Client
-	rangeStart            net.HardwareAddr // fist mac in range
-	rangeEnd              net.HardwareAddr // last mac in range
-	currentMac            net.HardwareAddr // last given mac
-	managerNamespace      string
-	macPoolMap            macMap                       // allocated mac map and macEntry
-	podToMacPoolMap       map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
-	poolMutex             sync.Mutex                   // mutex for allocation an release
-	rangeMutex            sync.RWMutex                 // mutex for range operations to support dynamic updates
-	isKubevirt            bool                         // bool if kubevirt virtualmachine crd exist in the cluster
-	waitTime              int                          // Duration in second to free macs of allocated vms that failed to start.
-	isPoolReady           atomic.Bool                  // indicates whether the pool manager has completed initialization
-	registeredControllers map[string]struct{}          // tracks which controllers have been registered to prevent re-registration
+	cachedKubeClient client.Client
+	kubeClient       client.Client
+	rangeStart       net.HardwareAddr // fist mac in range
+	rangeEnd         net.HardwareAddr // last mac in range
+	currentMac       net.HardwareAddr // last given mac
+	managerNamespace string
+	macPoolMap       macMap                       // allocated mac map and macEntry
+	podToMacPoolMap  map[string]map[string]string // map allocated mac address by networkname and namespace/podname: {"namespace/podname: {"network name": "mac address"}}
+	poolMutex        sync.Mutex                   // mutex for allocation an release
+	rangeMutex       sync.RWMutex                 // mutex for range operations to support dynamic updates
+	isKubevirt       bool                         // bool if kubevirt virtualmachine crd exist in the cluster
+	waitTime         int                          // Duration in second to free macs of allocated vms that failed to start.
+	isPoolReady      atomic.Bool                  // indicates whether the pool manager has completed initialization
 }
 
 type OptMode string
@@ -101,16 +100,15 @@ func (m macMap) MarshalJSON() ([]byte, error) {
 func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
 	// Create PoolManager struct with empty ranges initially
 	poolManger := &PoolManager{
-		cachedKubeClient:      cachedKubeClient,
-		kubeClient:            kubeClient,
-		isKubevirt:            kubevirtExist,
-		managerNamespace:      managerNamespace,
-		podToMacPoolMap:       map[string]map[string]string{},
-		macPoolMap:            macMap{},
-		poolMutex:             sync.Mutex{},
-		rangeMutex:            sync.RWMutex{},
-		waitTime:              waitTime,
-		registeredControllers: map[string]struct{}{},
+		cachedKubeClient: cachedKubeClient,
+		kubeClient:       kubeClient,
+		isKubevirt:       kubevirtExist,
+		managerNamespace: managerNamespace,
+		podToMacPoolMap:  map[string]map[string]string{},
+		macPoolMap:       macMap{},
+		poolMutex:        sync.Mutex{},
+		rangeMutex:       sync.RWMutex{},
+		waitTime:         waitTime,
 	}
 
 	// Use UpdateRanges to set initial ranges with proper validation
@@ -516,19 +514,4 @@ func (p *PoolManager) getCurrentMAC() string {
 // ManagerNamespace returns the manager namespace
 func (p *PoolManager) ManagerNamespace() string {
 	return p.managerNamespace
-}
-
-// IsControllerRegistered checks if a controller has already been registered
-func (p *PoolManager) IsControllerRegistered(name string) bool {
-	p.poolMutex.Lock()
-	defer p.poolMutex.Unlock()
-	_, exists := p.registeredControllers[name]
-	return exists
-}
-
-// MarkControllerRegistered marks a controller as registered
-func (p *PoolManager) MarkControllerRegistered(name string) {
-	p.poolMutex.Lock()
-	defer p.poolMutex.Unlock()
-	p.registeredControllers[name] = struct{}{}
 }

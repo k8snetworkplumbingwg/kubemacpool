@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -18,6 +19,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
+	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/reporter"
 )
 
@@ -142,6 +144,11 @@ func dumpKubemacpoolLogs(failureCount int) {
 	}
 
 	if err := logNodes(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	// Dump collision gauge values to help debug alert flakiness / lingering collisions.
+	if err := logMACCollisionGauge(failureCount); err != nil {
 		fmt.Println(err)
 	}
 }
@@ -587,4 +594,132 @@ func logNodes(failureCount int) error {
 	}
 
 	return nil
+}
+
+func logMACCollisionGauge(failureCount int) error {
+	report, err := macCollisionGaugeReport()
+	if strings.TrimSpace(report) == "" {
+		report = "(no kmp_mac_collisions metrics found)"
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to build kmp mac collision gauge report: %v\n\n%s", err, report)
+	}
+
+	if logErr := reporter.LogToFile("kmp_mac_collisions_gauge", report, artifactDir, failureCount); logErr != nil {
+		return fmt.Errorf("failed to log mac collision gauge report: %w", logErr)
+	}
+
+	return err
+}
+
+func macCollisionGaugeReport() (string, error) {
+	var b strings.Builder
+
+	token, stderr, err := getPrometheusToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to get prometheus token: %s: %w", stderr, err)
+	}
+
+	metrics, err := getMetrics(token)
+	if err != nil {
+		return "", fmt.Errorf("failed to scrape /metrics: %w", err)
+	}
+
+	vmiByMAC, err := getVMIByMAC()
+	if err != nil {
+		// Keep whatever collision lines we can so the output is still useful.
+		appendMACCollisionLines(&b, metrics, nil)
+		return strings.TrimSpace(b.String()), err
+	}
+
+	appendMACCollisionLines(&b, metrics, vmiByMAC)
+	return strings.TrimSpace(b.String()), nil
+}
+
+func getVMIByMAC() (map[string][]string, error) {
+	const vmiJSONPath = `{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.status.interfaces[*].mac}{"\n"}{end}`
+	allVMIOutput, vmiStderr, vmiErr := kubectl.Kubectl(
+		"get", "vmi", "-A",
+		"-o", "jsonpath="+vmiJSONPath,
+	)
+	if vmiErr != nil {
+		return nil, fmt.Errorf("failed to run kubectl get vmi: %s: %w", vmiStderr, vmiErr)
+	}
+
+	vmiByMAC := map[string][]string{}
+	for _, line := range strings.Split(allVMIOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Split(line, "\t")
+		// Expected: <namespace>\t<name>\t<macs...>
+		if len(parts) < 3 {
+			continue
+		}
+
+		namespace := strings.TrimSpace(parts[0])
+		name := strings.TrimSpace(parts[1])
+		macsField := strings.TrimSpace(strings.Join(parts[2:], "\t"))
+		if namespace == "" || name == "" || macsField == "" {
+			continue
+		}
+
+		vmiID := namespace + "/" + name
+		for _, mac := range strings.Fields(macsField) {
+			mac = strings.ToLower(strings.TrimSpace(mac))
+			if mac == "" {
+				continue
+			}
+			vmiByMAC[mac] = append(vmiByMAC[mac], vmiID)
+		}
+	}
+
+	return vmiByMAC, nil
+}
+
+func appendMACCollisionLines(b *strings.Builder, metrics string, vmiByMAC map[string][]string) {
+	for _, line := range strings.Split(metrics, "\n") {
+		if !strings.HasPrefix(line, macCollisionMetric+"{") {
+			continue
+		}
+
+		b.WriteString(line)
+		b.WriteString("\n")
+
+		mac, ok := parseMACLabelValue(line)
+		if !ok {
+			continue
+		}
+
+		mac = strings.ToLower(mac)
+		_, _ = fmt.Fprintf(b, "MAC %s VMI matches:\n", mac)
+
+		if vmiByMAC == nil {
+			b.WriteString("(skipped: failed listing VMIs)\n")
+			continue
+		}
+
+		matches := vmiByMAC[mac]
+		if len(matches) == 0 {
+			b.WriteString("(no matching VMIs found)\n")
+			continue
+		}
+
+		b.WriteString(strings.Join(matches, "\n"))
+		b.WriteString("\n")
+	}
+}
+
+var macLabelValueRE = regexp.MustCompile(`\bmac="([^"]+)"`)
+
+func parseMACLabelValue(line string) (string, bool) {
+
+	m := macLabelValueRE.FindStringSubmatch(line)
+	if len(m) != 2 {
+		return "", false
+	}
+	return m[1], true
 }

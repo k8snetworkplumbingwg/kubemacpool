@@ -11,12 +11,14 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
 const MACCollisionDetectionLabel = "mac-collision-detection"
+const MetricsLabel = "metrics"
 
 // TODO: the rfe_id was taken from kubernetes-nmstate we have to discover the right parameters here
 var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:component]Virtual Machine Instances",
@@ -73,7 +75,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 
 				Context("When the MAC address is within range", func() {
-					DescribeTable("[test_id:2166]should detect inter-VMI MAC collisions", func(separator string) {
+					DescribeTable("[test_id:2166]should detect inter-VMI MAC collisions", Label(MetricsLabel), func(separator string) {
 						const sharedMAC = "02:00:00:00:00:01"
 						macWithSeparator := strings.Replace(sharedMAC, ":", separator, 5)
 
@@ -98,13 +100,14 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						waitForVMIsRunning(conflictingVMIs)
 						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+						expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 					},
 						Entry("with the same mac format", ":"),
 						Entry("with different mac format", "-"),
 					)
 				})
 				Context("and the MAC address is out of range", func() {
-					It("[test_id:2167]should allow and detect inter-VMI MAC collisions for out-of-range MAC", func() {
+					It("[test_id:2167]should allow and detect inter-VMI MAC collisions for out-of-range MAC", Label(MetricsLabel), func() {
 						outOfRangeMAC := "06:00:00:00:00:00"
 
 						vmi1 := NewVMI(TestNamespace, "test-vmi-out-range-1",
@@ -128,9 +131,10 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						waitForVMIsRunning(conflictingVMIs)
 						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+						expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 					})
 
-					It("should detect collision for 3+ VMIs with same MAC", func() {
+					It("should detect collision for 3+ VMIs with same MAC", Label(MetricsLabel), func() {
 						const sharedMAC = "02:00:00:00:00:10"
 
 						vmi1 := NewVMI(TestNamespace, "test-vmi-multi-1",
@@ -159,6 +163,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						waitForVMIsRunning(conflictingVMIs)
 						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+						expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 					})
 				})
 			})
@@ -183,7 +188,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(deleteNetworkAttachmentDefinition(TestNamespace, net3Name)).To(Succeed())
 				})
 
-				It("should detect collision only for the colliding MAC when VMI has multiple interfaces", func() {
+				It("should detect collision only for the colliding MAC when VMI has multiple interfaces", Label(MetricsLabel), func() {
 					const (
 						collidingMAC = "02:00:00:00:00:20"
 						uniqueMAC1   = "02:00:00:00:00:21"
@@ -216,11 +221,15 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					By("Verifying collision event only for the colliding MAC")
 					normalizedCollidingMAC, err := net.ParseMAC(collidingMAC)
 					Expect(err).ToNot(HaveOccurred())
+					normalizedUniqueMAC2, err := net.ParseMAC(uniqueMAC2)
+					Expect(err).ToNot(HaveOccurred())
 
 					expectMACCollisionEvents(normalizedCollidingMAC.String(), conflictingVMIs)
+					expectMACCollisionGauge(normalizedCollidingMAC.String(), len(conflictingVMIs))
+					expectNoMACCollisionGaugeConsistently(normalizedUniqueMAC2.String())
 				})
 
-				It("should detect multiple collisions on same VMI when it has multiple colliding MACs", func() {
+				It("should detect multiple collisions on same VMI when it has multiple colliding MACs", Label(MetricsLabel), func() {
 					const (
 						macA = "02:00:00:00:00:30"
 						macB = "02:00:00:00:00:31"
@@ -259,6 +268,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						{vmi1.Namespace, vmi1.Name},
 						{vmi2.Namespace, vmi2.Name},
 					})
+					expectMACCollisionGauge(normalizedMacA.String(), 2)
 
 					By("Verifying collision events for macB")
 					normalizedMacB, err := net.ParseMAC(macB)
@@ -267,7 +277,105 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						{vmi1.Namespace, vmi1.Name},
 						{vmi3.Namespace, vmi3.Name},
 					})
+					expectMACCollisionGauge(normalizedMacB.String(), 2)
 				})
+
+				It("[test_id:2164]should clear collision when colliding VMI is deleted", Label(MetricsLabel), func() {
+					const sharedMAC = "02:00:00:00:00:40"
+
+					vmi1 := NewVMI(TestNamespace, "test-vmi-delete-1",
+						WithInterface(newInterface(net1Name, sharedMAC)),
+						WithNetwork(newNetwork(net1Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					vmi2 := NewVMI(TestNamespace, "test-vmi-delete-2",
+						WithInterface(newInterface(net2Name, sharedMAC)),
+						WithNetwork(newNetwork(net2Name)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					normalizedMAC, err := net.ParseMAC(sharedMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					waitForVMIsRunning([]vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					})
+
+					By("Verifying collision is detected")
+					expectMACCollisionGauge(normalizedMAC.String(), 2)
+
+					By("Deleting one of the colliding VMIs")
+					Expect(testClient.CRClient.Delete(context.TODO(), vmi1)).To(Succeed())
+
+					By("Waiting for VMI to be deleted")
+					Eventually(func() bool {
+						return apierrors.IsNotFound(testClient.CRClient.Get(context.TODO(), client.ObjectKey{
+							Namespace: vmi1.Namespace,
+							Name:      vmi1.Name,
+						}, &kubevirtv1.VirtualMachineInstance{}))
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeTrue())
+
+					By("Verifying collision is cleared")
+					expectMACCollisionGauge(normalizedMAC.String(), 0)
+				})
+
+				It("[test_id:2995]should clear only specific collision where one of multiple colliding VMIs is deleted",
+					Label(MetricsLabel), func() {
+						const (
+							macA = "02:00:00:00:00:50"
+							macB = "02:00:00:00:00:51"
+						)
+
+						// VMI1: has both macA and macB - will be involved in two collisions
+						vmi1 := NewVMI(TestNamespace, "test-vmi-multi-collision-1",
+							WithInterface(newInterface(net1Name, macA)),
+							WithNetwork(newNetwork(net1Name)),
+							WithInterface(newInterface(net2Name, macB)),
+							WithNetwork(newNetwork(net2Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+						// VMI2: has macA - collides with VMI1 on macA
+						vmi2 := NewVMI(TestNamespace, "test-vmi-multi-collision-2",
+							WithInterface(newInterface(net1Name, macA)),
+							WithNetwork(newNetwork(net1Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+						// VMI3: has macB - collides with VMI1 on macB
+						vmi3 := NewVMI(TestNamespace, "test-vmi-multi-collision-3",
+							WithInterface(newInterface(net2Name, macB)),
+							WithNetwork(newNetwork(net2Name)))
+						Expect(testClient.CRClient.Create(context.TODO(), vmi3)).To(Succeed())
+
+						normalizedMacA, err := net.ParseMAC(macA)
+						Expect(err).ToNot(HaveOccurred())
+						normalizedMacB, err := net.ParseMAC(macB)
+						Expect(err).ToNot(HaveOccurred())
+
+						waitForVMIsRunning([]vmiReference{
+							{vmi1.Namespace, vmi1.Name},
+							{vmi2.Namespace, vmi2.Name},
+							{vmi3.Namespace, vmi3.Name},
+						})
+
+						By("Verifying both collisions are detected")
+						expectMACCollisionGauge(normalizedMacA.String(), 2)
+						expectMACCollisionGauge(normalizedMacB.String(), 2)
+
+						By("Deleting VMI2 (involved only in macA collision)")
+						Expect(testClient.CRClient.Delete(context.TODO(), vmi2)).To(Succeed())
+
+						By("Waiting for VMI2 to be deleted")
+						Eventually(func() bool {
+							return apierrors.IsNotFound(testClient.CRClient.Get(context.TODO(), client.ObjectKey{
+								Namespace: vmi2.Namespace,
+								Name:      vmi2.Name,
+							}, &kubevirtv1.VirtualMachineInstance{}))
+						}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeTrue())
+
+						By("Verifying macA collision is cleared but macB collision remains")
+						expectMACCollisionGauge(normalizedMacA.String(), 0)
+						expectMACCollisionGauge(normalizedMacB.String(), 2)
+					})
 			})
 
 			Context("and when restarting kubeMacPool and trying to create a VMI with the same manually configured MAC as an older VMI", func() {
@@ -284,13 +392,17 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName1)).To(Succeed())
 					Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName2)).To(Succeed())
 				})
-				It("[test_id:2179]should detect collision after kubeMacPool restart", func() {
+				It("[test_id:2179]should detect collision after kubeMacPool restart", Label(MetricsLabel), func() {
+					normalizedMAC, err := net.ParseMAC(testMacAddress)
+					Expect(err).ToNot(HaveOccurred(), "Should parse test MAC")
+
 					vmi1 := NewVMI(TestNamespace, "test-vmi-restart-1",
 						WithInterface(newInterface(nadName1, testMacAddress)),
 						WithNetwork(newNetwork(nadName1)))
 					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
 
 					waitForVMIsRunning([]vmiReference{{vmi1.Namespace, vmi1.Name}})
+					expectNoMACCollisionGaugeConsistently(normalizedMAC.String())
 
 					// restart kubeMacPool
 					Expect(initKubemacpoolParams()).To(Succeed())
@@ -302,14 +414,13 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 					waitForVMIsRunning([]vmiReference{{vmi2.Namespace, vmi2.Name}})
 
-					normalizedMAC, err := net.ParseMAC(testMacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should parse test MAC")
 					conflictingVMIs := []vmiReference{
 						{vmi1.Namespace, vmi1.Name},
 						{vmi2.Namespace, vmi2.Name},
 					}
 
 					expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+					expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 				})
 			})
 
@@ -337,7 +448,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						AfterEach(func() {
 							Expect(deleteNetworkAttachmentDefinition(managedNamespace, nadName)).To(Succeed())
 						})
-						It("should detect collision for VMIs in opted-in namespace with duplicate MAC", func() {
+						It("should detect collision for VMIs in opted-in namespace with duplicate MAC", Label(MetricsLabel), func() {
 							vmi1 := NewVMI(managedNamespace, "test-vmi-optin-1",
 								WithInterface(newInterface(nadName, allocatedMac)),
 								WithNetwork(newNetwork(nadName)))
@@ -358,6 +469,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 							waitForVMIsRunning(conflictingVMIs)
 							expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+							expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 						})
 					})
 
@@ -374,7 +486,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 							Expect(deleteNetworkAttachmentDefinition(notManagedNamespace, nadName)).To(Succeed())
 							Expect(deleteNetworkAttachmentDefinition(managedNamespace, nadName)).To(Succeed())
 						})
-						It("should not report collision for VMI in managed vs unmanaged namespace with same MAC", func() {
+						It("should not report collision for VMI in managed vs unmanaged namespace with same MAC", Label(MetricsLabel), func() {
 							const sharedMAC = "02:00:00:77:88:99"
 
 							By("Creating VMI in unmanaged (non-opted-in) namespace")
@@ -396,6 +508,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 							waitForVMIsRunning(nonConflictingVMIs)
 							expectNoMACCollisionEvents(nonConflictingVMIs, "unmanaged namespace is ignored")
+							expectNoMACCollisionGaugeConsistently(sharedMAC)
 						})
 					})
 
@@ -421,7 +534,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 						Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName)).To(Succeed())
 						Expect(deleteNetworkAttachmentDefinition(OtherTestNamespace, nadName)).To(Succeed())
 					})
-					It("should detect collision for VMIs with duplicate MAC", func() {
+					It("should detect collision for VMIs with duplicate MAC", Label(MetricsLabel), func() {
 						const sharedMAC = "02:00:00:44:55:66"
 
 						vmi1 := NewVMI(TestNamespace, "test-vmi-optout-1",
@@ -444,9 +557,10 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						waitForVMIsRunning(conflictingVMIs)
 						expectMACCollisionEvents(normalizedMAC.String(), conflictingVMIs)
+						expectMACCollisionGauge(normalizedMAC.String(), len(conflictingVMIs))
 					})
 
-					It("should not report collision for VMI in managed vs unmanaged namespace with same MAC", func() {
+					It("should not report collision for VMI in managed vs unmanaged namespace with same MAC", Label(MetricsLabel), func() {
 						const sharedMAC = "02:00:00:88:99:aa"
 
 						By("Opting out OtherTestNamespace to make it unmanaged")
@@ -471,6 +585,7 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 
 						waitForVMIsRunning(nonConflictingVMIs)
 						expectNoMACCollisionEvents(nonConflictingVMIs, "unmanaged namespace is ignored")
+						expectNoMACCollisionGaugeConsistently(sharedMAC)
 					})
 				})
 
@@ -504,6 +619,33 @@ func waitForVMIsRunning(vmis []vmiReference) {
 		}).WithTimeout(timeout).WithPolling(pollingInterval).Should(Equal(kubevirtv1.Running),
 			"VMI %s/%s should reach Running phase", vmi.namespace, vmi.name)
 	}
+}
+
+// expectMACCollisionGauge waits for the kmp_mac_collisions gauge to reach the expected count
+func expectMACCollisionGauge(mac string, expectedCount int) {
+	By(fmt.Sprintf("Waiting for kmp_mac_collisions gauge to show %d for MAC %s", expectedCount, mac))
+	Eventually(func(g Gomega) int {
+		count, err := getMACCollisionCount(mac)
+		g.Expect(err).ToNot(HaveOccurred())
+		return count
+	}).WithTimeout(timeout).WithPolling(pollingInterval).Should(Equal(expectedCount),
+		fmt.Sprintf("kmp_mac_collisions gauge for MAC %s should be %d", mac, expectedCount))
+}
+
+// expectNoMACCollisionGaugeConsistently verifies the gauge stays at 0 (no collision)
+func expectNoMACCollisionGaugeConsistently(mac string) {
+	const (
+		metricPollingInterval = 100 * time.Millisecond
+		metricTimeout         = 1 * time.Second
+	)
+
+	By(fmt.Sprintf("Verifying kmp_mac_collisions gauge stays at 0 for MAC %s", mac))
+	Consistently(func(g Gomega) int {
+		count, err := getMACCollisionCount(mac)
+		g.Expect(err).ToNot(HaveOccurred())
+		return count
+	}).WithTimeout(metricTimeout).WithPolling(metricPollingInterval).Should(Equal(0),
+		fmt.Sprintf("kmp_mac_collisions gauge for MAC %s should stay at 0", mac))
 }
 
 // expectMACCollisionEvents verifies that all VMIs have received the expected MACCollision event

@@ -14,6 +14,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 type MockPoolManager struct {
@@ -27,6 +29,9 @@ func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error
 		return true, nil
 	}
 	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) UpdateCollisionsMap(pool_manager.ObjectReference, map[string][]pool_manager.ObjectReference) {
 }
 
 type MockEventRecorder struct {

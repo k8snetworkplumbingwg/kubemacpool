@@ -23,6 +23,9 @@ hack/config-provider-*
 
 _kubevirtci/
 
+# Local build outputs
+_out/
+
 # config/external is something generated when KUBEVIRT_PROVIDER=external
 # it's a modified copy of config/test
 config/external

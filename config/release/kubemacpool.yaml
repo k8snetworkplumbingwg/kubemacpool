@@ -12,6 +12,23 @@ metadata:
   namespace: kubemacpool-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kubemacpool-prometheus
+  namespace: kubemacpool-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
@@ -111,6 +128,20 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubemacpool-prometheus
+  namespace: kubemacpool-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubemacpool-prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus-k8s
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   creationTimestamp: null
@@ -135,6 +166,23 @@ metadata:
     controller-tools.k8s.io: "1.0"
   name: kubemacpool-mac-range-config
   namespace: kubemacpool-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: mac-controller-manager
+    prometheus.kubemacpool.io: "true"
+  name: kubemacpool-metrics-service
+  namespace: kubemacpool-system
+spec:
+  ports:
+  - name: metrics
+    port: 8443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    control-plane: mac-controller-manager
 ---
 apiVersion: v1
 kind: Service
@@ -400,6 +448,38 @@ spec:
       - name: tls-key-pair
         secret:
           secretName: kubemacpool-service
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus
+    prometheus.kubemacpool.io: "true"
+  name: kubemacpool-prometheus-rule
+  namespace: kubemacpool-system
+spec: {}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    openshift.io/cluster-monitoring: "true"
+    prometheus.kubemacpool.io: "true"
+  name: kubemacpool-metrics-monitor
+  namespace: kubemacpool-system
+spec:
+  endpoints:
+  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+    port: metrics
+    scheme: https
+    tlsConfig:
+      insecureSkipVerify: true
+  namespaceSelector:
+    matchNames:
+    - kubemacpool-system
+  selector:
+    matchLabels:
+      control-plane: mac-controller-manager
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

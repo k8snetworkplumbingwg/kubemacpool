@@ -25,7 +25,7 @@ var (
 	DuplicateMacGauge = prometheus.NewCounter(
 		prometheus.CounterOpts{
 			Name: "kubevirt_kmp_duplicate_macs",
-			Help: "Kubemacpool duplicate macs counter",
+			Help: "[DEPRECATED] Total count of duplicate KubeMacPool MAC addresses. Use kmp_mac_collisions instead.",
 		})
 
 	MACCollisionGauge = prometheus.NewGaugeVec(

@@ -1,0 +1,9 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    openshift.io/prometheus-rule-evaluation-scope: leaf-prometheus
+    prometheus.kubemacpool.io: "true"
+  name: prometheus-rule
+  namespace: kubemacpool-system
+spec: {}

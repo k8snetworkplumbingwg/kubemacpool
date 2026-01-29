@@ -104,6 +104,9 @@ lint-fix:
 	GOTOOLCHAIN=$$(grep '^toolchain' go.mod | awk '{print $$2}' | sed 's/go//' | awk -F. '{print $$1"."$$2}' || echo ""); \
 	$(GOLANGICI_LINT) run --verbose --fix $(LINTER_COVERAGE)
 
+lint-metrics: $(GO)
+	OCI_BIN=$(OCI_BIN) ./hack/prom_metric_linter.sh --operator-name="kmp" --sub-operator-name="kmp"
+
 install-deep-copy: $(GO)
 	$(DEEPCOPY_GEN)
 
@@ -111,7 +114,36 @@ install-deep-copy: $(GO)
 generate-go: install-deep-copy fmt vet manifests
 	PATH=$(GOBIN):$(PATH) $(GO) generate ./pkg/... ./cmd/...
 
-generate: generate-go generate-deploy generate-test generate-external
+generate-monitoring: $(GO)
+	$(GO) run tools/prom-rule-ci/generate-rules.go -namespace kubemacpool-system -output config/monitoring/prometheus-rule.yaml
+
+generate-doc: $(GO)
+	$(GO) run tools/metricsdocs/metricsdocs.go > doc/metrics.md
+
+verify-monitoring: $(GO) generate-monitoring
+	@if git diff --exit-code config/monitoring/prometheus-rule.yaml; then \
+		echo "PrometheusRule is up to date"; \
+	else \
+		echo "Error: PrometheusRule is out of date. Please run 'make generate-monitoring'"; \
+		exit 1; \
+	fi
+
+verify-doc: $(GO) generate-doc
+	@if git diff --exit-code doc/metrics.md; then \
+		echo "Metrics documentation is up to date"; \
+	else \
+		echo "Error: Metrics documentation is out of date. Please run 'make generate-doc'"; \
+		exit 1; \
+	fi
+
+prom-rules-verify: $(GO)
+	@set -e; \
+	PROM_SPEC_DUMPER=$$(mktemp --tmpdir -u rule-spec-dumper.XXXXX); \
+	trap 'rm -f $$PROM_SPEC_DUMPER' EXIT INT TERM; \
+	$(GO) build -o $$PROM_SPEC_DUMPER hack/prom-rule-ci/rule-spec-dumper.go; \
+	KUBEVIRT_CRI=$(OCI_BIN) hack/prom-rule-ci/verify-rules.sh $$PROM_SPEC_DUMPER $(CURDIR)/hack/prom-rule-ci/prom-rules-tests.yaml
+
+generate: generate-go generate-deploy generate-test generate-external generate-monitoring generate-doc
 
 check: $(GO)
 	./hack/check.sh
@@ -172,6 +204,11 @@ vendor: $(GO)
 	generate-go \
 	generate-deploy \
 	generate-test \
+	generate-external \
+	generate-monitoring \
+	generate-doc \
+	verify-monitoring \
+	verify-doc \
 	manifests \
 	fmt \
 	vet \
@@ -182,4 +219,7 @@ vendor: $(GO)
 	cluster-down \
 	cluster-sync \
 	check-go-version \
-	lint
+	lint \
+	lint-fix \
+	lint-metrics \
+	prom-rules-verify

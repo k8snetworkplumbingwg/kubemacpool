@@ -6,4 +6,17 @@ metadata:
     prometheus.kubemacpool.io: "true"
   name: prometheus-rule
   namespace: kubemacpool-system
-spec: {}
+spec:
+  groups:
+  - name: alerts.rules
+    rules:
+    - alert: KubemacpoolMACCollisionDetected
+      annotations:
+        description: '{{ $value }} MAC address(es) have collisions. Multiple running
+          objects are using the same MAC address.'
+        summary: MAC address collisions detected.
+      expr: count(kmp_mac_collisions > 1) > 0
+      for: 30s
+      labels:
+        operator_health_impact: warning
+        severity: warning

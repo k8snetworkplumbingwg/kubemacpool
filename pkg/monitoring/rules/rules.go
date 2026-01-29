@@ -19,6 +19,8 @@ package rules
 import (
 	promv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/rhobs/operator-observability-toolkit/pkg/operatorrules"
+
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/rules/alerts"
 )
 
 const (
@@ -26,7 +28,7 @@ const (
 )
 
 func SetupRules() error {
-	return nil
+	return alerts.Register()
 }
 
 func BuildPrometheusRule(namespace string) (*promv1.PrometheusRule, error) {

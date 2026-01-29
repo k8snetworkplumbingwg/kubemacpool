@@ -51,6 +51,8 @@ linters-settings:
           - kubevirt.io
           - sigs.k8s.io
           - github.com/pkg/errors
+          - github.com/prometheus/client_golang
+          - github.com/prometheus/common
 
   mnd:
     settings:

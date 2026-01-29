@@ -3,10 +3,12 @@ package metrics
 import "github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics"
 
 var (
+	// Deprecated: this metric is deprecated and will be removed in a future release.
+	// Use macCollisionMetric instead.
 	duplicateMacsMetric = operatormetrics.NewCounter(
 		operatormetrics.MetricOpts{
 			Name: "kubevirt_kmp_duplicate_macs",
-			Help: "Kubemacpool duplicate macs counter",
+			Help: "[DEPRECATED] Total count of duplicate KubeMacPool MAC addresses. Use kmp_mac_collisions instead.",
 		},
 	)
 

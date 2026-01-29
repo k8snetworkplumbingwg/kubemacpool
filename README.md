@@ -67,7 +67,7 @@ Kubemacpool [Prometheus](https://prometheus.io/) exposes the following metrics (
 - `kmp_mac_collisions`
 - `kubevirt_kmp_duplicate_macs`
 
-`kubevirt_kmp_duplicate_macs` is a counter incremented when Kubemacpool detects MAC address conflicts across KubeVirt VirtualMachines.
+`kubevirt_kmp_duplicate_macs` is deprecated. Use `kmp_mac_collisions` instead.
 
 The metric can be used as a data source for firing alert using [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
 

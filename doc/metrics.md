@@ -3,7 +3,7 @@
 | Name | Kind | Type | Description |
 |------|------|------|-------------|
 | kmp_mac_collisions | Metric | Gauge | Count of running objects sharing the same MAC address (collision when > 1) |
-| kubevirt_kmp_duplicate_macs | Metric | Counter | Kubemacpool duplicate macs counter |
+| kubevirt_kmp_duplicate_macs | Metric | Counter | [DEPRECATED] Total count of duplicate KubeMacPool MAC addresses. Use kmp_mac_collisions instead. |
 
 ## Developing new metrics
 

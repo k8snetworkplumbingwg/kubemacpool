@@ -29,3 +29,15 @@ func SetupMetrics() error {
 func ListMetrics() []operatormetrics.Metric {
 	return operatormetrics.ListMetrics()
 }
+
+func IncDuplicateMacs() {
+	duplicateMacsMetric.Inc()
+}
+
+func SetMacCollision(mac string, count int) {
+	macCollisionMetric.WithLabelValues(mac).Set(float64(count))
+}
+
+func DeleteMacCollision(mac string) {
+	macCollisionMetric.DeleteLabelValues(mac)
+}

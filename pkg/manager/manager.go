@@ -24,6 +24,8 @@ import (
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
+	"github.com/rhobs/operator-observability-toolkit/pkg/operatormetrics"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/client-go/discovery"
@@ -36,10 +38,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/vmicollision"
+	monitoringmetrics "github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/metrics"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
@@ -207,7 +211,20 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 		},
 		Cache: cacheOptions,
 	})
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Ensure operator-observability-toolkit metrics are registered in the same registry
+	// that controller-runtime exposes on /metrics.
+	operatormetrics.Register = crmetrics.Registry.Register
+	operatormetrics.Unregister = crmetrics.Registry.Unregister
+
+	if err := monitoringmetrics.SetupMetrics(); err != nil {
+		return errors.Wrap(err, "failed to register monitoring metrics")
+	}
+
+	return nil
 }
 
 // Check for Kubevirt CRD to be available

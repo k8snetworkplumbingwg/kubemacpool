@@ -17,7 +17,7 @@ limitations under the License.
 package pool_manager
 
 import (
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/gauges"
+	monitoringmetrics "github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/metrics"
 )
 
 type CollisionGauge interface {
@@ -28,11 +28,11 @@ type CollisionGauge interface {
 type prometheusCollisionGauge struct{}
 
 func (p *prometheusCollisionGauge) Set(mac string, count int) {
-	gauges.MACCollisionGauge.WithLabelValues(mac).Set(float64(count))
+	monitoringmetrics.SetMacCollision(mac, count)
 }
 
 func (p *prometheusCollisionGauge) Delete(mac string) {
-	gauges.MACCollisionGauge.DeleteLabelValues(mac)
+	monitoringmetrics.DeleteMacCollision(mac)
 }
 
 func NewCollisionGauge() CollisionGauge {

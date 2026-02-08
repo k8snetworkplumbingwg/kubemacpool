@@ -90,7 +90,7 @@ func getPodContainerLogs(podName, containerName string) (string, error) {
 	return output, nil
 }
 
-func dumpKubemacpoolLogs(failureCount int) {
+func dumpManagerNamespaceArtifacts(failureCount int) {
 	if err := logPods(managerNamespace, failureCount); err != nil {
 		fmt.Println(err)
 	}
@@ -110,24 +110,14 @@ func dumpKubemacpoolLogs(failureCount int) {
 	if err := logConfigMaps(managerNamespace, failureCount); err != nil {
 		fmt.Println(err)
 	}
+}
 
+func dumpKubeVirtArtifacts(failureCount int) {
 	if err := logVirtualMachines(failureCount); err != nil {
 		fmt.Println(err)
 	}
 
 	if err := logVirtualMachineInstances(failureCount); err != nil {
-		fmt.Println(err)
-	}
-
-	if err := logAllPods(failureCount); err != nil {
-		fmt.Println(err)
-	}
-
-	if err := logNetworkAttachmentDefinitions(failureCount); err != nil {
-		fmt.Println(err)
-	}
-
-	if err := logNamespaces(failureCount); err != nil {
 		fmt.Println(err)
 	}
 
@@ -142,15 +132,38 @@ func dumpKubemacpoolLogs(failureCount int) {
 	if err := logKubevirtConfig(failureCount); err != nil {
 		fmt.Println(err)
 	}
+}
+
+func dumpClusterWideArtifacts(failureCount int) {
+	if err := logAllPods(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logNetworkAttachmentDefinitions(failureCount); err != nil {
+		fmt.Println(err)
+	}
+
+	if err := logNamespaces(failureCount); err != nil {
+		fmt.Println(err)
+	}
 
 	if err := logNodes(failureCount); err != nil {
 		fmt.Println(err)
 	}
+}
 
+func dumpCollisionArtifacts(failureCount int) {
 	// Dump collision gauge values to help debug alert flakiness / lingering collisions.
 	if err := logMACCollisionGauge(failureCount); err != nil {
 		fmt.Println(err)
 	}
+}
+
+func dumpKubemacpoolLogs(failureCount int) {
+	dumpManagerNamespaceArtifacts(failureCount)
+	dumpKubeVirtArtifacts(failureCount)
+	dumpClusterWideArtifacts(failureCount)
+	dumpCollisionArtifacts(failureCount)
 }
 
 func logPodContainersLogs(podName string, containers []corev1.Container, failureCount int) error {
@@ -716,7 +729,6 @@ func appendMACCollisionLines(b *strings.Builder, metrics string, vmiByMAC map[st
 var macLabelValueRE = regexp.MustCompile(`\bmac="([^"]+)"`)
 
 func parseMACLabelValue(line string) (string, bool) {
-
 	m := macLabelValueRE.FindStringSubmatch(line)
 	if len(m) != 2 {
 		return "", false

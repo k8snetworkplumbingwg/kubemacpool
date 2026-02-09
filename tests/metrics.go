@@ -18,10 +18,19 @@ package tests
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	. "github.com/onsi/gomega"
+
+	promApi "github.com/prometheus/client_golang/api"
+	promApiv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	promConfig "github.com/prometheus/common/config"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -30,7 +39,10 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
 )
 
-const macCollisionMetric = "kmp_mac_collisions"
+const (
+	macCollisionMetric            = "kmp_mac_collisions"
+	prometheusMonitoringNamespace = "monitoring"
+)
 
 func getMetrics(token string) (string, error) {
 	podList, err := getManagerPods()
@@ -117,12 +129,128 @@ func getMACCollisionCount(mac string) (int, error) {
 
 func getPrometheusToken() (token, stderr string, err error) {
 	const (
-		monitoringNamespace = "monitoring"
-		prometheusPod       = "prometheus-k8s-0"
-		container           = "prometheus"
-		tokenPath           = "/var/run/secrets/kubernetes.io/serviceaccount/token" // #nosec G101 --
+		prometheusPod = "prometheus-k8s-0"
+		container     = "prometheus"
+		tokenPath     = "/var/run/secrets/kubernetes.io/serviceaccount/token" // #nosec G101 --
 		// Standard Kubernetes service account token path, not hardcoded credentials
 	)
 
-	return kubectl.Kubectl("exec", "-n", monitoringNamespace, prometheusPod, "-c", container, "--", "cat", tokenPath)
+	return kubectl.Kubectl("exec", "-n", prometheusMonitoringNamespace, prometheusPod, "-c", container, "--", "cat", tokenPath)
+}
+
+// PromClient wraps the Prometheus API client for querying alerts
+type PromClient struct {
+	client     promApiv1.API
+	sourcePort int
+	namespace  string
+}
+
+// NewPromClient creates a new Prometheus client with port forwarding
+func NewPromClient(sourcePort int, monitoringNs string) *PromClient {
+	prometheusClient := &PromClient{
+		sourcePort: sourcePort,
+		namespace:  monitoringNs,
+	}
+
+	prometheusClient.client = initializePromClient(prometheusClient.getPrometheusURL(), prometheusClient.getAuthorizationTokenForPrometheus())
+
+	return prometheusClient
+}
+
+func (p *PromClient) getPrometheusURL() string {
+	return fmt.Sprintf("http://localhost:%d", p.sourcePort)
+}
+
+func (p *PromClient) getAuthorizationTokenForPrometheus() string {
+	const tokenTimeout = 10 * time.Second
+	var token string
+	Eventually(func() bool {
+		treq, err := testClient.K8sClient.CoreV1().ServiceAccounts(p.namespace).CreateToken(
+			context.TODO(),
+			"prometheus-k8s",
+			&authenticationv1.TokenRequest{
+				Spec: authenticationv1.TokenRequestSpec{
+					// Avoid specifying any audiences so that the token will be
+					// issued for the default audience of the issuer.
+				},
+			},
+			metav1.CreateOptions{},
+		)
+		if err != nil {
+			return false
+		}
+		token = treq.Status.Token
+		return true
+	}, tokenTimeout, time.Second).Should(BeTrue())
+	return token
+}
+
+func initializePromClient(prometheusURL, token string) promApiv1.API {
+	defaultRoundTripper := promApi.DefaultRoundTripper
+	tripper := defaultRoundTripper.(*http.Transport)
+	tripper.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- test code
+
+	c, err := promApi.NewClient(promApi.Config{
+		Address:      prometheusURL,
+		RoundTripper: promConfig.NewAuthorizationCredentialsRoundTripper("Bearer", promConfig.NewInlineSecret(token), defaultRoundTripper),
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	return promApiv1.NewAPI(c)
+}
+
+// getAlertByName returns the alert with the given name, or nil if not found
+func (p *PromClient) getAlertByName(alertName string) (*promApiv1.Alert, error) {
+	alerts, err := p.client.Alerts(context.TODO())
+	if err != nil {
+		return nil, err
+	}
+
+	for _, alert := range alerts.Alerts {
+		if string(alert.Labels["alertname"]) == alertName {
+			return &alert, nil
+		}
+	}
+	return nil, nil
+}
+
+// IsAlertFiring returns true if the alert is firing, false otherwise.
+// Returns false on connection errors to allow Eventually to retry.
+func (p *PromClient) IsAlertFiring(alertName string) bool {
+	alert, err := p.getAlertByName(alertName)
+	if err != nil {
+		return false
+	}
+	return alert != nil && alert.State == promApiv1.AlertStateFiring
+}
+
+// patchPrometheusForKubemacpool patches the Prometheus instance to include kubemacpool PrometheusRules and ServiceMonitors,
+// then restarts the Prometheus pod to pick up the new configuration and RBAC permissions.
+func patchPrometheusForKubemacpool() error {
+	// Patch ruleSelector to load our PrometheusRule
+	_, stderr, err := kubectl.Kubectl("patch", "prometheus", "k8s", "-n", prometheusMonitoringNamespace, "--type=json", "-p",
+		`[{"op": "replace", "path": "/spec/ruleSelector", "value":{"matchLabels": {"prometheus.kubemacpool.io": "true"}}}]`)
+	if err != nil {
+		return fmt.Errorf("failed to patch ruleSelector: %s: %w", stderr, err)
+	}
+
+	// Patch serviceMonitorSelector to scrape our metrics
+	_, stderr, err = kubectl.Kubectl("patch", "prometheus", "k8s", "-n", prometheusMonitoringNamespace, "--type=json", "-p",
+		`[{"op": "replace", "path": "/spec/serviceMonitorSelector", "value":{"matchLabels": {"prometheus.kubemacpool.io": "true"}}}]`)
+	if err != nil {
+		return fmt.Errorf("failed to patch serviceMonitorSelector: %s: %w", stderr, err)
+	}
+
+	// Restart Prometheus to pick up new configuration and RBAC permissions
+	_, stderr, err = kubectl.Kubectl("rollout", "restart", "statefulset/prometheus-k8s", "-n", prometheusMonitoringNamespace)
+	if err != nil {
+		return fmt.Errorf("failed to rollout prometheus: %s: %w", stderr, err)
+	}
+
+	_, stderr, err = kubectl.Kubectl("rollout", "status", "statefulset/prometheus-k8s", "-n", prometheusMonitoringNamespace, "--timeout=120s")
+	if err != nil {
+		return fmt.Errorf("failed to wait for prometheus rollout: %s: %w", stderr, err)
+	}
+
+	return nil
 }

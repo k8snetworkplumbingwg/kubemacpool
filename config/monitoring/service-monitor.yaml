@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: metrics-monitor
+  labels:
+    prometheus.kubemacpool.io: "true"
+    openshift.io/cluster-monitoring: "true"
+spec:
+  selector:
+    matchLabels:
+      control-plane: mac-controller-manager
+  endpoints:
+    - port: metrics
+      scheme: https
+      bearerTokenFile: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      tlsConfig:
+        insecureSkipVerify: true

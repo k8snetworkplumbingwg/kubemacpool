@@ -62,11 +62,12 @@ Part of the Kubemacpool functionality is implemented as a [kubernetes mutating a
 to ensure that the MAC address is assigned before VirtualMachine is created.
 This webhook uses self signed certificate. For more information see [certificate handling](doc/certificate-handling.md).
 
-### Metrics 
-Kubemacpool [Prometheus](https://prometheus.io/) expose the following metric:
+### Metrics
+Kubemacpool [Prometheus](https://prometheus.io/) exposes the following metrics (see `doc/metrics.md`):
+- `kmp_mac_collisions`
 - `kubevirt_kmp_duplicate_macs`
 
-The metric is a Gouge, its incremented when Kubemacpool detects MAC address conflict by Kubevirt VirtualMachines.
+`kubevirt_kmp_duplicate_macs` is deprecated. Use `kmp_mac_collisions` instead.
 
 The metric can be used as a data source for firing alert using [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
 

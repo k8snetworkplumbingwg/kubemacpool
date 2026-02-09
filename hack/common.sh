@@ -67,3 +67,14 @@ determine_cri_bin() {
         exit 1
     fi
 }
+
+fail_if_cri_bin_missing() {
+    if [ -z "${KUBEVIRT_CRI}" ]; then
+        KUBEVIRT_CRI=${OCI_BIN:-$(determine_cri_bin)}
+    fi
+
+    if ! command -v "${KUBEVIRT_CRI}" >/dev/null 2>&1; then
+        echo "error: container runtime binary not found: ${KUBEVIRT_CRI}"
+        exit 1
+    fi
+}

@@ -33,7 +33,7 @@ import (
 
 	kubevirt "kubevirt.io/api/core/v1"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/gauges"
+	monitoringmetrics "github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/metrics"
 )
 
 func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.VirtualMachine, transactionTimestamp *time.Time, isNotDryRun bool, parentLogger logr.Logger) error {
@@ -339,7 +339,7 @@ func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 			// TODO remove check once gauge is deprecated
 			if err := p.checkRequestedVirtualMachineInterfaceMac(vmFullName, iface, true, parentLogger); err != nil {
 				if strings.Contains(err.Error(), "failed to allocate requested mac address") {
-					gauges.DuplicateMacGauge.Inc()
+					monitoringmetrics.IncDuplicateMacs()
 				}
 				parentLogger.Error(err, "Duplicate mac address for virtual machine",
 					"virtualMachineFullName", vmFullName,

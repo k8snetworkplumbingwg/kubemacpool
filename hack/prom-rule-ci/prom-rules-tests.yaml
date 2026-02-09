@@ -1,0 +1,6 @@
+---
+rule_files:
+  - /tmp/rules.verify
+
+tests: []
+

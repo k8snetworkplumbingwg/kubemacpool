@@ -71,6 +71,8 @@ Kubemacpool [Prometheus](https://prometheus.io/) exposes the following metrics (
 
 The metric can be used as a data source for firing alert using [Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/).
 
+**Prometheus integration:** To integrate with Prometheus Operator, apply `kubemacpool-monitoring.yaml` (it includes `ServiceMonitor`/`PrometheusRule` and related resources). Apply it only when those CRDs are available.
+
 #### Metrics endpoint deployment
 Kubemacpool Deployment consist of two containers `manager` and `kube-rbac-proxy`.
 

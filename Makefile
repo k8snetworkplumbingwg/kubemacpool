@@ -68,21 +68,26 @@ $(VIRTCTL):
 # Deploy controller in the configured Kubernetes cluster in ~/.kube/config
 deploy: generate-deploy
 	$(KUBECTL) apply -f config/test/kubemacpool.yaml
+	$(KUBECTL) apply -f config/test/kubemacpool-monitoring.yaml
 
 deploy-test: generate-test
 	$(KUBECTL) apply -f config/test/kubemacpool.yaml
+	$(KUBECTL) apply -f config/test/kubemacpool-monitoring.yaml
 
 generate-deploy: $(GO) manifests
 	$(KUSTOMIZE) build config/release > config/release/kubemacpool.yaml
+	$(KUSTOMIZE) build config/monitoring > config/release/kubemacpool-monitoring.yaml
 
 generate-test: $(GO) manifests
 	$(KUSTOMIZE) build config/test > config/test/kubemacpool.yaml
+	$(KUSTOMIZE) build config/monitoring > config/test/kubemacpool-monitoring.yaml
 
 generate-external: $(GO) manifests
 	cp -r config/test config/external
 	cd config/external && \
 		$(KUSTOMIZE) edit set image quay.io/kubevirt/kubemacpool=$(REGISTRY)/$(IMG)
 	$(KUSTOMIZE) build config/external > config/external/kubemacpool.yaml
+	$(KUSTOMIZE) build config/monitoring > config/external/kubemacpool-monitoring.yaml
 
 # Generate manifests e.g. CRD, RBAC etc.
 manifests: $(GO)

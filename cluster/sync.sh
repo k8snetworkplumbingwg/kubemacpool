@@ -19,6 +19,11 @@ set -ex
 source ./cluster/cluster.sh
 cluster::install
 
+monitoring_enabled() {
+    ./cluster/kubectl.sh get crd servicemonitors.monitoring.coreos.com >/dev/null 2>&1 &&
+    ./cluster/kubectl.sh get crd prometheusrules.monitoring.coreos.com >/dev/null 2>&1
+}
+
 if [[ "$KUBEVIRT_PROVIDER" == external ]]; then
     if [[ ! -v DEV_REGISTRY ]]; then
         echo "Missing DEV_REGISTRY variable"
@@ -48,6 +53,10 @@ until [[ `./cluster/kubectl.sh get ns | grep "kubemacpool-system " | wc -l` -eq 
 done
 
 ./cluster/kubectl.sh apply -f $config_dir/kubemacpool.yaml
+
+if monitoring_enabled; then
+    ./cluster/kubectl.sh apply -f "$config_dir/kubemacpool-monitoring.yaml"
+fi
 
 pods_ready_wait() {
   if [[ "$KUBEVIRT_PROVIDER" != external ]]; then

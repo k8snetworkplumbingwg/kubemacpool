@@ -41,6 +41,7 @@ func vmiCollisionAlerts() []promv1.Rule {
 			Annotations: map[string]string{
 				"summary":     "MAC address collisions detected.",
 				"description": "{{ $value }} MAC address(es) have collisions. Multiple running objects are using the same MAC address.",
+				"runbook_url": "https://kubevirt.io/monitoring/runbooks/KubemacpoolMACCollisionDetected",
 			},
 			Labels: map[string]string{
 				severityAlertLabelKey: "warning",

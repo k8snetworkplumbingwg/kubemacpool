@@ -23,8 +23,7 @@ import (
 )
 
 const (
-	severityAlertLabelKey        = "severity"
-	operatorHealthImpactLabelKey = "operator_health_impact"
+	severityAlertLabelKey = "severity"
 )
 
 func Register() error {
@@ -44,8 +43,7 @@ func vmiCollisionAlerts() []promv1.Rule {
 				"description": "{{ $value }} MAC address(es) have collisions. Multiple running objects are using the same MAC address.",
 			},
 			Labels: map[string]string{
-				severityAlertLabelKey:        "warning",
-				operatorHealthImpactLabelKey: "warning",
+				severityAlertLabelKey: "warning",
 			},
 		},
 	}

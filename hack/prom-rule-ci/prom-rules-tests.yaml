@@ -2,5 +2,27 @@
 rule_files:
   - /tmp/rules.verify
 
-tests: []
+tests:
+- interval: 1m
+  input_series:
+  - series: 'kmp_mac_collisions{namespace="kubemacpool-system", mac="02:00:00:00:aa:01"}'
+    values: "stale 2 2 stale"
 
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: KubemacpoolMACCollisionDetected
+    exp_alerts: []
+
+  - eval_time: 2m
+    alertname: KubemacpoolMACCollisionDetected
+    exp_alerts:
+    - exp_annotations:
+        description: "1 MAC address(es) have collisions. Multiple running objects are using the same MAC address."
+        runbook_url: "https://kubevirt.io/monitoring/runbooks/KubemacpoolMACCollisionDetected"
+        summary: "MAC address collisions detected."
+      exp_labels:
+        severity: "warning"
+
+  - eval_time: 3m
+    alertname: KubemacpoolMACCollisionDetected
+    exp_alerts: []

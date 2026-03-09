@@ -151,6 +151,7 @@ spec:
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
         - --proxy-endpoints-port=8643
+        - --tls-min-version=VersionTLS13
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:

@@ -344,6 +344,7 @@ spec:
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
         - --proxy-endpoints-port=8643
+        - --tls-min-version=VersionTLS13
         image: quay.io/brancz/kube-rbac-proxy:v0.21.0
         imagePullPolicy: IfNotPresent
         livenessProbe:

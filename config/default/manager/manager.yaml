@@ -148,7 +148,6 @@ spec:
             mountPath: /tmp/k8s-webhook-server/serving-certs/
         terminationMessagePolicy: FallbackToLogsOnError
       - args:
-        - --logtostderr
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
         - --proxy-endpoints-port=8643

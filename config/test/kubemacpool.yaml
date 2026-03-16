@@ -299,6 +299,8 @@ spec:
               name: kubemacpool-mac-range-config
         - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
           value: v1
+        - name: TLS_MIN_VERSION
+          value: VersionTLS13
         image: registry:5000/kubevirt/kubemacpool:latest
         imagePullPolicy: Always
         livenessProbe:
@@ -341,11 +343,11 @@ spec:
           name: tls-key-pair
           readOnly: true
       - args:
-        - --logtostderr
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
         - --proxy-endpoints-port=8643
-        image: quay.io/brancz/kube-rbac-proxy:v0.18.1
+        - --tls-min-version=VersionTLS13
+        image: quay.io/brancz/kube-rbac-proxy:v0.21.0
         imagePullPolicy: IfNotPresent
         livenessProbe:
           httpGet:

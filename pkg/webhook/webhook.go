@@ -55,7 +55,7 @@ var AddToWebhookFuncs []func(crwebhook.Server, *pool_manager.PoolManager, *runti
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 
-	tlsMinVersion, err := kawtls.TLSVersion(tlsMinVersion())
+	tlsMinVersion, err := tlsVersionByName(tlsMinVersion())
 	if err != nil {
 		return err
 	}
@@ -99,8 +99,22 @@ func cipherSuites() []string {
 	return strings.Split(cipherSuitesEnv, ",")
 }
 
-// tlsMinVersion read the TLS minimal version from environment a environment
-// variable, if it's empty the webhook server will fallback to "1.0"
+// tlsMinVersion reads the TLS minimal version from the TLS_MIN_VERSION
+// environment variable. Expects Go crypto/tls constant names
+// (e.g. VersionTLS12, VersionTLS13).
 func tlsMinVersion() string {
 	return os.Getenv("TLS_MIN_VERSION")
+}
+
+func tlsVersionByName(name string) (uint16, error) {
+	versions := map[string]uint16{
+		"VersionTLS10": tls.VersionTLS10,
+		"VersionTLS11": tls.VersionTLS11,
+		"VersionTLS12": tls.VersionTLS12,
+		"VersionTLS13": tls.VersionTLS13,
+	}
+	if v, ok := versions[name]; ok {
+		return v, nil
+	}
+	return 0, fmt.Errorf("invalid TLS version %q", name)
 }

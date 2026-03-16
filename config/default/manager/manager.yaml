@@ -114,6 +114,8 @@ spec:
                 key: RANGE_END
           - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
             value: "v1"
+          - name: TLS_MIN_VERSION
+            value: "VersionTLS13"
         resources:
           requests:
             cpu: 100m
@@ -148,16 +150,16 @@ spec:
             mountPath: /tmp/k8s-webhook-server/serving-certs/
         terminationMessagePolicy: FallbackToLogsOnError
       - args:
-        - --logtostderr
         - --secure-listen-address=:8443
         - --upstream=http://127.0.0.1:8080
         - --proxy-endpoints-port=8643
+        - --tls-min-version=VersionTLS13
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
             drop:
             - ALL
-        image: quay.io/brancz/kube-rbac-proxy:v0.18.1
+        image: quay.io/brancz/kube-rbac-proxy:v0.21.0
         imagePullPolicy: IfNotPresent
         name: kube-rbac-proxy
         ports:

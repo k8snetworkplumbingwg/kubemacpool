@@ -261,12 +261,12 @@ func logNetworkPolicies(namespace string, failureCount int) error {
 		return err
 	}
 
-	bytes, err := json.MarshalIndent(*npList, "", "  ")
+	b, err := json.MarshalIndent(*npList, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	err = reporter.LogToFile("network-policies", string(bytes), artifactDir, failureCount)
+	err = reporter.LogToFile("network-policies", string(b), artifactDir, failureCount)
 	if err != nil {
 		return err
 	}
@@ -289,13 +289,13 @@ func logConfigMaps(namespace string, failureCount int) error {
 			continue
 		}
 
-		bytes, err := json.MarshalIndent(*configMapYaml, "", "  ")
+		b, err := json.MarshalIndent(*configMapYaml, "", "  ")
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		err = reporter.LogToFile(fmt.Sprintf("configmap_%s", configMap.Name), string(bytes), artifactDir, failureCount)
+		err = reporter.LogToFile(fmt.Sprintf("configmap_%s", configMap.Name), string(b), artifactDir, failureCount)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -317,13 +317,13 @@ func logVirtualMachines(failureCount int) error {
 
 	for i := range vmList.Items {
 		vm := &vmList.Items[i]
-		bytes, err := json.MarshalIndent(*vm, "", "  ")
+		b, err := json.MarshalIndent(*vm, "", "  ")
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		err = reporter.LogToFile(fmt.Sprintf("vm_%s_%s", vm.Namespace, vm.Name), string(bytes), artifactDir, failureCount)
+		err = reporter.LogToFile(fmt.Sprintf("vm_%s_%s", vm.Namespace, vm.Name), string(b), artifactDir, failureCount)
 		if err != nil {
 			errs = append(errs, err)
 		}

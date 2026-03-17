@@ -31,8 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	kawtls "github.com/qinqon/kube-admission-webhook/pkg/tls"
-
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
@@ -63,7 +61,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 	s := crwebhook.NewServer(crwebhook.Options{
 		Port: WebhookServerPort,
 		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
-			tlsConfig.CipherSuites = kawtls.CipherSuitesIDs(cipherSuites())
+			tlsConfig.CipherSuites = tlsCipherSuites(cipherSuites())
 			tlsConfig.MinVersion = tlsMinVersion
 		}},
 	})
@@ -117,4 +115,25 @@ func tlsVersionByName(name string) (uint16, error) {
 		return v, nil
 	}
 	return 0, fmt.Errorf("invalid TLS version %q", name)
+}
+
+// tlsCipherSuites translate comma-speared list of OpenSSL cipher suites names and return
+// the corresponding TLS cipher suites IDs matching tls.Config.CipherSuites.
+func tlsCipherSuites(cipherSuitesNames []string) []uint16 {
+	idByName := map[string]uint16{}
+	for _, cipherSuite := range tls.CipherSuites() {
+		idByName[cipherSuite.Name] = cipherSuite.ID
+	}
+	for _, cipherSuite := range tls.InsecureCipherSuites() {
+		idByName[cipherSuite.Name] = cipherSuite.ID
+	}
+
+	var ids []uint16
+	for _, name := range cipherSuitesNames {
+		if id, ok := idByName[name]; ok {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
 }

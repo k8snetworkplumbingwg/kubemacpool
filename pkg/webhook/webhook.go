@@ -20,7 +20,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"os"
 
 	"github.com/pkg/errors"
 
@@ -31,7 +30,6 @@ import (
 	crwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
-	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 )
 
 const (
@@ -52,11 +50,7 @@ var AddToWebhookFuncs []func(crwebhook.Server, *pool_manager.PoolManager, *runti
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-	//TODO: move config creation to main and consume config from poolManager
-	cfg, err := kmptls.NewConfig(os.Getenv("TLS_MIN_VERSION"), os.Getenv("TLS_CIPHERS"))
-	if err != nil {
-		return err
-	}
+	cfg := poolManager.TLSConfig()
 
 	s := crwebhook.NewServer(crwebhook.Options{
 		Port: WebhookServerPort,
@@ -80,7 +74,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	err = mgr.Add(s)
+	err := mgr.Add(s)
 	if err != nil {
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}

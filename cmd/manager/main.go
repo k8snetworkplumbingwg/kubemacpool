@@ -153,7 +153,7 @@ func runKubemacpoolManager() {
 	var logType, metricsAddr string
 	var waitingTime int
 
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
 	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
 	flag.Parse()

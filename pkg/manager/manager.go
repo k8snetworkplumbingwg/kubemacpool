@@ -39,6 +39,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
@@ -207,7 +208,10 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: k.metricsAddr,
+			BindAddress:    k.metricsAddr,
+			SecureServing:  true,
+			FilterProvider: filters.WithAuthenticationAndAuthorization,
+			// TODO: configure TLS settings according to env settings
 		},
 		Cache: cacheOptions,
 	})

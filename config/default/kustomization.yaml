@@ -17,13 +17,6 @@ namePrefix: kubemacpool-
 # files that kustomize reads, modifies and emits as a
 # YAML string, with resources separated by document
 # markers ("---").
-  # Comment the following 3 lines if you want to disable
-  # the auth proxy (https://github.com/brancz/kube-rbac-proxy)
-  # which protects your /metrics endpoint.
-
-  # Protect the /metrics endpoint by putting it behind auth.
-  # Only one of manager_auth_proxy_patch.yaml and
-  # manager_prometheus_metrics_patch.yaml should be enabled.
 resources:
 - rbac/rbac_role.yaml
 - rbac/rbac_role_binding.yaml
@@ -32,14 +25,5 @@ resources:
 - network-policy/allow-ingress-to-webhook.yaml
 - network-policy/allow-ingress-to-metrics-endpoint.yaml
 
-  #- ../rbac/auth_proxy_service.yaml
-#- ../rbac/auth_proxy_role.yaml
-#- ../rbac/auth_proxy_role_binding.yaml
-  # If you want your controller-manager to expose the /metrics
-  # endpoint w/o any authn/z, uncomment the following line and
-  # comment manager_auth_proxy_patch.yaml.
-  # Only one of manager_auth_proxy_patch.yaml and
-  # manager_prometheus_metrics_patch.yaml should be enabled.
-#- manager_prometheus_metrics_patch.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

@@ -108,10 +108,10 @@ $(GOLANGCI_LINT_BIN):
 	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(BIN_DIR) $(GOLANGCI_LINT_VERSION)
 
 lint: $(GOLANGCI_LINT_BIN)
-	$(GOLANGCI_LINT_BIN) run --verbose $(LINTER_COVERAGE)
+	$(GOLANGCI_LINT_BIN) run --timeout=10m --verbose $(LINTER_COVERAGE)
 
 lint-fix: $(GOLANGCI_LINT_BIN)
-	$(GOLANGCI_LINT_BIN) run --verbose --fix $(LINTER_COVERAGE)
+	$(GOLANGCI_LINT_BIN) run --timeout=10m --verbose --fix $(LINTER_COVERAGE)
 
 lint-metrics: $(GO)
 	OCI_BIN=$(OCI_BIN) ./hack/prom_metric_linter.sh --operator-name="kmp" --sub-operator-name="kmp"

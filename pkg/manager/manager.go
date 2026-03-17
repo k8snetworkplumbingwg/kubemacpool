@@ -17,6 +17,7 @@ package manager
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"os"
 	"os/signal"
@@ -228,7 +229,10 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 			BindAddress:    k.metricsAddr,
 			SecureServing:  true,
 			FilterProvider: filters.WithAuthenticationAndAuthorization,
-			// TODO: configure TLS settings according to env settings
+			TLSOpts: []func(*tls.Config){func(cfg *tls.Config) {
+				cfg.CipherSuites = k.tlsConfig.CipherSuites
+				cfg.MinVersion = k.tlsConfig.MinTLSVersion
+			}},
 		},
 		Cache: cacheOptions,
 	})

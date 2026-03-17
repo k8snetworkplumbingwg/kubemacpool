@@ -34,7 +34,8 @@ GOFMT := GOFLAGS=-mod=mod $(GO)fmt
 VET := GOFLAGS=-mod=mod $(GO) vet
 DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
 GO_VERSION = $(shell hack/go-version.sh)
-GOLANGICI_LINT ?= GOFLAGS=-mod=mod $(GO) run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+GOLANGCI_LINT_VERSION := v2.10.1
+GOLANGCI_LINT_BIN := $(BIN_DIR)/golangci-lint
 LINTER_COVERAGE ?= tests/...
 
 E2E_TEST_EXTRA_ARGS ?=
@@ -101,13 +102,16 @@ fmt: $(GO)
 vet: $(GO)
 	$(VET) ./pkg/... ./cmd/... ./tests/...
 
-lint:
-	GOTOOLCHAIN=$$(grep '^toolchain' go.mod | awk '{print $$2}' | sed 's/go//' | awk -F. '{print $$1"."$$2}' || echo ""); \
-	$(GOLANGICI_LINT) run --verbose $(LINTER_COVERAGE)
+$(GOLANGCI_LINT_BIN):
+	@echo "Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."
+	@mkdir -p $(BIN_DIR)
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(BIN_DIR) $(GOLANGCI_LINT_VERSION)
 
-lint-fix:
-	GOTOOLCHAIN=$$(grep '^toolchain' go.mod | awk '{print $$2}' | sed 's/go//' | awk -F. '{print $$1"."$$2}' || echo ""); \
-	$(GOLANGICI_LINT) run --verbose --fix $(LINTER_COVERAGE)
+lint: $(GOLANGCI_LINT_BIN)
+	$(GOLANGCI_LINT_BIN) run --verbose $(LINTER_COVERAGE)
+
+lint-fix: $(GOLANGCI_LINT_BIN)
+	$(GOLANGCI_LINT_BIN) run --verbose --fix $(LINTER_COVERAGE)
 
 lint-metrics: $(GO)
 	OCI_BIN=$(OCI_BIN) ./hack/prom_metric_linter.sh --operator-name="kmp" --sub-operator-name="kmp"

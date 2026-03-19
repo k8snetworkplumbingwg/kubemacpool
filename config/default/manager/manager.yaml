@@ -124,6 +124,9 @@ spec:
         - containerPort: 8000
           name: webhook-server
           protocol: TCP
+        - containerPort: 8443
+          name: metrics
+          protocol: TCP
         readinessProbe:
           httpGet:
             httpHeaders:
@@ -149,45 +152,6 @@ spec:
             readOnly: true
             mountPath: /tmp/k8s-webhook-server/serving-certs/
         terminationMessagePolicy: FallbackToLogsOnError
-      - args:
-        - --secure-listen-address=:8443
-        - --upstream=http://127.0.0.1:8080
-        - --proxy-endpoints-port=8643
-        - --tls-min-version=VersionTLS13
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-        image: quay.io/brancz/kube-rbac-proxy:v0.21.0
-        imagePullPolicy: IfNotPresent
-        name: kube-rbac-proxy
-        ports:
-        - containerPort: 8443
-          name: metrics
-          protocol: TCP
-        - containerPort: 8643
-          name: proxy
-          protocol: TCP
-        resources:
-          requests:
-            cpu: 10m
-            memory: 20Mi
-        terminationMessagePolicy: FallbackToLogsOnError
-        readinessProbe:
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          httpGet:
-            scheme: HTTPS
-            port: proxy
-            path: healthz
-        livenessProbe:
-          initialDelaySeconds: 15
-          periodSeconds: 20
-          httpGet:
-            scheme: HTTPS
-            port: proxy
-            path: healthz
       priorityClassName: system-cluster-critical
       terminationGracePeriodSeconds: 5
       volumes:

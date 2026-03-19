@@ -37,6 +37,7 @@ import (
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 )
 
 func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
@@ -153,7 +154,7 @@ func runKubemacpoolManager() {
 	var logType, metricsAddr string
 	var waitingTime int
 
-	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
 	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
 	flag.Parse()
@@ -186,7 +187,13 @@ func runKubemacpoolManager() {
 		os.Exit(1)
 	}
 
-	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime)
+	tlsConfig, err := kmptls.NewConfig(os.Getenv("TLS_MIN_VERSION"), os.Getenv("TLS_CIPHERS"))
+	if err != nil {
+		log.Error(err, "Failed to create TLS config")
+		os.Exit(1)
+	}
+
+	kubemacpoolManager := manager.NewKubeMacPoolManager(podNamespace, podName, metricsAddr, waitingTime, *tlsConfig)
 
 	err = kubemacpoolManager.Run(rangeStart, rangeEnd)
 	if err != nil {

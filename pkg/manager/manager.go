@@ -17,6 +17,7 @@ package manager
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"os"
 	"os/signal"
@@ -39,6 +40,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	crmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
@@ -46,6 +48,7 @@ import (
 	monitoringmetrics "github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/metrics"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
+	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/webhook"
 )
 
@@ -63,9 +66,17 @@ type KubeMacPoolManager struct {
 	podName                  string             // manager pod name
 	waitingTime              int                // Duration in second to free macs of allocated vms that failed to start.
 	runtimeManager           manager.Manager    // Delegated controller-runtime manager
+	// tlsConfig contains TLS settings for servers (e.g.: webhook and metrics servers)
+	tlsConfig kmptls.Config
 }
 
-func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTime int) *KubeMacPoolManager {
+func NewKubeMacPoolManager(
+	podNamespace string,
+	podName string,
+	metricsAddr string,
+	waitingTime int,
+	tlsConfig kmptls.Config,
+) *KubeMacPoolManager {
 	kubemacpoolManager := &KubeMacPoolManager{
 		continueToRunManager:     true,
 		kubevirtInstalledChannel: make(chan struct{}),
@@ -73,7 +84,9 @@ func NewKubeMacPoolManager(podNamespace, podName, metricsAddr string, waitingTim
 		podNamespace:             podNamespace,
 		podName:                  podName,
 		metricsAddr:              metricsAddr,
-		waitingTime:              waitingTime}
+		waitingTime:              waitingTime,
+		tlsConfig:                tlsConfig,
+	}
 
 	signal.Notify(kubemacpoolManager.stopSignalChannel, os.Interrupt, os.Kill)
 
@@ -111,7 +124,13 @@ func (k *KubeMacPoolManager) Run(rangeStart, rangeEnd net.HardwareAddr) error {
 		if err != nil {
 			return errors.Wrap(err, "failed creating pool manager client")
 		}
-		poolManager, err := poolmanager.NewPoolManager(client, client, rangeStart, rangeEnd, k.podNamespace, isKubevirtInstalled, k.waitingTime)
+		poolManager, err := poolmanager.NewPoolManager(
+			client, client,
+			rangeStart, rangeEnd,
+			k.podNamespace,
+			isKubevirtInstalled,
+			k.waitingTime,
+			poolmanager.WithTLSConfig(k.tlsConfig))
 		if err != nil {
 			return errors.Wrap(err, "unable to create pool manager")
 		}
@@ -207,7 +226,13 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 	k.runtimeManager, err = manager.New(k.config, manager.Options{
 		Scheme: scheme.Scheme,
 		Metrics: metricsserver.Options{
-			BindAddress: k.metricsAddr,
+			BindAddress:    k.metricsAddr,
+			SecureServing:  true,
+			FilterProvider: filters.WithAuthenticationAndAuthorization,
+			TLSOpts: []func(*tls.Config){func(cfg *tls.Config) {
+				cfg.CipherSuites = k.tlsConfig.CipherSuites
+				cfg.MinVersion = k.tlsConfig.MinTLSVersion
+			}},
 		},
 		Cache: cacheOptions,
 	})

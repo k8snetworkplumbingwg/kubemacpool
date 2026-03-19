@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
+	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/utils"
 )
 
@@ -71,6 +72,8 @@ type PoolManager struct {
 	isKubevirt             bool                         // bool if kubevirt virtualmachine crd exist in the cluster
 	waitTime               int                          // Duration in second to free macs of allocated vms that failed to start.
 	isPoolReady            atomic.Bool                  // indicates whether the pool manager has completed initialization
+	// tlsConfig contains TLS settings for servers (e.g.: metrics servers)
+	tlsConfig kmptls.Config
 }
 
 type OptMode string
@@ -99,7 +102,26 @@ func (m macMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(mm)
 }
 
-func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rangeEnd net.HardwareAddr, managerNamespace string, kubevirtExist bool, waitTime int) (*PoolManager, error) {
+type poolManagerOption func(*PoolManager)
+
+func WithTLSConfig(tlsConfig kmptls.Config) poolManagerOption {
+	return func(p *PoolManager) {
+		p.tlsConfig = tlsConfig
+	}
+}
+
+func NewPoolManager(
+	kubeClient client.Client,
+	cachedKubeClient client.Client,
+	rangeStart, rangeEnd net.HardwareAddr,
+	managerNamespace string,
+	kubevirtExist bool,
+	waitTime int,
+	opts ...poolManagerOption,
+) (
+	*PoolManager,
+	error,
+) {
 	// Create PoolManager struct with empty ranges initially
 	poolManger := &PoolManager{
 		cachedKubeClient: cachedKubeClient,
@@ -112,6 +134,10 @@ func NewPoolManager(kubeClient, cachedKubeClient client.Client, rangeStart, rang
 		rangeMutex:       sync.RWMutex{},
 		waitTime:         waitTime,
 		collisionGauge:   NewCollisionGauge(),
+	}
+
+	for _, opt := range opts {
+		opt(poolManger)
 	}
 
 	// Use UpdateRanges to set initial ranges with proper validation
@@ -517,4 +543,9 @@ func (p *PoolManager) getCurrentMAC() string {
 // ManagerNamespace returns the manager namespace
 func (p *PoolManager) ManagerNamespace() string {
 	return p.managerNamespace
+}
+
+// TLSConfig returns the manager servers TLS settings
+func (p *PoolManager) TLSConfig() kmptls.Config {
+	return p.tlsConfig
 }

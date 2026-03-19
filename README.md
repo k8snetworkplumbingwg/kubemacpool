@@ -73,15 +73,7 @@ The metric can be used as a data source for firing alert using [Alertmanager](ht
 
 **Prometheus integration:** To integrate with Prometheus Operator, apply `kubemacpool-monitoring.yaml` (it includes `ServiceMonitor`/`PrometheusRule` and related resources). Apply it only when those CRDs are available.
 
+
 #### Metrics endpoint deployment
-Kubemacpool Deployment consist of two containers `manager` and `kube-rbac-proxy`.
-
-The metrics endpoint runs in the `manager` container and listen to port `8080`.
+Kubemacpool Deployment consists of the `manager` container, which exposes a metrics endpoint on port `8443`.
 * The port is controlled by the `manager` app `--metric-addr` flag.
-The metric endpoint is not secured. 
-
-The `kube-rbac-proxy` runs an instance of [kube-rbac-proxy](https://github.com/brancz/kube-rbac-proxy).
-It proxies the insecure metric endpoint and provide a secured endpoint listening to port `8443`.
-
-The secured metric endpoint port, `8443` is exposed, it allows propitious stack to 
-scrap Kubemacpool the metrics.

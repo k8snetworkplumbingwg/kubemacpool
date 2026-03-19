@@ -20,8 +20,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/pkg/errors"
 
@@ -52,17 +50,13 @@ var AddToWebhookFuncs []func(crwebhook.Server, *pool_manager.PoolManager, *runti
 
 // AddToManager adds all Controllers to the Manager
 func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
-
-	tlsMinVersion, err := tlsVersionByName(tlsMinVersion())
-	if err != nil {
-		return err
-	}
+	cfg := poolManager.TLSConfig()
 
 	s := crwebhook.NewServer(crwebhook.Options{
 		Port: WebhookServerPort,
 		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
-			tlsConfig.CipherSuites = tlsCipherSuites(cipherSuites())
-			tlsConfig.MinVersion = tlsMinVersion
+			tlsConfig.CipherSuites = cfg.CipherSuites
+			tlsConfig.MinVersion = cfg.MinTLSVersion
 		}},
 	})
 
@@ -80,60 +74,9 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		}
 	}
 
-	err = mgr.Add(s)
+	err := mgr.Add(s)
 	if err != nil {
 		return errors.Wrap(err, "failed adding webhook server to manager")
 	}
 	return nil
-}
-
-// cipherSuites read the TLS handshake ciphers from a environment variable if
-// empty the decision is delegated to go tls package.
-func cipherSuites() []string {
-	cipherSuitesEnv := os.Getenv("TLS_CIPHERS")
-	if cipherSuitesEnv == "" {
-		return nil
-	}
-	return strings.Split(cipherSuitesEnv, ",")
-}
-
-// tlsMinVersion reads the TLS minimal version from the TLS_MIN_VERSION
-// environment variable. Expects Go crypto/tls constant names
-// (e.g. VersionTLS12, VersionTLS13).
-func tlsMinVersion() string {
-	return os.Getenv("TLS_MIN_VERSION")
-}
-
-func tlsVersionByName(name string) (uint16, error) {
-	versions := map[string]uint16{
-		"VersionTLS10": tls.VersionTLS10,
-		"VersionTLS11": tls.VersionTLS11,
-		"VersionTLS12": tls.VersionTLS12,
-		"VersionTLS13": tls.VersionTLS13,
-	}
-	if v, ok := versions[name]; ok {
-		return v, nil
-	}
-	return 0, fmt.Errorf("invalid TLS version %q", name)
-}
-
-// tlsCipherSuites translate comma-speared list of OpenSSL cipher suites names and return
-// the corresponding TLS cipher suites IDs matching tls.Config.CipherSuites.
-func tlsCipherSuites(cipherSuitesNames []string) []uint16 {
-	idByName := map[string]uint16{}
-	for _, cipherSuite := range tls.CipherSuites() {
-		idByName[cipherSuite.Name] = cipherSuite.ID
-	}
-	for _, cipherSuite := range tls.InsecureCipherSuites() {
-		idByName[cipherSuite.Name] = cipherSuite.ID
-	}
-
-	var ids []uint16
-	for _, name := range cipherSuitesNames {
-		if id, ok := idByName[name]; ok {
-			ids = append(ids, id)
-		}
-	}
-
-	return ids
 }

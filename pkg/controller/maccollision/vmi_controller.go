@@ -43,9 +43,10 @@ import (
 
 var log = logf.Log.WithName("MACCollision Controller")
 
-// PoolManagerInterface defines the methods required by VMIReconciler
+// PoolManagerInterface defines the methods required by collision reconcilers.
 type PoolManagerInterface interface {
 	IsVirtualMachineManaged(namespace string) (bool, error)
+	IsPodManaged(namespace string) (bool, error)
 	UpdateCollisionsMap(objectRef pool_manager.ObjectReference, collisions map[string][]pool_manager.ObjectReference)
 }
 

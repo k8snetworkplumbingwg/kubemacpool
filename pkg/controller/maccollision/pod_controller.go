@@ -18,12 +18,17 @@ package maccollision
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"sort"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -38,6 +43,7 @@ var podLog = logf.Log.WithName("MACCollision Pod Controller")
 type PodReconciler struct {
 	client.Client
 	poolManager PoolManagerInterface
+	recorder    record.EventRecorder
 }
 
 // SetupPodControllerWithManager sets up the Pod collision controller with the Manager.
@@ -45,6 +51,7 @@ func SetupPodControllerWithManager(mgr manager.Manager, poolManager *pool_manage
 	r := &PodReconciler{
 		Client:      mgr.GetClient(),
 		poolManager: poolManager,
+		recorder:    mgr.GetEventRecorderFor("kubemacpool"),
 	}
 
 	if err := mgr.GetFieldIndexer().IndexField(
@@ -75,8 +82,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 	err := r.Get(ctx, req.NamespacedName, pod)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.V(1).Info("Pod not found, assuming deleted")
-			// TODO: Handle Pod deletion (remove from collision tracking)
+			logger.V(1).Info("Pod not found, assuming deleted, removing from collision tracking")
+			r.removePodFromAllCollisions(req.Namespace, req.Name)
 			return reconcile.Result{}, nil
 		}
 		logger.Error(err, "Failed to get Pod")
@@ -98,19 +105,147 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req reconcile.Request) (r
 		return reconcile.Result{}, nil
 	}
 
-	// TODO: Implement collision detection logic
-	// This will be implemented in subsequent commits:
-	// - Check if Pod is Running
-	// - Find other Pods with same MAC addresses
-	// - Update collision tracking in PoolManager
-	// - Emit collision events
-
-	r.checkMACCollisions(ctx, pod, logger)
+	if err = r.checkMACCollisions(ctx, pod, logger); err != nil {
+		logger.Error(err, "Failed to check MAC collisions")
+		return reconcile.Result{}, errors.Wrap(err, "failed to check MAC collisions")
+	}
 
 	return reconcile.Result{}, nil
 }
 
-func (r *PodReconciler) checkMACCollisions(ctx context.Context, pod *corev1.Pod, logger logr.Logger) {
-	// TODO: Implement collision detection logic
-	logger.V(1).Info("Collision detection not yet implemented")
+func (r *PodReconciler) checkMACCollisions(ctx context.Context, pod *corev1.Pod, logger logr.Logger) error {
+	if pod.Status.Phase != corev1.PodRunning {
+		logger.V(1).Info("Pod not running, removing from collision tracking", "phase", pod.Status.Phase)
+		r.removePodFromAllCollisions(pod.Namespace, pod.Name)
+		return nil
+	}
+
+	macs := r.extractMACsFromPod(pod)
+	if len(macs) == 0 {
+		logger.V(1).Info("Pod has no MAC addresses, skipping collision check")
+		return nil
+	}
+
+	allCollisionsButOwn := make(map[string][]pool_manager.ObjectReference)
+	for mac := range macs {
+		collidingPods, err := r.findRunningPodsWithMAC(ctx, mac, pod.UID, logger)
+		if err != nil {
+			return errors.Wrapf(err, "failed to find Pods with MAC %s", mac)
+		}
+
+		collidingPods = r.filterPodsForCollision(collidingPods, pod.Namespace, logger)
+
+		if len(collidingPods) > 0 {
+			var refs []pool_manager.ObjectReference
+			for _, p := range collidingPods {
+				refs = append(refs, podObjectRef(p.Namespace, p.Name))
+			}
+
+			logger.Info("Found MAC collision", "mac", mac, "collisionCount", len(refs))
+			allCollisionsButOwn[mac] = refs
+			r.emitCollisionEvents(pod, mac, collidingPods)
+		}
+	}
+
+	r.poolManager.UpdateCollisionsMap(podObjectRef(pod.Namespace, pod.Name), allCollisionsButOwn)
+	return nil
+}
+
+func (r *PodReconciler) extractMACsFromPod(pod *corev1.Pod) map[string]struct{} {
+	indexMACs := IndexPodByMAC(pod)
+	macs := make(map[string]struct{}, len(indexMACs))
+	for _, mac := range indexMACs {
+		macs[mac] = struct{}{}
+	}
+	return macs
+}
+
+func (r *PodReconciler) findRunningPodsWithMAC(ctx context.Context, normalizedMAC string, excludeUID types.UID, logger logr.Logger) ([]*corev1.Pod, error) {
+	podList := &corev1.PodList{}
+	if err := r.List(ctx, podList, client.MatchingFields{PodMacAddressIndexName: normalizedMAC}); err != nil {
+		return nil, errors.Wrap(err, "failed to list Pods by MAC")
+	}
+
+	var runningPods []*corev1.Pod
+	for i := range podList.Items {
+		p := &podList.Items[i]
+		if p.UID == excludeUID {
+			continue
+		}
+		if p.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		runningPods = append(runningPods, p)
+	}
+
+	return runningPods, nil
+}
+
+func (r *PodReconciler) filterPodsForCollision(pods []*corev1.Pod, reconciledNamespace string, logger logr.Logger) []*corev1.Pod {
+	managedNamespaces := map[string]struct{}{
+		reconciledNamespace: {},
+	}
+
+	var filtered []*corev1.Pod
+	for _, p := range pods {
+		if IsKubevirtOwned(p) {
+			logger.V(1).Info("Filtering out kubevirt-owned pod", "pod", p.Name, "namespace", p.Namespace)
+			continue
+		}
+
+		if _, alreadyChecked := managedNamespaces[p.Namespace]; alreadyChecked {
+			filtered = append(filtered, p)
+			continue
+		}
+
+		isManaged, err := r.poolManager.IsPodManaged(p.Namespace)
+		if err != nil {
+			logger.Error(err, "Failed to check if pod namespace is managed, including in collisions",
+				"namespace", p.Namespace, "pod", p.Name)
+			filtered = append(filtered, p)
+			managedNamespaces[p.Namespace] = struct{}{}
+			continue
+		}
+
+		if !isManaged {
+			logger.V(1).Info("Filtering out pod from unmanaged namespace",
+				"namespace", p.Namespace, "pod", p.Name)
+			continue
+		}
+
+		managedNamespaces[p.Namespace] = struct{}{}
+		filtered = append(filtered, p)
+	}
+
+	return filtered
+}
+
+func (r *PodReconciler) emitCollisionEvents(pod *corev1.Pod, mac string, collidingPods []*corev1.Pod) {
+	selfRef := podObjectRef(pod.Namespace, pod.Name)
+	all := []string{selfRef.Key()}
+	for _, p := range collidingPods {
+		all = append(all, podObjectRef(p.Namespace, p.Name).Key())
+	}
+
+	sort.Strings(all)
+
+	message := fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(all, ", "))
+
+	r.recorder.Event(pod, corev1.EventTypeWarning, "MACCollision", message)
+
+	for _, p := range collidingPods {
+		r.recorder.Event(p, corev1.EventTypeWarning, "MACCollision", message)
+	}
+}
+
+func (r *PodReconciler) removePodFromAllCollisions(namespace, name string) {
+	r.poolManager.UpdateCollisionsMap(podObjectRef(namespace, name), nil)
+}
+
+func podObjectRef(namespace, name string) pool_manager.ObjectReference {
+	return pool_manager.ObjectReference{
+		Type:      pool_manager.ObjectTypePod,
+		Namespace: namespace,
+		Name:      name,
+	}
 }

@@ -4,10 +4,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
 
 var _ = Describe("Predicates", func() {
@@ -386,4 +389,68 @@ var _ = Describe("Predicates", func() {
 			Expect(predicate.Generic(e)).To(BeTrue())
 		})
 	})
+})
+
+var _ = Describe("Pod Predicates", func() {
+	var podPredicate = podCollisionRelevantChanges()
+
+	basePod := func() *corev1.Pod {
+		return &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pod",
+				Namespace: "test-ns",
+				Annotations: map[string]string{
+					networkv1.NetworkAttachmentAnnot: `[{"name":"net1","mac":"02:00:00:00:00:01"}]`,
+					networkv1.NetworkStatusAnnot:     "[]",
+				},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+			},
+		}
+	}
+
+	It("should allow create events for pods with network attachment annotation", func() {
+		e := event.TypedCreateEvent[*corev1.Pod]{Object: basePod()}
+		Expect(podPredicate.Create(e)).To(BeTrue())
+	})
+
+	It("should filter create events for pods without network attachment annotation", func() {
+		pod := basePod()
+		delete(pod.Annotations, networkv1.NetworkAttachmentAnnot)
+
+		e := event.TypedCreateEvent[*corev1.Pod]{Object: pod}
+		Expect(podPredicate.Create(e)).To(BeFalse())
+	})
+
+	It("should allow delete events", func() {
+		e := event.TypedDeleteEvent[*corev1.Pod]{Object: basePod()}
+		Expect(podPredicate.Delete(e)).To(BeTrue())
+	})
+
+	DescribeTable("Update",
+		func(mutate func(old, new *corev1.Pod), expected bool) {
+			oldPod := basePod()
+			newPod := oldPod.DeepCopy()
+			mutate(oldPod, newPod)
+
+			e := event.TypedUpdateEvent[*corev1.Pod]{
+				ObjectOld: oldPod,
+				ObjectNew: newPod,
+			}
+			Expect(podPredicate.Update(e)).To(Equal(expected))
+		},
+		Entry("phase changes", func(_, newPod *corev1.Pod) {
+			newPod.Status.Phase = corev1.PodSucceeded
+		}, true),
+		Entry("network-attachment annotation changes", func(_, newPod *corev1.Pod) {
+			newPod.Annotations[networkv1.NetworkAttachmentAnnot] = `[{"name":"net2","mac":"02:00:00:00:00:02"}]`
+		}, true),
+		Entry("network-status annotation appears", func(oldPod, _ *corev1.Pod) {
+			delete(oldPod.Annotations, networkv1.NetworkStatusAnnot)
+		}, true),
+		Entry("no relevant changes", func(_, newPod *corev1.Pod) {
+			newPod.Labels = map[string]string{"new-label": "value"}
+		}, false),
+	)
 })

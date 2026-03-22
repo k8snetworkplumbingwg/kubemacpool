@@ -17,12 +17,17 @@ limitations under the License.
 package maccollision_test
 
 import (
+	"encoding/json"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/maccollision"
 )
@@ -185,3 +190,164 @@ var _ = Describe("IndexVMIByMAC", func() {
 		Expect(macs).To(BeNil())
 	})
 })
+
+func podWithProcessedNetworks(name, namespace string, networks []*networkv1.NetworkSelectionElement) *corev1.Pod {
+	pod := podWithPendingNetworks(name, namespace, networks)
+	pod.Annotations[networkv1.NetworkStatusAnnot] = "[]"
+	return pod
+}
+
+func podWithPendingNetworks(name, namespace string, networks []*networkv1.NetworkSelectionElement) *corev1.Pod {
+	annotations := map[string]string{}
+	if networks != nil {
+		netJSON, _ := json.Marshal(networks)
+		annotations[networkv1.NetworkAttachmentAnnot] = string(netJSON)
+	}
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   namespace,
+			Annotations: annotations,
+		},
+	}
+}
+
+var _ = Describe("StripPodForCollisionDetection", func() {
+	It("should keep essential metadata and phase", func() {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-pod",
+				Namespace: "test-ns",
+				UID:       types.UID("pod-uid-123"),
+				Labels:    map[string]string{"app": "test"},
+				Annotations: map[string]string{
+					networkv1.NetworkAttachmentAnnot: `[{"name":"net1","mac":"02:00:00:00:00:01"}]`,
+				},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "worker-1",
+			},
+			Status: corev1.PodStatus{
+				Phase:  corev1.PodRunning,
+				PodIP:  "10.0.0.1",
+				HostIP: "192.168.1.1",
+			},
+		}
+
+		result, err := maccollision.StripPodForCollisionDetection(pod)
+		Expect(err).ToNot(HaveOccurred())
+
+		stripped := result.(*corev1.Pod)
+		Expect(stripped.Name).To(Equal("test-pod"))
+		Expect(stripped.Namespace).To(Equal("test-ns"))
+		Expect(stripped.UID).To(Equal(types.UID("pod-uid-123")))
+		Expect(stripped.Annotations).To(HaveKey(networkv1.NetworkAttachmentAnnot))
+		Expect(stripped.Labels).To(HaveKeyWithValue("app", "test"))
+		Expect(stripped.Status.Phase).To(Equal(corev1.PodRunning))
+		Expect(stripped.OwnerReferences).To(BeEmpty(), "OwnerReferences should be stripped")
+		Expect(stripped.Spec.NodeName).To(BeEmpty(), "Spec should be stripped")
+		Expect(stripped.Status.PodIP).To(BeEmpty(), "PodIP should be stripped")
+	})
+
+	It("should handle non-Pod objects gracefully", func() {
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test"},
+		}
+
+		result, err := maccollision.StripPodForCollisionDetection(vmi)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(vmi), "Should return object unchanged")
+	})
+})
+
+var _ = Describe("IndexPodByMAC", func() {
+	It("should return MAC addresses from network-attachment annotation", func() {
+		pod := podWithProcessedNetworks("pod1", "ns1", []*networkv1.NetworkSelectionElement{
+			{Name: "net1", MacRequest: "02:00:00:00:00:01"},
+			{Name: "net2", MacRequest: "02:00:00:00:00:02"},
+		})
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(HaveLen(2))
+		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
+		Expect(macs).To(ContainElement("02:00:00:00:00:02"))
+	})
+
+	It("should normalize MAC addresses to lowercase", func() {
+		pod := podWithProcessedNetworks("pod1", "ns1", []*networkv1.NetworkSelectionElement{
+			{Name: "net1", MacRequest: "02:00:00:00:00:AA"},
+		})
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(HaveLen(1))
+		Expect(macs).To(ContainElement("02:00:00:00:00:aa"))
+	})
+
+	It("should skip networks without MacRequest", func() {
+		pod := podWithProcessedNetworks("pod1", "ns1", []*networkv1.NetworkSelectionElement{
+			{Name: "net1", MacRequest: "02:00:00:00:00:01"},
+			{Name: "net2"},
+		})
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(HaveLen(1))
+		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
+	})
+
+	It("should deduplicate MACs within the same pod", func() {
+		pod := podWithProcessedNetworks("pod1", "ns1", []*networkv1.NetworkSelectionElement{
+			{Name: "net1", MacRequest: "02:00:00:00:00:01"},
+			{Name: "net2", MacRequest: "02:00:00:00:00:01"},
+		})
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(HaveLen(1))
+		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
+	})
+
+	It("should return nil when network-status annotation is absent", func() {
+		pod := podWithPendingNetworks("pod1", "ns1", []*networkv1.NetworkSelectionElement{
+			{Name: "net1", MacRequest: "02:00:00:00:00:01"},
+		})
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(BeNil())
+	})
+
+	It("should return nil for non-Pod objects", func() {
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test"},
+		}
+
+		macs := maccollision.IndexPodByMAC(vmi)
+		Expect(macs).To(BeNil())
+	})
+
+	It("should return nil when no network-attachment annotation exists", func() {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod1",
+				Namespace: "ns1",
+				Annotations: map[string]string{
+					networkv1.NetworkStatusAnnot: "[]",
+				},
+			},
+		}
+
+		macs := maccollision.IndexPodByMAC(pod)
+		Expect(macs).To(BeNil())
+	})
+})
+
+var _ = DescribeTable("IsKubevirtOwned",
+	func(labels map[string]string, expected bool) {
+		pod := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		}
+		Expect(maccollision.IsKubevirtOwned(pod)).To(Equal(expected))
+	},
+	Entry("virt-launcher pod", map[string]string{kubevirtv1.AppLabel: "virt-launcher"}, true),
+	Entry("different kubevirt.io label value", map[string]string{kubevirtv1.AppLabel: "hotplug-disk"}, false),
+	Entry("no kubevirt labels", map[string]string{"app": "my-app"}, false),
+	Entry("no labels at all", nil, false),
+)

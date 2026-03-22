@@ -20,11 +20,20 @@ import (
 
 type MockPoolManager struct {
 	isVirtualMachineManagedCalls []string
+	isPodManagedCalls            []string
 	managedNamespaces            map[string]bool
 }
 
 func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error) {
 	m.isVirtualMachineManagedCalls = append(m.isVirtualMachineManagedCalls, namespace)
+	if m.managedNamespaces == nil {
+		return true, nil
+	}
+	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) IsPodManaged(namespace string) (bool, error) {
+	m.isPodManagedCalls = append(m.isPodManagedCalls, namespace)
 	if m.managedNamespaces == nil {
 		return true, nil
 	}

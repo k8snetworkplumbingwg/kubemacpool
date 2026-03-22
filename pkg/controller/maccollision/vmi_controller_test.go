@@ -1,4 +1,4 @@
-package vmicollision
+package maccollision
 
 import (
 	"context"
@@ -125,7 +125,7 @@ func newVMI(namespace, name string, opts ...vmiOption) *kubevirtv1.VirtualMachin
 	return vmi
 }
 
-func setupReconciler(mockPoolManager *MockPoolManager, objects ...client.Object) (*VMICollisionReconciler, *MockEventRecorder, client.Client) {
+func setupReconciler(mockPoolManager *MockPoolManager, objects ...client.Object) (*VMIReconciler, *MockEventRecorder, client.Client) {
 	scheme := runtime.NewScheme()
 	_ = kubevirtv1.AddToScheme(scheme)
 
@@ -137,7 +137,7 @@ func setupReconciler(mockPoolManager *MockPoolManager, objects ...client.Object)
 
 	mockRecorder := &MockEventRecorder{Events: []MockEvent{}}
 
-	reconciler := &VMICollisionReconciler{
+	reconciler := &VMIReconciler{
 		Client:      fakeClient,
 		poolManager: mockPoolManager,
 		recorder:    mockRecorder,
@@ -157,7 +157,7 @@ var _ = Describe("VMI Collision Controller", func() {
 	var (
 		mockPoolManager *MockPoolManager
 		mockRecorder    *MockEventRecorder
-		reconciler      *VMICollisionReconciler
+		reconciler      *VMIReconciler
 		ctx             context.Context
 	)
 

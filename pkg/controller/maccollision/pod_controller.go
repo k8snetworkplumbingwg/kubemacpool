@@ -30,9 +30,12 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
@@ -65,10 +68,26 @@ func SetupPodControllerWithManager(mgr manager.Manager, poolManager *pool_manage
 
 	podLog.Info("Successfully registered MAC address indexer for Pod collision detection")
 
-	// TODO: Build controller with watches and event handlers
-	// This will be implemented in subsequent commits
+	c, err := controller.New("maccollision-pod-controller", mgr, controller.Options{
+		Reconciler: r,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create MAC collision Pod controller: %w", err)
+	}
 
-	_ = r
+	err = c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&corev1.Pod{},
+			&handler.TypedEnqueueRequestForObject[*corev1.Pod]{},
+			podCollisionRelevantChanges(),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to watch Pods: %w", err)
+	}
+
+	podLog.Info("Successfully registered MAC collision Pod controller")
 	return nil
 }
 

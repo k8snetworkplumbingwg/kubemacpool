@@ -19,10 +19,13 @@ package maccollision
 import (
 	"maps"
 
+	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
 
 var predicateLog = logf.Log.WithName("MACCollision Predicate")
@@ -100,4 +103,33 @@ func getTargetMigrationUID(vmi *kubevirtv1.VirtualMachineInstance) string {
 		return string(vmi.Status.MigrationState.TargetState.MigrationUID)
 	}
 	return ""
+}
+
+func podCollisionRelevantChanges() predicate.TypedPredicate[*corev1.Pod] {
+	return predicate.TypedFuncs[*corev1.Pod]{
+		CreateFunc: func(e event.TypedCreateEvent[*corev1.Pod]) bool {
+			return true
+		},
+		UpdateFunc: func(e event.TypedUpdateEvent[*corev1.Pod]) bool {
+			oldPod := e.ObjectOld
+			newPod := e.ObjectNew
+
+			if oldPod.Status.Phase != newPod.Status.Phase {
+				return true
+			}
+
+			if oldPod.Annotations[networkv1.NetworkAttachmentAnnot] != newPod.Annotations[networkv1.NetworkAttachmentAnnot] {
+				return true
+			}
+
+			if oldPod.Annotations[networkv1.NetworkStatusAnnot] != newPod.Annotations[networkv1.NetworkStatusAnnot] {
+				return true
+			}
+
+			return false
+		},
+		DeleteFunc: func(e event.TypedDeleteEvent[*corev1.Pod]) bool {
+			return true
+		},
+	}
 }

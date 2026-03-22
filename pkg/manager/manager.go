@@ -211,6 +211,9 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 				},
 				Field: configMapNameFieldSelector,
 			},
+			&corev1.Pod{}: {
+				Transform: maccollision.StripPodForCollisionDetection,
+			},
 		},
 	}
 

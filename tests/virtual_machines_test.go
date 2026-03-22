@@ -82,35 +82,17 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 			})
 
 			Context("and applying a dryRun vm create request", func() {
-				var macAddress string
-				BeforeEach(func() {
-					By("Creating a vm with dry run mode")
-					var err error
+				It("should allocate a MAC address without persisting the VM", Label(MACAllocationLabel), func() {
 					vm := CreateVMObject(TestNamespace, []kubevirtv1.Interface{newInterface("br", "")}, []kubevirtv1.Network{newNetwork("br")})
-					createOptions := &client.CreateOptions{}
-					client.DryRunAll.ApplyToCreate(createOptions)
+					Expect(testClient.CRClient.Create(context.TODO(), vm, client.DryRunAll)).To(Succeed())
 
-					err = testClient.CRClient.Create(context.TODO(), vm)
-					Expect(err).ToNot(HaveOccurred())
-					Expect(net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)).ToNot(BeEmpty(),
-						"Should successfully parse mac address")
-					macAddress = vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress
-				})
+					_, err := net.ParseMAC(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
+					Expect(err).ToNot(HaveOccurred(), "dry run should return a valid MAC address")
 
-				// TODO Add dry-run functionality in kubevirt/client-go's VirtualMachine().Create(context.TODO(), )
-				PIt("should not allocate the Mac assigned in the dryRun request into the pool", func() {
-					By("creating a vm with the same mac to make sure the dryRun assigned mac is not occupied on the macpool")
-					var err error
-					vmDryRunOverlap := CreateVMObject(TestNamespace,
-						[]kubevirtv1.Interface{newInterface("brDryRunOverlap", macAddress)},
-						[]kubevirtv1.Network{newNetwork("brDryRunOverlap")})
-					err = testClient.CRClient.Create(context.TODO(), vmDryRunOverlap)
-					Expect(err).ToNot(HaveOccurred())
-
-					actualMac, err := net.ParseMAC(vmDryRunOverlap.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress)
-					Expect(err).ToNot(HaveOccurred(), "Should succeed parsing vmDryRunOverlap mac")
-
-					Expect(actualMac.String()).To(Equal(macAddress), "Should successfully parse mac address")
+					By("verifying the vm does not exist")
+					fetchedVM := &kubevirtv1.VirtualMachine{}
+					err = testClient.CRClient.Get(context.TODO(), client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, fetchedVM)
+					Expect(apierrors.IsNotFound(err)).To(BeTrue(), "dry-run vm should not be persisted")
 				})
 			})
 

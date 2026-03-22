@@ -2,6 +2,7 @@ package kubectl
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,7 +10,7 @@ import (
 
 func Kubectl(command ...string) (stdout, stderr string, err error) {
 	var stdoutBuf, stderrBuf bytes.Buffer
-	cmd := exec.Command("./cluster/kubectl.sh", command...)
+	cmd := exec.CommandContext(context.Background(), "./cluster/kubectl.sh", command...)
 	cmd.Dir = getClusterRootDirectory()
 	cmd.Stderr = &stderrBuf
 	cmd.Stdout = &stdoutBuf
@@ -30,7 +31,7 @@ func getClusterRootDirectory() string {
 // StartPortForwardCommand starts a port-forward command in the background and returns the process
 func StartPortForwardCommand(namespace, podName string, sourcePort, targetPort int) (*exec.Cmd, error) {
 	// #nosec G204 -- test code with controlled inputs
-	cmd := exec.Command("./cluster/kubectl.sh", "port-forward", "-n", namespace,
+	cmd := exec.CommandContext(context.Background(), "./cluster/kubectl.sh", "port-forward", "-n", namespace,
 		fmt.Sprintf("pod/%s", podName), fmt.Sprintf("%d:%d", sourcePort, targetPort))
 	cmd.Dir = getClusterRootDirectory()
 

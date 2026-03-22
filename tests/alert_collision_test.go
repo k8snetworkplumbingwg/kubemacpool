@@ -192,7 +192,8 @@ func expectAlertNotFiring(p *PromClient, alertName string) {
 func waitForPortForwardReady(port int) {
 	By("Waiting for Prometheus port-forward to be ready")
 	Eventually(func() bool {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		d := net.Dialer{Timeout: timeout}
+		conn, err := d.DialContext(context.Background(), "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			return false
 		}

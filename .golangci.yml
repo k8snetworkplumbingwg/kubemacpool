@@ -1,121 +1,124 @@
-run:
-  timeout: 3m
-
-linters-settings:
-  dupl:
-    threshold: 150
-
-  funlen:
-    lines: 150
-    statements: 50
-
-  gci:
-    sections:
-    - Prefix(github.com/k8snetworkplumbingwg/kubemacpool)
-
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-
-  gocritic:
-    enabled-tags: [diagnostic, experimental, opinionated, performance, style]
-    disabled-checks:
-      - dupImport        # https://github.com/go-critic/go-critic/issues/845
-      - ifElseChain
-      - octalLiteral
-      - whyNoLint
-      - wrapperFunc
-    settings:
-      hugeParam:
-        sizeThreshold: 1024
-      rangeValCopy:
-        sizeThreshold: 1024
-
-  gocyclo:
-    min-complexity: 15
-
-  goimports:
-
-  depguard:
-    rules:
-      main:
-        deny:
-          - pkg: "github.com/sirupsen/logrus"
-            desc: "logging is allowed only by logutils.Log"
-        allow:
-          - $gostd
-          - github.com/onsi/ginkgo/v2
-          - github.com/onsi/gomega
-          - github.com/k8snetworkplumbingwg/kubemacpool
-          - k8s.io
-          - kubevirt.io
-          - sigs.k8s.io
-          - github.com/pkg/errors
-          - github.com/prometheus/client_golang
-          - github.com/prometheus/common
-
-  mnd:
-    settings:
-      mnd:
-        checks:
-          - argument
-          - case
-          - condition
-          - return
-
-  govet:
-    enable:
-      - shadow
-
-  lll:
-    line-length: 140
-
-  misspell:
-    locale: US
-
-  nolintlint:
-    allow-leading-space: true
-    allow-unused: false
-    require-explanation: false
-    require-specific: false
-
-  stylecheck:
-    dot-import-whitelist:
-      - github.com/onsi/ginkgo/v2
-      - github.com/onsi/gomega
-
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
-  - bodyclose
-  - dogsled
-  - dupl
-  - errcheck
-  - funlen
-  - gochecknoinits
-  - goconst
-  - gofmt
-  - goheader
-  - goimports
-  - goprintffuncname
-  - govet
-  - ineffassign
-  - misspell
-  - nakedret
-  - noctx
-  - nolintlint
-  - rowserrcheck
-  - unparam
-  - unused
-  - whitespace
-  - exhaustive
-  - gocritic
-  - gocyclo
-  - gosec
-  - gosimple
-  - lll
-  - mnd
-  - depguard
-  - staticcheck
-  - stylecheck
-  - unconvert
+    - bodyclose
+    - depguard
+    - dogsled
+    - dupl
+    - errcheck
+    - exhaustive
+    - funlen
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - goheader
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - mnd
+    - nakedret
+    - noctx
+    - nolintlint
+    - rowserrcheck
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  settings:
+    depguard:
+      rules:
+        main:
+          allow:
+            - $gostd
+            - github.com/onsi/ginkgo/v2
+            - github.com/onsi/gomega
+            - github.com/k8snetworkplumbingwg/kubemacpool
+            - k8s.io
+            - kubevirt.io
+            - sigs.k8s.io
+            - github.com/pkg/errors
+            - github.com/prometheus/client_golang
+            - github.com/prometheus/common
+          deny:
+            - pkg: github.com/sirupsen/logrus
+              desc: logging is allowed only by logutils.Log
+    dupl:
+      threshold: 150
+    funlen:
+      lines: 150
+      statements: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - dupImport
+        - ifElseChain
+        - octalLiteral
+        - whyNoLint
+        - wrapperFunc
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+      settings:
+        hugeParam:
+          sizeThreshold: 1024
+        rangeValCopy:
+          sizeThreshold: 1024
+    gocyclo:
+      min-complexity: 15
+    govet:
+      enable:
+        - shadow
+    lll:
+      line-length: 140
+    misspell:
+      locale: US
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - return
+    nolintlint:
+      require-explanation: false
+      require-specific: false
+      allow-unused: false
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/onsi/ginkgo/v2
+        - github.com/onsi/gomega
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - Prefix(github.com/k8snetworkplumbingwg/kubemacpool)
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -19,7 +19,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	k8slabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes"
@@ -164,7 +164,7 @@ func findManagerNamespace() string {
 	pods, err := getKubemacpoolPods()
 	ExpectWithOffset(1, err).ToNot(HaveOccurred(), "should be able to retrieve manager pods")
 	ExpectWithOffset(1, pods.Items).ToNot(BeEmpty(), "should have multiple manager pods")
-	namespace := pods.Items[0].ObjectMeta.Namespace
+	namespace := pods.Items[0].Namespace
 	ExpectWithOffset(1, namespace).ToNot(BeEmpty(), "should be a namespace at manager pods")
 	return namespace
 }
@@ -272,7 +272,7 @@ func enableKubeVirtFeatureGate(featureGate string) error {
 }
 
 func restartVirtualMachine(namespace, name string) error {
-	cmd := exec.Command("virtctl", "restart", name, "-n", namespace)
+	cmd := exec.CommandContext(context.Background(), "virtctl", "restart", name, "-n", namespace)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to restart VM %s/%s: %v, output: %s", namespace, name, err, string(output))
@@ -353,7 +353,7 @@ func restartPodsFromDeployment(deploymentName string) error {
 	if err != nil {
 		return err
 	}
-	labelSelector := labels.Set(deployment.Spec.Selector.MatchLabels).String()
+	labelSelector := k8slabels.Set(deployment.Spec.Selector.MatchLabels).String()
 
 	podList, err := testClient.K8sClient.CoreV1().Pods(managerNamespace).List(context.TODO(),
 		metav1.ListOptions{LabelSelector: labelSelector})
@@ -578,7 +578,7 @@ func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName strin
 		if helper.ContainsString(finalizersList, finalizerName) {
 			return nil
 		}
-		virtualMachine.ObjectMeta.Finalizers = append(virtualMachine.ObjectMeta.Finalizers, finalizerName)
+		virtualMachine.Finalizers = append(virtualMachine.Finalizers, finalizerName)
 		err = testClient.CRClient.Update(context.TODO(), virtualMachine)
 		return err
 	})

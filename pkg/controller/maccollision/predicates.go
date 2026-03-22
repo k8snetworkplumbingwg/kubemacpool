@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vmicollision
+package maccollision
 
 import (
 	"maps"
@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
-var predicateLog = logf.Log.WithName("VMICollision Predicate")
+var predicateLog = logf.Log.WithName("MACCollision Predicate")
 
 func collisionRelevantChanges() predicate.TypedPredicate[*kubevirtv1.VirtualMachineInstance] {
 	return predicate.TypedFuncs[*kubevirtv1.VirtualMachineInstance]{

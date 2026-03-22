@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vmicollision_test
+package maccollision_test
 
 import (
 	. "github.com/onsi/ginkgo/v2"
@@ -24,7 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/vmicollision"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/maccollision"
 )
 
 var _ = Describe("StripVMIForCollisionDetection", func() {
@@ -40,7 +40,7 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 			},
 		}
 
-		result, err := vmicollision.StripVMIForCollisionDetection(vmi)
+		result, err := maccollision.StripVMIForCollisionDetection(vmi)
 		Expect(err).ToNot(HaveOccurred())
 
 		stripped := result.(*kubevirtv1.VirtualMachineInstance)
@@ -62,7 +62,7 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 			},
 		}
 
-		result, err := vmicollision.StripVMIForCollisionDetection(vmi)
+		result, err := maccollision.StripVMIForCollisionDetection(vmi)
 		Expect(err).ToNot(HaveOccurred())
 
 		stripped := result.(*kubevirtv1.VirtualMachineInstance)
@@ -93,7 +93,7 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 			},
 		}
 
-		result, err := vmicollision.StripVMIForCollisionDetection(vmi)
+		result, err := maccollision.StripVMIForCollisionDetection(vmi)
 		Expect(err).ToNot(HaveOccurred())
 
 		stripped := result.(*kubevirtv1.VirtualMachineInstance)
@@ -111,7 +111,7 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "test"},
 		}
 
-		result, err := vmicollision.StripVMIForCollisionDetection(nonVMI)
+		result, err := maccollision.StripVMIForCollisionDetection(nonVMI)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(result).To(Equal(nonVMI), "Should return object unchanged")
 	})
@@ -128,7 +128,7 @@ var _ = Describe("IndexVMIByMAC", func() {
 			},
 		}
 
-		macs := vmicollision.IndexVMIByMAC(vmi)
+		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(HaveLen(2))
 		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
 		Expect(macs).To(ContainElement("02:00:00:00:00:02"))
@@ -144,7 +144,7 @@ var _ = Describe("IndexVMIByMAC", func() {
 			},
 		}
 
-		macs := vmicollision.IndexVMIByMAC(vmi)
+		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(HaveLen(2))
 		Expect(macs).To(ContainElement("02:00:00:00:00:aa"))
 		Expect(macs).To(ContainElement("02:00:00:00:00:bb"))
@@ -160,7 +160,7 @@ var _ = Describe("IndexVMIByMAC", func() {
 			},
 		}
 
-		macs := vmicollision.IndexVMIByMAC(vmi)
+		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(HaveLen(1))
 		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
 	})
@@ -172,7 +172,7 @@ var _ = Describe("IndexVMIByMAC", func() {
 			},
 		}
 
-		macs := vmicollision.IndexVMIByMAC(vmi)
+		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(BeEmpty())
 	})
 
@@ -181,7 +181,7 @@ var _ = Describe("IndexVMIByMAC", func() {
 			ObjectMeta: metav1.ObjectMeta{Name: "test"},
 		}
 
-		macs := vmicollision.IndexVMIByMAC(nonVMI)
+		macs := maccollision.IndexVMIByMAC(nonVMI)
 		Expect(macs).To(BeNil())
 	})
 })

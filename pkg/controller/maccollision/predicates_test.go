@@ -1,4 +1,4 @@
-package vmicollision
+package maccollision
 
 import (
 	. "github.com/onsi/ginkgo/v2"

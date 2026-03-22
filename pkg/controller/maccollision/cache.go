@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vmicollision
+package maccollision
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +23,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-var cacheLog = logf.Log.WithName("VMICollision Cache")
+var cacheLog = logf.Log.WithName("MACCollision Cache")
 
 const (
 	// MacAddressIndexName is the index name for MAC address lookups

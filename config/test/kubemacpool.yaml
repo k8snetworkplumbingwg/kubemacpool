@@ -276,7 +276,6 @@ spec:
       - args:
         - --v=debug
         - --wait-time=300
-        - --tls-min-version=VersionTLS13
         command:
         - /manager
         env:

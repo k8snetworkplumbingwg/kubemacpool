@@ -29,6 +29,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -147,22 +148,31 @@ func (r *PodReconciler) checkMACCollisions(ctx context.Context, pod *corev1.Pod,
 
 	allCollisionsButOwn := make(map[string][]pool_manager.ObjectReference)
 	for mac := range macs {
+		var refs []pool_manager.ObjectReference
+
 		collidingPods, err := r.findRunningPodsWithMAC(ctx, mac, pod.UID, logger)
 		if err != nil {
 			return errors.Wrapf(err, "failed to find Pods with MAC %s", mac)
 		}
-
 		collidingPods = r.filterPodsForCollision(collidingPods, pod.Namespace, logger)
+		for _, p := range collidingPods {
+			refs = append(refs, podObjectRef(p.Namespace, p.Name))
+		}
 
-		if len(collidingPods) > 0 {
-			var refs []pool_manager.ObjectReference
-			for _, p := range collidingPods {
-				refs = append(refs, podObjectRef(p.Namespace, p.Name))
+		if r.poolManager.IsKubevirtEnabled() {
+			collidingVMIs, err := r.filterVMIsWithMAC(ctx, mac, logger)
+			if err != nil {
+				return errors.Wrapf(err, "failed to find VMIs with MAC %s", mac)
 			}
+			for _, v := range collidingVMIs {
+				refs = append(refs, vmiObjectRef(v.Namespace, v.Name))
+			}
+		}
 
+		if len(refs) > 0 {
 			logger.Info("Found MAC collision", "mac", mac, "collisionCount", len(refs))
 			allCollisionsButOwn[mac] = refs
-			r.emitCollisionEvents(pod, mac, collidingPods)
+			r.emitCollisionEvents(pod, mac, collidingPods, refs)
 		}
 	}
 
@@ -239,13 +249,20 @@ func (r *PodReconciler) filterPodsForCollision(pods []*corev1.Pod, reconciledNam
 	return filtered
 }
 
-func (r *PodReconciler) emitCollisionEvents(pod *corev1.Pod, mac string, collidingPods []*corev1.Pod) {
+func (r *PodReconciler) filterVMIsWithMAC(ctx context.Context, normalizedMAC string, logger logr.Logger) ([]*kubevirtv1.VirtualMachineInstance, error) {
+	runningVMIs, err := listRunningVMIsByMAC(ctx, r.Client, normalizedMAC)
+	if err != nil {
+		return nil, err
+	}
+	return filterManagedVMIs(runningVMIs, nil, r.poolManager, logger), nil
+}
+
+func (r *PodReconciler) emitCollisionEvents(pod *corev1.Pod, mac string, collidingPods []*corev1.Pod, colliderRefs []pool_manager.ObjectReference) {
 	selfRef := podObjectRef(pod.Namespace, pod.Name)
 	all := []string{selfRef.Key()}
-	for _, p := range collidingPods {
-		all = append(all, podObjectRef(p.Namespace, p.Name).Key())
+	for _, ref := range colliderRefs {
+		all = append(all, ref.Key())
 	}
-
 	sort.Strings(all)
 
 	message := fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(all, ", "))

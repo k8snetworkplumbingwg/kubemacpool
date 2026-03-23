@@ -14,7 +14,8 @@ WORKDIR /go/src/kubemacpool
 RUN dnf install -y wget && dnf clean all
 COPY go.mod .
 COPY go.sum .
-RUN GO_VERSION=$(sed -En 's/^go +(.*)$/\1/p' go.mod) && \
+RUN GO_VERSION=$(sed -En 's/^toolchain go(.*)$/\1/p' go.mod) && \
+    if [ -z "$GO_VERSION" ]; then GO_VERSION=$(sed -En 's/^go +(.*)$/\1/p' go.mod); fi && \
     wget -q https://dl.google.com/go/go${GO_VERSION}.${BUILDOS}-${BUILDARCH}.tar.gz && \
     tar -C /usr/local -xzf go${GO_VERSION}.${BUILDOS}-${BUILDARCH}.tar.gz && \
     rm go${GO_VERSION}.${BUILDOS}-${BUILDARCH}.tar.gz

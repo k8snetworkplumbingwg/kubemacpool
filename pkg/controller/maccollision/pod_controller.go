@@ -190,63 +190,15 @@ func (r *PodReconciler) extractMACsFromPod(pod *corev1.Pod) map[string]struct{} 
 }
 
 func (r *PodReconciler) findRunningPodsWithMAC(ctx context.Context, normalizedMAC string, excludeUID types.UID, logger logr.Logger) ([]*corev1.Pod, error) {
-	podList := &corev1.PodList{}
-	if err := r.List(ctx, podList, client.MatchingFields{PodMacAddressIndexName: normalizedMAC}); err != nil {
-		return nil, errors.Wrap(err, "failed to list Pods by MAC")
+	runningPods, err := listRunningPodsWithMAC(ctx, r.Client, normalizedMAC)
+	if err != nil {
+		return nil, err
 	}
-
-	var runningPods []*corev1.Pod
-	for i := range podList.Items {
-		p := &podList.Items[i]
-		if p.UID == excludeUID {
-			continue
-		}
-		if p.Status.Phase != corev1.PodRunning {
-			continue
-		}
-		runningPods = append(runningPods, p)
-	}
-
-	return runningPods, nil
+	return excludePodUID(runningPods, excludeUID), nil
 }
 
 func (r *PodReconciler) filterPodsForCollision(pods []*corev1.Pod, reconciledNamespace string, logger logr.Logger) []*corev1.Pod {
-	managedNamespaces := map[string]struct{}{
-		reconciledNamespace: {},
-	}
-
-	var filtered []*corev1.Pod
-	for _, p := range pods {
-		if IsKubevirtOwned(p) {
-			logger.V(1).Info("Filtering out kubevirt-owned pod", "pod", p.Name, "namespace", p.Namespace)
-			continue
-		}
-
-		if _, alreadyChecked := managedNamespaces[p.Namespace]; alreadyChecked {
-			filtered = append(filtered, p)
-			continue
-		}
-
-		isManaged, err := r.poolManager.IsPodManaged(p.Namespace)
-		if err != nil {
-			logger.Error(err, "Failed to check if pod namespace is managed, including in collisions",
-				"namespace", p.Namespace, "pod", p.Name)
-			filtered = append(filtered, p)
-			managedNamespaces[p.Namespace] = struct{}{}
-			continue
-		}
-
-		if !isManaged {
-			logger.V(1).Info("Filtering out pod from unmanaged namespace",
-				"namespace", p.Namespace, "pod", p.Name)
-			continue
-		}
-
-		managedNamespaces[p.Namespace] = struct{}{}
-		filtered = append(filtered, p)
-	}
-
-	return filtered
+	return filterCollisionCandidatePods(pods, reconciledNamespace, r.poolManager, logger)
 }
 
 func (r *PodReconciler) filterVMIsWithMAC(ctx context.Context, normalizedMAC string, logger logr.Logger) ([]*kubevirtv1.VirtualMachineInstance, error) {

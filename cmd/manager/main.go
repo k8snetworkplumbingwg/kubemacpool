@@ -153,10 +153,18 @@ func runCertManager() {
 func runKubemacpoolManager() {
 	var logType, metricsAddr string
 	var waitingTime int
+	var tlsMinVersion, tlsCiphers string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
 	flag.IntVar(&waitingTime, names.WAIT_TIME_ARG, 600, "waiting time to release the mac if object was not created")
+	flag.StringVar(&tlsMinVersion, "tls-min-version", "", "Minimum TLS version. "+
+		"Supported values are tls package constants names (e.g. VersionTLS13), please see "+
+		"https://pkg.go.dev/crypto/tls#pkg-constants")
+	flag.StringVar(&tlsCiphers, "tls-cipher-suites", "", "Comma-separated list of TLS cipher suite names."+
+		"Supported values are tls package constants names (e.g. TLS_AES_128_GCM_SHA256), please see "+
+		"https://pkg.go.dev/crypto/tls#pkg-constants"+
+		"When 'min-tls-version' is 'VersionTLS13', cipher suites are selected by the runtime.")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(logType != "production")))
@@ -187,7 +195,7 @@ func runKubemacpoolManager() {
 		os.Exit(1)
 	}
 
-	tlsConfig, err := kmptls.NewConfig(os.Getenv("TLS_MIN_VERSION"), os.Getenv("TLS_CIPHERS"))
+	tlsConfig, err := kmptls.NewConfig(tlsMinVersion, tlsCiphers)
 	if err != nil {
 		log.Error(err, "Failed to create TLS config")
 		os.Exit(1)

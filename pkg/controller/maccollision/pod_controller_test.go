@@ -114,17 +114,21 @@ func newTestPod(namespace, name string, opts ...podOption) *corev1.Pod {
 func setupPodReconciler(mockPoolManager *MockPoolManager, objects ...client.Object) (*PodReconciler, *PodMockEventRecorder) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
+	_ = kubevirtv1.AddToScheme(scheme)
 
-	fakeClient := fake.NewClientBuilder().
+	builder := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
-		WithIndex(&corev1.Pod{}, PodMacAddressIndexName, IndexPodByMAC).
-		Build()
+		WithIndex(&corev1.Pod{}, PodMacAddressIndexName, IndexPodByMAC)
+
+	if mockPoolManager.kubevirtEnabled {
+		builder = builder.WithIndex(&kubevirtv1.VirtualMachineInstance{}, MacAddressIndexName, IndexVMIByMAC)
+	}
 
 	mockRecorder := &PodMockEventRecorder{Events: []MockEvent{}}
 
 	reconciler := &PodReconciler{
-		Client:      fakeClient,
+		Client:      builder.Build(),
 		poolManager: mockPoolManager,
 		recorder:    mockRecorder,
 	}
@@ -151,6 +155,7 @@ var _ = Describe("Pod Collision Controller", func() {
 		mockPoolManager = &MockPoolManager{
 			isPodManagedCalls: []string{},
 			managedNamespaces: nil,
+			kubevirtEnabled:   false,
 		}
 		ctx = context.Background()
 	})
@@ -381,6 +386,135 @@ var _ = Describe("Pod Collision Controller", func() {
 					Reason:          "MACCollision",
 					Message:         expectedMessage,
 				}))
+			})
+		})
+
+		Context("cross-type Pod-VMI collision detection", func() {
+			BeforeEach(func() {
+				mockPoolManager.kubevirtEnabled = true
+			})
+
+			It("should detect collision between Pod and running VMI", func() {
+				pod := newTestPod(testNamespace, testPodName,
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				vmi := newVMI(testNamespace, "colliding-vmi",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				reconciler, mockRecorder = setupPodReconciler(mockPoolManager, pod, vmi)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testPodName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				Expect(mockRecorder.Events).To(HaveLen(1))
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between pod/%s/%s, vmi/%s/colliding-vmi",
+					testMAC1, testNamespace, testPodName, testNamespace)
+				Expect(mockRecorder.Events[0]).To(Equal(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      testPodName,
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+			})
+
+			It("should not detect collision with non-running VMI", func() {
+				pod := newTestPod(testNamespace, testPodName,
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				vmi := newVMI(testNamespace, "pending-vmi",
+					withPhase(kubevirtv1.Pending),
+					withMACs(testMAC1))
+				reconciler, mockRecorder = setupPodReconciler(mockPoolManager, pod, vmi)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testPodName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should detect collision with both Pods and VMIs for the same MAC", func() {
+				pod1 := newTestPod(testNamespace, "pod1",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				pod2 := newTestPod(testNamespace, "pod2",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				vmi := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				reconciler, mockRecorder = setupPodReconciler(mockPoolManager, pod1, pod2, vmi)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "pod1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				Expect(mockRecorder.Events).To(HaveLen(2))
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between pod/%s/pod1, pod/%s/pod2, vmi/%s/vmi1",
+					testMAC1, testNamespace, testNamespace, testNamespace)
+
+				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      "pod1",
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      "pod2",
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+			})
+
+			It("should filter out VMI from unmanaged namespace", func() {
+				pod := newTestPod("managed-ns", testPodName,
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				vmi := newVMI("unmanaged-ns", "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				mockPoolManager.managedNamespaces = map[string]bool{
+					"managed-ns":   true,
+					"unmanaged-ns": false,
+				}
+				reconciler, mockRecorder = setupPodReconciler(mockPoolManager, pod, vmi)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: "managed-ns", Name: testPodName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should not query VMI index when kubevirt is disabled", func() {
+				mockPoolManager.kubevirtEnabled = false
+				pod := newTestPod(testNamespace, testPodName,
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				reconciler, mockRecorder = setupPodReconciler(mockPoolManager, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testPodName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
 			})
 		})
 	})

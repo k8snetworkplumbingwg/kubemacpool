@@ -45,6 +45,7 @@ var log = logf.Log.WithName("MACCollision Controller")
 
 // PoolManagerInterface defines the methods required by collision reconcilers.
 type PoolManagerInterface interface {
+	IsKubevirtEnabled() bool
 	IsVirtualMachineManaged(namespace string) (bool, error)
 	IsPodManaged(namespace string) (bool, error)
 	UpdateCollisionsMap(objectRef pool_manager.ObjectReference, collisions map[string][]pool_manager.ObjectReference)
@@ -155,7 +156,7 @@ func (r *VMIReconciler) checkMACCollisions(ctx context.Context, vmi *kubevirtv1.
 
 	otherVMIsCollidingPerMAC := make(map[string][]*kubevirtv1.VirtualMachineInstance)
 	for mac := range macs {
-		collisionCandidates, err := r.findRunningVMIsWithMAC(ctx, mac, vmi.UID, logger)
+		collisionCandidates, err := r.filterVMIsWithMAC(ctx, mac, vmi.UID, logger)
 		if err != nil {
 			return errors.Wrapf(err, "failed to find VMIs with MAC %s", mac)
 		}
@@ -201,32 +202,8 @@ func (r *VMIReconciler) emitCollisionEvents(vmi *kubevirtv1.VirtualMachineInstan
 // findRunningVMIsWithMAC queries the indexer to find all Running VMIs with the given MAC address
 // Excludes the VMI with the given UID (to avoid finding itself)
 // Assumes MAC is already normalized
-func (r *VMIReconciler) findRunningVMIsWithMAC(ctx context.Context, NormalizedMAC string, excludeUID types.UID, logger logr.Logger) ([]*kubevirtv1.VirtualMachineInstance, error) {
-	// Query the indexer
-	vmiList := &kubevirtv1.VirtualMachineInstanceList{}
-	if err := r.List(ctx, vmiList, client.MatchingFields{MacAddressIndexName: NormalizedMAC}); err != nil {
-		return nil, errors.Wrap(err, "failed to list VMIs by MAC")
-	}
-
-	// Filter to only Running VMIs (excluding the given UID)
-	var runningVMIs []*kubevirtv1.VirtualMachineInstance
-	for i := range vmiList.Items {
-		vmi := &vmiList.Items[i]
-
-		// Skip the VMI itself
-		if vmi.UID == excludeUID {
-			continue
-		}
-
-		// Only consider Running VMIs
-		if vmi.Status.Phase != kubevirtv1.Running {
-			continue
-		}
-
-		runningVMIs = append(runningVMIs, vmi)
-	}
-
-	return runningVMIs, nil
+func (r *VMIReconciler) filterVMIsWithMAC(ctx context.Context, normalizedMAC string, excludeUID types.UID, _ logr.Logger) ([]*kubevirtv1.VirtualMachineInstance, error) {
+	return listRunningVMIsByMACWithExcludeUID(ctx, r.Client, normalizedMAC, excludeUID)
 }
 
 // extractMACsFromVMI returns a set of normalized MAC addresses from a VMI's status interfaces
@@ -252,38 +229,7 @@ func (r *VMIReconciler) filterOutUnmanagedNamespaces(collisionCandidates []*kube
 		reconciledNamespace: {},
 	}
 
-	var managedCollisions []*kubevirtv1.VirtualMachineInstance
-
-	for _, candidate := range collisionCandidates {
-		// Check if we've already verified this namespace
-		if _, alreadyChecked := managedNamespaces[candidate.Namespace]; alreadyChecked {
-			managedCollisions = append(managedCollisions, candidate)
-			continue
-		}
-
-		// Check if namespace is managed
-		isManaged, err := r.poolManager.IsVirtualMachineManaged(candidate.Namespace)
-		if err != nil {
-			logger.Error(err, "Failed to check if namespace is managed, including VMI in collisions",
-				"namespace", candidate.Namespace,
-				"vmi", candidate.Name)
-			// Include the VMI in collisions on error (fail-safe)
-			managedCollisions = append(managedCollisions, candidate)
-			managedNamespaces[candidate.Namespace] = struct{}{}
-			continue
-		}
-
-		if !isManaged {
-			logger.V(1).Info("Filtering out VMI from unmanaged namespace",
-				"namespace", candidate.Namespace,
-				"vmi", candidate.Name)
-			continue
-		}
-
-		// Cache this namespace as managed
-		managedNamespaces[candidate.Namespace] = struct{}{}
-		managedCollisions = append(managedCollisions, candidate)
-	}
+	managedCollisions := filterManagedVMIs(collisionCandidates, managedNamespaces, r.poolManager, logger)
 
 	if len(managedCollisions) < len(collisionCandidates) {
 		logger.Info("Filtered out VMIs from unmanaged namespaces",

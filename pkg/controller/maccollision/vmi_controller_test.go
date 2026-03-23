@@ -22,6 +22,7 @@ type MockPoolManager struct {
 	isVirtualMachineManagedCalls []string
 	isPodManagedCalls            []string
 	managedNamespaces            map[string]bool
+	kubevirtEnabled              bool
 }
 
 func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error) {
@@ -38,6 +39,10 @@ func (m *MockPoolManager) IsPodManaged(namespace string) (bool, error) {
 		return true, nil
 	}
 	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) IsKubevirtEnabled() bool {
+	return m.kubevirtEnabled
 }
 
 func (m *MockPoolManager) UpdateCollisionsMap(pool_manager.ObjectReference, map[string][]pool_manager.ObjectReference) {

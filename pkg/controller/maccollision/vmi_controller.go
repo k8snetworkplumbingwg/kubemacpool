@@ -154,48 +154,54 @@ func (r *VMIReconciler) checkMACCollisions(ctx context.Context, vmi *kubevirtv1.
 		return nil
 	}
 
-	otherVMIsCollidingPerMAC := make(map[string][]*kubevirtv1.VirtualMachineInstance)
+	allCollisionsButOwn := make(map[string][]pool_manager.ObjectReference)
 	for mac := range macs {
-		collisionCandidates, err := r.filterVMIsWithMAC(ctx, mac, vmi.UID, logger)
+		var refs []pool_manager.ObjectReference
+
+		collidingVMIs, err := r.filterVMIsWithMAC(ctx, mac, vmi.UID, logger)
 		if err != nil {
 			return errors.Wrapf(err, "failed to find VMIs with MAC %s", mac)
 		}
+		collidingVMIs = r.filterOutDecentralizedMigrations(vmi, collidingVMIs, logger)
+		collidingVMIs = r.filterOutUnmanagedNamespaces(collidingVMIs, vmi.Namespace, logger)
+		for _, v := range collidingVMIs {
+			refs = append(refs, vmiObjectRef(v.Namespace, v.Name))
+		}
 
-		collisionCandidates = r.filterOutDecentralizedMigrations(vmi, collisionCandidates, logger)
-		collisionCandidates = r.filterOutUnmanagedNamespaces(collisionCandidates, vmi.Namespace, logger)
+		collidingPods, err := r.findRunningPodsWithMAC(ctx, mac, logger)
+		if err != nil {
+			return errors.Wrapf(err, "failed to find Pods with MAC %s", mac)
+		}
+		for _, p := range collidingPods {
+			refs = append(refs, podObjectRef(p.Namespace, p.Name))
+		}
 
-		actualCollisions := collisionCandidates
-
-		if len(actualCollisions) > 0 {
-			logger.Info("Found MAC collision", "mac", mac, "collisionCount", len(actualCollisions))
-			otherVMIsCollidingPerMAC[mac] = actualCollisions
-
-			r.emitCollisionEvents(vmi, mac, actualCollisions)
+		if len(refs) > 0 {
+			logger.Info("Found MAC collision", "mac", mac, "collisionCount", len(refs))
+			allCollisionsButOwn[mac] = refs
+			r.emitCollisionEvents(vmi, mac, collidingVMIs, refs)
 		}
 	}
 
-	collisions := convertToObjectReferenceMap(otherVMIsCollidingPerMAC)
-	r.poolManager.UpdateCollisionsMap(vmiObjectRef(vmi.Namespace, vmi.Name), collisions)
+	r.poolManager.UpdateCollisionsMap(vmiObjectRef(vmi.Namespace, vmi.Name), allCollisionsButOwn)
 
 	return nil
 }
 
-// emitCollisionEvents emits Kubernetes events on all VMIs involved in a MAC collision
-func (r *VMIReconciler) emitCollisionEvents(vmi *kubevirtv1.VirtualMachineInstance, mac string, collisions []*kubevirtv1.VirtualMachineInstance) {
-	allVMIs := []string{fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)}
-	for _, duplicate := range collisions {
-		allVMIs = append(allVMIs, fmt.Sprintf("%s/%s", duplicate.Namespace, duplicate.Name))
+func (r *VMIReconciler) emitCollisionEvents(vmi *kubevirtv1.VirtualMachineInstance, mac string, collidingVMIs []*kubevirtv1.VirtualMachineInstance, colliderRefs []pool_manager.ObjectReference) {
+	selfRef := vmiObjectRef(vmi.Namespace, vmi.Name)
+	all := []string{selfRef.Key()}
+	for _, ref := range colliderRefs {
+		all = append(all, ref.Key())
 	}
+	sort.Strings(all)
 
-	sort.Strings(allVMIs)
-
-	// Universal message - same for all VMIs and better deduplication
-	message := fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(allVMIs, ", "))
+	message := fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(all, ", "))
 
 	r.recorder.Event(vmi, corev1.EventTypeWarning, "MACCollision", message)
 
-	for _, duplicate := range collisions {
-		r.recorder.Event(duplicate, corev1.EventTypeWarning, "MACCollision", message)
+	for _, v := range collidingVMIs {
+		r.recorder.Event(v, corev1.EventTypeWarning, "MACCollision", message)
 	}
 }
 
@@ -241,17 +247,12 @@ func (r *VMIReconciler) filterOutUnmanagedNamespaces(collisionCandidates []*kube
 	return managedCollisions
 }
 
-// convertToObjectReferenceMap converts a map of VMIs to a map of ObjectReferences
-func convertToObjectReferenceMap(duplicates map[string][]*kubevirtv1.VirtualMachineInstance) map[string][]pool_manager.ObjectReference {
-	collisions := make(map[string][]pool_manager.ObjectReference)
-	for mac, vmis := range duplicates {
-		refs := make([]pool_manager.ObjectReference, len(vmis))
-		for i, v := range vmis {
-			refs[i] = vmiObjectRef(v.Namespace, v.Name)
-		}
-		collisions[mac] = refs
+func (r *VMIReconciler) findRunningPodsWithMAC(ctx context.Context, normalizedMAC string, logger logr.Logger) ([]*corev1.Pod, error) {
+	runningPods, err := listRunningPodsWithMAC(ctx, r.Client, normalizedMAC)
+	if err != nil {
+		return nil, err
 	}
-	return collisions
+	return filterCollisionCandidatePods(runningPods, "", r.poolManager, logger), nil
 }
 
 // removeVMIFromAllCollisions removes a VMI from all collision tracking

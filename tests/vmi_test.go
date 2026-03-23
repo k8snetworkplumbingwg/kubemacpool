@@ -604,7 +604,7 @@ type vmiReference struct {
 func buildExpectedCollisionMessage(mac string, vmis []vmiReference) string {
 	vmiRefs := make([]string, len(vmis))
 	for i, vmi := range vmis {
-		vmiRefs[i] = fmt.Sprintf("%s/%s", vmi.namespace, vmi.name)
+		vmiRefs[i] = fmt.Sprintf("vmi/%s/%s", vmi.namespace, vmi.name)
 	}
 	sort.Strings(vmiRefs)
 	return fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(vmiRefs, ", "))

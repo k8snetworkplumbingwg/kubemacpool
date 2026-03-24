@@ -98,8 +98,43 @@ func SetupWithManager(mgr manager.Manager, poolManager *pool_manager.PoolManager
 		return fmt.Errorf("failed to watch VMIs: %w", err)
 	}
 
+	err = c.Watch(
+		source.Kind(
+			mgr.GetCache(),
+			&corev1.Pod{},
+			handler.TypedEnqueueRequestsFromMapFunc(r.mapPodToVMIs),
+			podCollisionRelevantChanges(),
+		),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to watch Pods for VMI cross-type collisions: %w", err)
+	}
+
 	log.Info("Successfully registered MAC collision VMI controller")
 	return nil
+}
+
+func (r *VMIReconciler) mapPodToVMIs(ctx context.Context, pod *corev1.Pod) []reconcile.Request {
+	macs := IndexPodByMAC(pod)
+
+	var requests []reconcile.Request
+	seen := map[types.NamespacedName]struct{}{}
+	for _, mac := range macs {
+		var vmiList kubevirtv1.VirtualMachineInstanceList
+		if err := r.List(ctx, &vmiList, client.MatchingFields{MacAddressIndexName: mac}); err != nil {
+			log.Error(err, "failed to list VMIs by MAC for cross-type enqueue", "mac", mac)
+			continue
+		}
+		for i := range vmiList.Items {
+			key := types.NamespacedName{Namespace: vmiList.Items[i].Namespace, Name: vmiList.Items[i].Name}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			requests = append(requests, reconcile.Request{NamespacedName: key})
+		}
+	}
+	return requests
 }
 
 // Reconcile handles VMI reconciliation for collision detection

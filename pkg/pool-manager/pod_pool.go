@@ -148,21 +148,6 @@ func (p *PoolManager) allocatePodRequestedMac(network *multus.NetworkSelectionEl
 		}
 		return nil
 	}
-	if entries, exist := p.macPoolMap[NewMacKey(requestedMac)]; exist {
-		if !macAlreadyBelongsToPodAndNetwork(podFullName, network.Name, entries) {
-			err := fmt.Errorf("failed to allocate requested mac address")
-			conflictInfo := ""
-			for _, entry := range entries {
-				if conflictInfo != "" {
-					conflictInfo += ", "
-				}
-				conflictInfo += fmt.Sprintf("%s:%s", entry.instanceName, entry.macInstanceKey)
-			}
-			log.Error(err, fmt.Sprintf("mac address already allocated to [%s]", conflictInfo))
-
-			return err
-		}
-	}
 
 	if isNotDryRun {
 		p.macPoolMap.createOrUpdateEntry(requestedMac, podFullName, network.Name)
@@ -311,19 +296,6 @@ func (p *PoolManager) initPodMap() error {
 	}
 
 	return nil
-}
-
-func macAlreadyBelongsToPodAndNetwork(podFullName, networkName string, entries []macEntry) bool {
-	for _, entry := range entries {
-		if entry.instanceName == tempPodName {
-			// do not block macs with not yet updated pod names.
-			return false
-		}
-		if entry.instanceName == podFullName && entry.macInstanceKey == networkName {
-			return true
-		}
-	}
-	return false
 }
 
 // Revert allocation if one of the requested mac addresses fails to be allocated

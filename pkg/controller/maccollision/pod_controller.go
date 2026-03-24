@@ -88,8 +88,45 @@ func SetupPodControllerWithManager(mgr manager.Manager, poolManager *pool_manage
 		return fmt.Errorf("failed to watch Pods: %w", err)
 	}
 
+	if r.poolManager.IsKubevirtEnabled() {
+		err = c.Watch(
+			source.Kind(
+				mgr.GetCache(),
+				&kubevirtv1.VirtualMachineInstance{},
+				handler.TypedEnqueueRequestsFromMapFunc(r.mapVMIToPods),
+				collisionRelevantChanges(),
+			),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to watch VMIs for Pod cross-type collisions: %w", err)
+		}
+	}
+
 	podLog.Info("Successfully registered MAC collision Pod controller")
 	return nil
+}
+
+func (r *PodReconciler) mapVMIToPods(ctx context.Context, vmi *kubevirtv1.VirtualMachineInstance) []reconcile.Request {
+	macs := IndexVMIByMAC(vmi)
+
+	var requests []reconcile.Request
+	seen := map[types.NamespacedName]struct{}{}
+	for _, mac := range macs {
+		var podList corev1.PodList
+		if err := r.List(ctx, &podList, client.MatchingFields{PodMacAddressIndexName: mac}); err != nil {
+			podLog.Error(err, "failed to list Pods by MAC for cross-type enqueue", "mac", mac)
+			continue
+		}
+		for i := range podList.Items {
+			key := types.NamespacedName{Namespace: podList.Items[i].Namespace, Name: podList.Items[i].Name}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			requests = append(requests, reconcile.Request{NamespacedName: key})
+		}
+	}
+	return requests
 }
 
 // Reconcile handles Pod reconciliation for collision detection.

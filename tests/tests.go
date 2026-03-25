@@ -521,8 +521,7 @@ func getOptMode(webhookName string) (string, error) {
 	return "", fmt.Errorf("webhook %s not found in mutatingWebhookConfiguration", webhookName)
 }
 
-func setVMWebhookOptMode(optMode string) error {
-	const webhookName = vmNamespaceOptInLabel
+func setWebhookOptMode(webhookName, optMode string) error {
 	By(fmt.Sprintf("Setting webhook %s to %s in MutatingWebhookConfigurations instance", webhookName, optMode))
 	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		mutatingWebhook, err := testClient.K8sClient.AdmissionregistrationV1().MutatingWebhookConfigurations().Get(context.TODO(),
@@ -564,6 +563,43 @@ func setVMWebhookOptMode(optMode string) error {
 		return errors.Wrap(err, "failed to perform Retry on Conflict to set opt mode")
 	}
 	return nil
+}
+
+func setVMWebhookOptMode(optMode string) error {
+	return setWebhookOptMode(vmNamespaceOptInLabel, optMode)
+}
+
+func setPodWebhookOptMode(optMode string) error {
+	return setWebhookOptMode(podNamespaceOptInLabel, optMode)
+}
+
+func optInNamespaceForPods(namespace string) {
+	By(fmt.Sprintf("opting in namespace %s for pod MAC allocation", namespace))
+	Expect(addLabelsToNamespace(namespace, map[string]string{podNamespaceOptInLabel: "allocate"})).To(Succeed(),
+		"should be able to add opt-in label to namespace")
+
+	probeNadName := randName("probe-nad")
+	Expect(createNetworkAttachmentDefinition(namespace, probeNadName)).To(Succeed(),
+		"should create probe NAD for opt-in verification")
+	defer func() {
+		Expect(deleteNetworkAttachmentDefinition(namespace, probeNadName)).To(Succeed(),
+			"should delete probe NAD after opt-in verification")
+	}()
+
+	By("waiting for webhook to recognize namespace as opted-in for pods")
+	Eventually(func(g Gomega) {
+		pod := NewCollisionPod(namespace, "webhook-probe",
+			WithMultusNetwork(probeNadName, ""))
+		created, createErr := testClient.K8sClient.CoreV1().Pods(namespace).Create(
+			context.TODO(),
+			pod,
+			metav1.CreateOptions{DryRun: []string{metav1.DryRunAll}},
+		)
+		g.Expect(createErr).To(Succeed())
+		macAnnotation := created.Annotations["k8s.v1.cni.cncf.io/networks"]
+		g.Expect(macAnnotation).To(ContainSubstring("mac"),
+			"Pod should have MAC allocated by webhook in opted-in namespace")
+	}, webhookPropagationTimeout, webhookPropagationInterval).Should(Succeed())
 }
 
 func addFinalizer(virtualMachine *kubevirtv1.VirtualMachine, finalizerName string) error {

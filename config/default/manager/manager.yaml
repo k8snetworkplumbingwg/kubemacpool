@@ -136,7 +136,7 @@ spec:
             port: webhook-server
             scheme: HTTPS
           initialDelaySeconds: 10
-          periodSeconds: 180
+          periodSeconds: 10
         livenessProbe:
           httpGet:
             httpHeaders:

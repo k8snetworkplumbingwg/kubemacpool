@@ -7,8 +7,11 @@ import (
 	. "github.com/onsi/gomega"
 
 	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 )
@@ -79,6 +82,9 @@ func checkCertLibraryRecovery(oldCABundle []byte, oldSecret *v1.Secret) {
 
 	By("checking that the caBundle is regenerated")
 	checkCaBundleRecovery(oldCABundle)
+
+	By("waiting for webhook to serve the new certificate")
+	waitForWebhookWithNewCert()
 }
 
 func GetCurrentSecret(secretName string) (*v1.Secret, error) {
@@ -119,4 +125,21 @@ func checkCaBundleRecovery(oldCABundle []byte) {
 		}
 		return caBundles, nil
 	}, timeout, pollingInterval).ShouldNot(ContainElement(oldCABundle), "should successfully renew all webhook's caBundles")
+}
+
+func waitForWebhookWithNewCert() {
+	Eventually(func(g Gomega) {
+		vm := CreateVMObject(TestNamespace,
+			[]kubevirtv1.Interface{newInterface("br", "")},
+			[]kubevirtv1.Network{newNetwork("br")})
+		g.Expect(testClient.CRClient.Create(context.TODO(), vm, client.DryRunAll)).To(Succeed(),
+			"webhook should accept requests with the new certificate")
+		g.Expect(vm.Spec.Template.Spec.Domain.Devices.Interfaces[0].MacAddress).ToNot(BeEmpty(),
+			"webhook should have allocated a MAC address")
+
+		err := testClient.CRClient.Get(context.TODO(),
+			client.ObjectKey{Namespace: vm.Namespace, Name: vm.Name}, &kubevirtv1.VirtualMachine{})
+		g.Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+			"dry-run created VM should not be persisted")
+	}, webhookPropagationTimeout, webhookPropagationInterval).Should(Succeed())
 }

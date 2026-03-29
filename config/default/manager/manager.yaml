@@ -114,8 +114,6 @@ spec:
                 key: RANGE_END
           - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
             value: "v1"
-          - name: TLS_MIN_VERSION
-            value: "VersionTLS13"
         resources:
           requests:
             cpu: 100m

@@ -1,4 +1,4 @@
-package vmicollision
+package maccollision
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestVMICollision(t *testing.T) {
+func TestMACCollision(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "VMI Collision Controller Suite")
+	RunSpecs(t, "MAC Collision Controller Suite")
 }

@@ -14,20 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vmicollision
+package maccollision
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+
+	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
 )
 
-var cacheLog = logf.Log.WithName("VMICollision Cache")
+var cacheLog = logf.Log.WithName("MACCollision Cache")
 
 const (
 	// MacAddressIndexName is the index name for MAC address lookups
 	MacAddressIndexName = "status.interfaces.mac"
+
+	// PodMacAddressIndexName is the index name for Pod MAC address lookups.
+	PodMacAddressIndexName = "annotations.networks.mac"
 )
 
 // StripVMIForCollisionDetection keeps only:
@@ -80,4 +87,74 @@ func IndexVMIByMAC(obj client.Object) []string {
 	}
 
 	return macs
+}
+
+// StripPodForCollisionDetection keeps only fields needed for collision detection,
+// reducing memory for cached Pod objects.
+func StripPodForCollisionDetection(obj interface{}) (interface{}, error) {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return obj, nil
+	}
+
+	stripped := &corev1.Pod{
+		TypeMeta: pod.TypeMeta,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        pod.Name,
+			Namespace:   pod.Namespace,
+			UID:         pod.UID,
+			Labels:      pod.Labels,
+			Annotations: pod.Annotations,
+		},
+		Status: corev1.PodStatus{
+			Phase: pod.Status.Phase,
+		},
+	}
+
+	return stripped, nil
+}
+
+// IndexPodByMAC returns all requested MAC addresses from a Pod's multus
+// network-attachment annotation for indexing.
+// Returns nil if multus has not yet processed the Pod (no network-status annotation).
+func IndexPodByMAC(obj client.Object) []string {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return nil
+	}
+
+	if _, hasStatus := pod.Annotations[networkv1.NetworkStatusAnnot]; !hasStatus {
+		return nil
+	}
+
+	networks, err := netutils.ParsePodNetworkAnnotation(pod)
+	if err != nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	var macs []string
+	for _, net := range networks {
+		if net.MacRequest == "" {
+			continue
+		}
+		normalizedMAC, err := NormalizeMacAddress(net.MacRequest)
+		if err != nil {
+			cacheLog.Error(err, "failed to normalize MAC address", "mac", net.MacRequest, "pod", pod.Name, "namespace", pod.Namespace)
+			continue
+		}
+		if _, dup := seen[normalizedMAC]; dup {
+			continue
+		}
+		seen[normalizedMAC] = struct{}{}
+		macs = append(macs, normalizedMAC)
+	}
+
+	return macs
+}
+
+// IsKubevirtOwned returns true if the Pod is a virt-launcher Pod.
+// These Pods' MACs are already tracked through the VMI collision controller.
+func IsKubevirtOwned(pod *corev1.Pod) bool {
+	return pod.Labels[kubevirtv1.AppLabel] == "virt-launcher"
 }

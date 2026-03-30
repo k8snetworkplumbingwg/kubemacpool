@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "k8s.io/api/core/v1"
@@ -55,6 +56,16 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					Expect(testClient.CRClient.List(context.TODO(), vmiList)).To(Succeed())
 					return vmiList.Items
 				}).WithTimeout(timeout).WithPolling(pollingInterval).Should(HaveLen(0), "failed to remove all vmi objects")
+
+				By("Waiting for virt-launcher pods to terminate in test namespaces")
+				for _, ns := range []string{TestNamespace, OtherTestNamespace} {
+					Eventually(func() int {
+						podList, err := testClient.K8sClient.CoreV1().Pods(ns).List(context.TODO(), metav1.ListOptions{})
+						Expect(err).ToNot(HaveOccurred())
+						return len(podList.Items)
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeZero(),
+						"All pods in namespace %s should terminate after VMI cleanup", ns)
+				}
 			})
 
 			Context("and the client tries to assign the same MAC address for two different VMI. Within Range and out of range", func() {
@@ -604,7 +615,7 @@ type vmiReference struct {
 func buildExpectedCollisionMessage(mac string, vmis []vmiReference) string {
 	vmiRefs := make([]string, len(vmis))
 	for i, vmi := range vmis {
-		vmiRefs[i] = fmt.Sprintf("%s/%s", vmi.namespace, vmi.name)
+		vmiRefs[i] = fmt.Sprintf("vmi/%s/%s", vmi.namespace, vmi.name)
 	}
 	sort.Strings(vmiRefs)
 	return fmt.Sprintf("MAC %s: Collision between %s", mac, strings.Join(vmiRefs, ", "))

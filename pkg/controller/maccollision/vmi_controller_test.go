@@ -1,4 +1,4 @@
-package vmicollision
+package maccollision
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -20,7 +21,9 @@ import (
 
 type MockPoolManager struct {
 	isVirtualMachineManagedCalls []string
+	isPodManagedCalls            []string
 	managedNamespaces            map[string]bool
+	kubevirtEnabled              bool
 }
 
 func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error) {
@@ -29,6 +32,18 @@ func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error
 		return true, nil
 	}
 	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) IsPodManaged(namespace string) (bool, error) {
+	m.isPodManagedCalls = append(m.isPodManagedCalls, namespace)
+	if m.managedNamespaces == nil {
+		return true, nil
+	}
+	return m.managedNamespaces[namespace], nil
+}
+
+func (m *MockPoolManager) IsKubevirtEnabled() bool {
+	return m.kubevirtEnabled
 }
 
 func (m *MockPoolManager) UpdateCollisionsMap(pool_manager.ObjectReference, map[string][]pool_manager.ObjectReference) {
@@ -125,19 +140,21 @@ func newVMI(namespace, name string, opts ...vmiOption) *kubevirtv1.VirtualMachin
 	return vmi
 }
 
-func setupReconciler(mockPoolManager *MockPoolManager, objects ...client.Object) (*VMICollisionReconciler, *MockEventRecorder, client.Client) {
+func setupReconciler(mockPoolManager *MockPoolManager, objects ...client.Object) (*VMIReconciler, *MockEventRecorder, client.Client) {
 	scheme := runtime.NewScheme()
 	_ = kubevirtv1.AddToScheme(scheme)
+	_ = corev1.AddToScheme(scheme)
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithObjects(objects...).
 		WithIndex(&kubevirtv1.VirtualMachineInstance{}, MacAddressIndexName, IndexVMIByMAC).
+		WithIndex(&corev1.Pod{}, PodMacAddressIndexName, IndexPodByMAC).
 		Build()
 
 	mockRecorder := &MockEventRecorder{Events: []MockEvent{}}
 
-	reconciler := &VMICollisionReconciler{
+	reconciler := &VMIReconciler{
 		Client:      fakeClient,
 		poolManager: mockPoolManager,
 		recorder:    mockRecorder,
@@ -157,7 +174,7 @@ var _ = Describe("VMI Collision Controller", func() {
 	var (
 		mockPoolManager *MockPoolManager
 		mockRecorder    *MockEventRecorder
-		reconciler      *VMICollisionReconciler
+		reconciler      *VMIReconciler
 		ctx             context.Context
 	)
 
@@ -325,10 +342,9 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(mockRecorder.Events).To(HaveLen(2))
 
 				// Expected message (sorted VMI list for deduplication)
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2")
 
-				// Check event on vmi1
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
 					ObjectNamespace: testNamespace,
 					ObjectName:      "vmi1",
@@ -337,7 +353,6 @@ var _ = Describe("VMI Collision Controller", func() {
 					Message:         expectedMessage,
 				}))
 
-				// Check event on vmi2
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
 					ObjectNamespace: testNamespace,
 					ObjectName:      "vmi2",
@@ -346,7 +361,6 @@ var _ = Describe("VMI Collision Controller", func() {
 					Message:         expectedMessage,
 				}))
 
-				// Verify messages are identical (for Kubernetes deduplication)
 				Expect(mockRecorder.Events[0].Message).To(Equal(mockRecorder.Events[1].Message))
 			})
 
@@ -375,7 +389,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(mockRecorder.Events).To(HaveLen(2))
 
 				// Expected message (sorted by namespace/name)
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, "ns1", "vmi1", "ns2", "vmi2")
 
 				// Check event on vmi1
@@ -422,7 +436,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(3))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2", testNamespace, "vmi3")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -470,7 +484,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(2))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -565,7 +579,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(2))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -660,7 +674,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(2))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -703,7 +717,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(2))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, testNamespace, "vmi1", testNamespace, "vmi2")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -796,7 +810,7 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(result).To(Equal(reconcile.Result{}))
 
 				Expect(mockRecorder.Events).To(HaveLen(2))
-				expectedMessage := fmt.Sprintf("MAC %s: Collision between %s/%s, %s/%s",
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/%s, vmi/%s/%s",
 					testMAC1, managedNS, "vmi-managed-1", managedNS, "vmi-managed-2")
 
 				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
@@ -813,6 +827,134 @@ var _ = Describe("VMI Collision Controller", func() {
 					Reason:          "MACCollision",
 					Message:         expectedMessage,
 				}))
+			})
+		})
+
+		Context("cross-type VMI-Pod collision detection", func() {
+			It("should detect collision between VMI and running Pod", func() {
+				vmi := newVMI(testNamespace, testVMIName,
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				pod := newTestPod(testNamespace, "colliding-pod",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				Expect(mockRecorder.Events).To(HaveLen(1))
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between pod/%s/colliding-pod, vmi/%s/%s",
+					testMAC1, testNamespace, testNamespace, testVMIName)
+				Expect(mockRecorder.Events[0]).To(Equal(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      testVMIName,
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+			})
+
+			It("should not detect collision with non-running Pod", func() {
+				vmi := newVMI(testNamespace, testVMIName,
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				pod := newTestPod(testNamespace, "pending-pod",
+					withPodPhase(corev1.PodPending),
+					withPodMACs(testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should filter out virt-launcher Pod", func() {
+				vmi := newVMI(testNamespace, testVMIName,
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				pod := newTestPod(testNamespace, "virt-launcher-pod",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1),
+					withVirtLauncherLabel())
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should detect collision with both VMIs and Pods for the same MAC", func() {
+				vmi1 := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI(testNamespace, "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				pod := newTestPod(testNamespace, "pod1",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi1, vmi2, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				Expect(mockRecorder.Events).To(HaveLen(2))
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between pod/%s/pod1, vmi/%s/vmi1, vmi/%s/vmi2",
+					testMAC1, testNamespace, testNamespace, testNamespace)
+
+				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      "vmi1",
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+				Expect(mockRecorder.Events).To(ContainElement(MockEvent{
+					ObjectNamespace: testNamespace,
+					ObjectName:      "vmi2",
+					Type:            "Warning",
+					Reason:          "MACCollision",
+					Message:         expectedMessage,
+				}))
+			})
+
+			It("should filter out Pod from unmanaged namespace", func() {
+				vmi := newVMI("managed-ns", testVMIName,
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				pod := newTestPod("unmanaged-ns", "pod1",
+					withPodPhase(corev1.PodRunning),
+					withPodMACs(testMAC1))
+				mockPoolManager.managedNamespaces = map[string]bool{
+					"managed-ns":   true,
+					"unmanaged-ns": false,
+				}
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi, pod)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: "managed-ns", Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
 			})
 		})
 	})

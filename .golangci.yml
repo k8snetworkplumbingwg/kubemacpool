@@ -45,6 +45,8 @@ linters:
             - github.com/pkg/errors
             - github.com/prometheus/client_golang
             - github.com/prometheus/common
+            - github.com/k8snetworkplumbingwg/network-attachment-definition-client
+            - gopkg.in/k8snetworkplumbingwg/multus-cni.v3
           deny:
             - pkg: github.com/sirupsen/logrus
               desc: logging is allowed only by logutils.Log

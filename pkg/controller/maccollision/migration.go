@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package vmicollision
+package maccollision
 
 import (
 	"fmt"
@@ -24,7 +24,7 @@ import (
 )
 
 // filterOutDecentralizedMigrations filters out VMIs that share MACs due to decentralized migration, returning only real collisions
-func (r *VMICollisionReconciler) filterOutDecentralizedMigrations(reconciledVMI *kubevirtv1.VirtualMachineInstance, duplicates []*kubevirtv1.VirtualMachineInstance, logger logr.Logger) []*kubevirtv1.VirtualMachineInstance {
+func (r *VMIReconciler) filterOutDecentralizedMigrations(reconciledVMI *kubevirtv1.VirtualMachineInstance, duplicates []*kubevirtv1.VirtualMachineInstance, logger logr.Logger) []*kubevirtv1.VirtualMachineInstance {
 	reconciledSourceUID, reconciledTargetUID := extractMigrationUIDs(reconciledVMI)
 	if reconciledSourceUID == "" && reconciledTargetUID == "" {
 		// No active migration on reconciled VMI, all duplicates are real collisions

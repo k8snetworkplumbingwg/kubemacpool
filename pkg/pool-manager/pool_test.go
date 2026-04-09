@@ -878,6 +878,26 @@ var _ = Describe("Pool", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(newPod.Annotations[networkv1.NetworkAttachmentAnnot]).To(Equal(afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC)[networkv1.NetworkAttachmentAnnot]))
 		})
+		It("should allow a pod requesting a MAC already allocated to another pod", func() {
+			poolManager := createPoolManager(minRangeMACPool, maxRangeMACPool, OptOutMode, &managedPodWithMacAllocated)
+
+			duplicatePod := v1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "duplicate-pod",
+					Namespace:   managedNamespaceName,
+					Annotations: afterAllocationAnnotation(managedNamespaceName, managedNamespaceMAC),
+				},
+			}
+
+			err := poolManager.AllocatePodMac(&duplicatePod, true)
+			Expect(err).ToNot(HaveOccurred())
+
+			entries, exist := poolManager.macPoolMap[NewMacKey(managedNamespaceMAC)]
+			Expect(exist).To(BeTrue())
+			Expect(entries).To(HaveLen(2))
+			Expect(entries[0].instanceName).To(Equal(podNamespaced(&managedPodWithMacAllocated)))
+			Expect(entries[1].instanceName).To(Equal(podNamespaced(&duplicatePod)))
+		})
 	})
 
 	Describe("Multus Network Annotations API Tests", func() {

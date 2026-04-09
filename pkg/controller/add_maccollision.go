@@ -19,7 +19,7 @@ package controller
 import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/vmicollision"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/maccollision"
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
@@ -29,7 +29,7 @@ func init() {
 
 func addVMICollisionController(mgr manager.Manager, poolManager *pool_manager.PoolManager) error {
 	if poolManager.IsKubevirtEnabled() {
-		return vmicollision.SetupWithManager(mgr, poolManager)
+		return maccollision.SetupWithManager(mgr, poolManager)
 	}
 
 	return nil

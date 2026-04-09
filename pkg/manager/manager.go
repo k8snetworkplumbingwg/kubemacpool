@@ -44,7 +44,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller"
-	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/vmicollision"
+	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/controller/maccollision"
 	monitoringmetrics "github.com/k8snetworkplumbingwg/kubemacpool/pkg/monitoring/metrics"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
@@ -211,6 +211,9 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 				},
 				Field: configMapNameFieldSelector,
 			},
+			&corev1.Pod{}: {
+				Transform: maccollision.StripPodForCollisionDetection,
+			},
 		},
 	}
 
@@ -219,7 +222,7 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 	// When kubevirt is installed then the Manager will restart.
 	if isKubevirtInstalled {
 		cacheOptions.ByObject[&kubevirt_api.VirtualMachineInstance{}] = cache.ByObject{
-			Transform: vmicollision.StripVMIForCollisionDetection,
+			Transform: maccollision.StripVMIForCollisionDetection,
 		}
 	}
 

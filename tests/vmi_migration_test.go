@@ -77,6 +77,16 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				waitForVMsDeleted(testNamespaces)
 				waitForVMIsDeleted(testNamespaces)
 
+				By("Waiting for virt-launcher pods to terminate in test namespaces")
+				for _, ns := range testNamespaces {
+					Eventually(func() int {
+						podList, err := testClient.K8sClient.CoreV1().Pods(ns).List(context.TODO(), metav1.ListOptions{})
+						Expect(err).ToNot(HaveOccurred())
+						return len(podList.Items)
+					}).WithTimeout(timeout).WithPolling(pollingInterval).Should(BeZero(),
+						"All pods in namespace %s should terminate after VMI cleanup", ns)
+				}
+
 				By("Deleting network attachment definitions")
 				Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName)).To(Succeed())
 				Expect(deleteNetworkAttachmentDefinition(OtherTestNamespace, nadName)).To(Succeed())

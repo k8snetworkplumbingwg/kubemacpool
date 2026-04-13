@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
 	"github.com/k8snetworkplumbingwg/kubemacpool/tests/kubectl"
@@ -28,6 +29,7 @@ var failureCount int
 const artifactDir = "_out/"
 
 const kubevirtNamespace = "kubevirt"
+const testNamespacePrefix = "kubemacpool-test"
 
 func TestTests(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -161,6 +163,7 @@ func dumpCollisionArtifacts(failureCount int) {
 
 func dumpKubemacpoolLogs(failureCount int) {
 	dumpManagerNamespaceArtifacts(failureCount)
+	dumpTestNamespaceArtifacts(failureCount)
 	dumpKubeVirtArtifacts(failureCount)
 	dumpClusterWideArtifacts(failureCount)
 	dumpCollisionArtifacts(failureCount)
@@ -607,6 +610,177 @@ func logNodes(failureCount int) error {
 	}
 
 	return nil
+}
+
+func getTestNamespaces() []string {
+	nsList, err := testClient.K8sClient.CoreV1().Namespaces().List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		fmt.Printf("Failed to list namespaces for test artifact collection: %v\n", err)
+		return nil
+	}
+
+	var testNamespaces []string
+	for i := range nsList.Items {
+		if strings.HasPrefix(nsList.Items[i].Name, testNamespacePrefix) {
+			testNamespaces = append(testNamespaces, nsList.Items[i].Name)
+		}
+	}
+	return testNamespaces
+}
+
+func dumpTestNamespaceArtifacts(failureCount int) {
+	for _, ns := range getTestNamespaces() {
+		nsArtifactDir := fmt.Sprintf("%stest-ns/%d/%s/", artifactDir, failureCount, ns)
+
+		if err := logTestNamespacePods(ns, nsArtifactDir, failureCount); err != nil {
+			fmt.Println(err)
+		}
+
+		if err := logTestNamespaceVMIs(ns, nsArtifactDir, failureCount); err != nil {
+			fmt.Println(err)
+		}
+
+		if err := logTestNamespaceVMs(ns, nsArtifactDir, failureCount); err != nil {
+			fmt.Println(err)
+		}
+
+		if err := logTestNamespaceEvents(ns, nsArtifactDir, failureCount); err != nil {
+			fmt.Println(err)
+		}
+	}
+}
+
+func logTestNamespacePods(namespace, nsArtifactDir string, failureCount int) error {
+	podList, err := testClient.K8sClient.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list pods in %s: %v", namespace, err)
+	}
+
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+
+		b, err := json.MarshalIndent(*pod, "", "  ")
+		if err != nil {
+			fmt.Printf("Failed to marshal pod %s/%s: %v\n", namespace, pod.Name, err)
+			continue
+		}
+
+		if err := reporter.LogToFile(fmt.Sprintf("pod_%s", pod.Name), string(b), nsArtifactDir, failureCount); err != nil {
+			fmt.Printf("Failed to log pod %s/%s: %v\n", namespace, pod.Name, err)
+		}
+
+		logTestNamespacePodContainers(namespace, pod.Name, nsArtifactDir, failureCount, pod.Spec.InitContainers)
+		logTestNamespacePodContainers(namespace, pod.Name, nsArtifactDir, failureCount, pod.Spec.Containers)
+	}
+
+	return nil
+}
+
+func logTestNamespacePodContainers(namespace, podName, nsArtifactDir string, failureCount int, containers []corev1.Container) {
+	for _, container := range containers {
+		logs, err := getPodContainerLogsFromNamespace(podName, container.Name, namespace)
+		if err != nil {
+			fmt.Printf("Failed to get logs for %s/%s container %s: %v\n", namespace, podName, container.Name, err)
+			continue
+		}
+
+		if logErr := reporter.LogToFile(
+			fmt.Sprintf("pod_%s_container_%s", podName, container.Name),
+			logs, nsArtifactDir, failureCount,
+		); logErr != nil {
+			fmt.Printf("Failed to write logs for %s/%s container %s: %v\n", namespace, podName, container.Name, logErr)
+		}
+	}
+}
+
+func logTestNamespaceVMIs(namespace, nsArtifactDir string, failureCount int) error {
+	vmiList := &kubevirtv1.VirtualMachineInstanceList{}
+	if err := testClient.CRClient.List(context.Background(), vmiList, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("failed to list VMIs in %s: %v", namespace, err)
+	}
+
+	for i := range vmiList.Items {
+		vmi := &vmiList.Items[i]
+		logTestNamespaceObjectAndEvents(namespace, nsArtifactDir, "VirtualMachineInstance", "VMI", "vmi", vmi.Name, vmi, failureCount)
+	}
+
+	return nil
+}
+
+func logTestNamespaceVMs(namespace, nsArtifactDir string, failureCount int) error {
+	vmList := &kubevirtv1.VirtualMachineList{}
+	if err := testClient.CRClient.List(context.Background(), vmList, client.InNamespace(namespace)); err != nil {
+		return fmt.Errorf("failed to list VMs in %s: %v", namespace, err)
+	}
+
+	for i := range vmList.Items {
+		vm := &vmList.Items[i]
+		logTestNamespaceObjectAndEvents(namespace, nsArtifactDir, "VirtualMachine", "VM", "vm", vm.Name, vm, failureCount)
+	}
+
+	return nil
+}
+
+func logTestNamespaceEvents(namespace, nsArtifactDir string, failureCount int) error {
+	events, err := testClient.K8sClient.CoreV1().Events(namespace).List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list events in %s: %v", namespace, err)
+	}
+
+	eventBytes, err := json.MarshalIndent(*events, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal events in %s: %v", namespace, err)
+	}
+
+	if err := reporter.LogToFile("namespace_events", string(eventBytes), nsArtifactDir, failureCount); err != nil {
+		return fmt.Errorf("failed to log events in %s: %v", namespace, err)
+	}
+
+	return nil
+}
+
+func logTestNamespaceObjectAndEvents(
+	namespace, nsArtifactDir, eventKind, displayKind, artifactPrefix, objectName string,
+	object any,
+	failureCount int,
+) {
+	objectBytes, err := json.MarshalIndent(object, "", "  ")
+	if err != nil {
+		fmt.Printf("Failed to marshal %s %s/%s: %v\n", displayKind, namespace, objectName, err)
+		return
+	}
+
+	if logErr := reporter.LogToFile(
+		fmt.Sprintf("%s_%s", artifactPrefix, objectName),
+		string(objectBytes),
+		nsArtifactDir,
+		failureCount,
+	); logErr != nil {
+		fmt.Printf("Failed to log %s %s/%s: %v\n", displayKind, namespace, objectName, logErr)
+	}
+
+	events, err := testClient.K8sClient.CoreV1().Events(namespace).List(context.Background(), metav1.ListOptions{
+		FieldSelector: fmt.Sprintf("involvedObject.name=%s,involvedObject.kind=%s", objectName, eventKind),
+	})
+	if err != nil {
+		fmt.Printf("Failed to get events for %s %s/%s: %v\n", displayKind, namespace, objectName, err)
+		return
+	}
+
+	eventBytes, err := json.MarshalIndent(*events, "", "  ")
+	if err != nil {
+		fmt.Printf("Failed to marshal events for %s %s/%s: %v\n", displayKind, namespace, objectName, err)
+		return
+	}
+
+	if logErr := reporter.LogToFile(
+		fmt.Sprintf("%s_events_%s", artifactPrefix, objectName),
+		string(eventBytes),
+		nsArtifactDir,
+		failureCount,
+	); logErr != nil {
+		fmt.Printf("Failed to log %s events %s/%s: %v\n", displayKind, namespace, objectName, logErr)
+	}
 }
 
 func logMACCollisionGauge(failureCount int) error {

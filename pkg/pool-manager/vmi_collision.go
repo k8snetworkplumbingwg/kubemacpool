@@ -20,6 +20,7 @@ type ObjectType string
 
 const (
 	ObjectTypeVMI ObjectType = "vmi"
+	ObjectTypePod ObjectType = "pod"
 )
 
 type ObjectReference struct {

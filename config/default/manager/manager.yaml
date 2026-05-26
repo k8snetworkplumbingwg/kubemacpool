@@ -85,6 +85,8 @@ spec:
         args:
           - "--v=production"
           - "--wait-time=300"
+          - "--mac-pool-range-start=02:00:00:00:00:00"
+          - "--mac-pool-range-end=02:FF:FF:FF:FF:FF"
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -102,16 +104,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
-          - name: RANGE_START
-            valueFrom:
-              configMapKeyRef:
-                name: mac-range-config
-                key: RANGE_START
-          - name: RANGE_END
-            valueFrom:
-              configMapKeyRef:
-                name: mac-range-config
-                key: RANGE_END
           - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
             value: "v1"
         resources:

@@ -275,6 +275,8 @@ spec:
       - args:
         - --v=production
         - --wait-time=300
+        - --mac-pool-range-start=02:00:00:00:00:00
+        - --mac-pool-range-end=02:FF:FF:FF:FF:FF
         command:
         - /manager
         env:
@@ -286,16 +288,6 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: RANGE_START
-          valueFrom:
-            configMapKeyRef:
-              key: RANGE_START
-              name: kubemacpool-mac-range-config
-        - name: RANGE_END
-          valueFrom:
-            configMapKeyRef:
-              key: RANGE_END
-              name: kubemacpool-mac-range-config
         - name: KUBEVIRT_CLIENT_GO_SCHEME_REGISTRATION_VERSION
           value: v1
         image: quay.io/kubevirt/kubemacpool:latest

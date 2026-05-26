@@ -18,7 +18,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"net"
 	"os"
 	"time"
@@ -36,22 +35,8 @@ import (
 
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/manager"
 	"github.com/k8snetworkplumbingwg/kubemacpool/pkg/names"
-	poolmanager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 )
-
-func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
-	if value, ok := os.LookupEnv(envName); ok {
-		poolRange, err := net.ParseMAC(value)
-		if err != nil {
-			return nil, err
-		}
-
-		return poolRange, nil
-	}
-
-	return nil, fmt.Errorf("Environment variable %s don't exist", envName)
-}
 
 func main() {
 	_, ok := os.LookupEnv("RUN_CERT_MANAGER")
@@ -154,6 +139,7 @@ func runKubemacpoolManager() {
 	var logType, metricsAddr string
 	var waitingTime int
 	var tlsMinVersion, tlsCiphers string
+	var macRangeStart, macRangeEnd string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
@@ -165,6 +151,8 @@ func runKubemacpoolManager() {
 		"Supported values are tls package constants names (e.g. TLS_AES_128_GCM_SHA256), please see "+
 		"https://pkg.go.dev/crypto/tls#pkg-constants. "+
 		"When 'tls-min-version' is 'VersionTLS13', cipher suites are selected by the runtime.")
+	flag.StringVar(&macRangeStart, "mac-pool-range-start", "", "MAC address pool range start (e.g. 02:00:00:00:00:00)")
+	flag.StringVar(&macRangeEnd, "mac-pool-range-end", "", "MAC address pool range end (e.g. 02:FF:FF:FF:FF:FF)")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(logType != "production")))
@@ -183,15 +171,15 @@ func runKubemacpoolManager() {
 		os.Exit(1)
 	}
 
-	rangeStart, err := loadMacAddressFromEnvVar(poolmanager.RangeStartEnv)
+	rangeStart, err := net.ParseMAC(macRangeStart)
 	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
+		log.Error(err, "Failed to parse mac-pool-range-start flag")
 		os.Exit(1)
 	}
 
-	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEnv)
+	rangeEnd, err := net.ParseMAC(macRangeEnd)
 	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
+		log.Error(err, "Failed to parse mac-pool-range-end flag")
 		os.Exit(1)
 	}
 

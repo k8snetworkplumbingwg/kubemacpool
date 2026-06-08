@@ -1,7 +1,7 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
 // allowed_go 1.20
-go 1.20
+go 1.25.0
 
 require (
 	github.com/go-logr/logr v1.2.4
@@ -79,7 +79,7 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/net v0.33.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20220223155221-ee480838109b // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.3.0 // indirect

@@ -40,17 +40,27 @@ import (
 	kmptls "github.com/k8snetworkplumbingwg/kubemacpool/pkg/tls"
 )
 
-func loadMacAddressFromEnvVar(envName string) (net.HardwareAddr, error) {
-	if value, ok := os.LookupEnv(envName); ok {
-		poolRange, err := net.ParseMAC(value)
+// loadMacAddress loads MAC address from flag value or falls back to environment variable for backward compatibility
+func loadMacAddress(flagValue, envName string) (net.HardwareAddr, error) {
+	// Prefer flag value if provided
+	if flagValue != "" {
+		poolRange, err := net.ParseMAC(flagValue)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse MAC address from flag: %w", err)
 		}
-
 		return poolRange, nil
 	}
 
-	return nil, fmt.Errorf("Environment variable %s don't exist", envName)
+	// Fall back to environment variable for backward compatibility
+	if value, ok := os.LookupEnv(envName); ok {
+		poolRange, err := net.ParseMAC(value)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse MAC address from environment variable %s: %w", envName, err)
+		}
+		return poolRange, nil
+	}
+
+	return nil, fmt.Errorf("MAC address not provided via flag or environment variable %s", envName)
 }
 
 func main() {
@@ -154,6 +164,7 @@ func runKubemacpoolManager() {
 	var logType, metricsAddr string
 	var waitingTime int
 	var tlsMinVersion, tlsCiphers string
+	var macPoolRangeStart, macPoolRangeEnd string
 
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8443", "The address the metric endpoint binds to.")
 	flag.StringVar(&logType, "v", "production", "Log type (debug/production).")
@@ -165,6 +176,8 @@ func runKubemacpoolManager() {
 		"Supported values are tls package constants names (e.g. TLS_AES_128_GCM_SHA256), please see "+
 		"https://pkg.go.dev/crypto/tls#pkg-constants. "+
 		"When 'tls-min-version' is 'VersionTLS13', cipher suites are selected by the runtime.")
+	flag.StringVar(&macPoolRangeStart, "mac-pool-range-start", "", "MAC address pool range start (e.g. 02:00:00:00:00:00).")
+	flag.StringVar(&macPoolRangeEnd, "mac-pool-range-end", "", "MAC address pool range end (e.g. 02:FF:FF:FF:FF:FF).")
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseDevMode(logType != "production")))
@@ -183,15 +196,15 @@ func runKubemacpoolManager() {
 		os.Exit(1)
 	}
 
-	rangeStart, err := loadMacAddressFromEnvVar(poolmanager.RangeStartEnv)
+	rangeStart, err := loadMacAddress(macPoolRangeStart, poolmanager.RangeStartEnv)
 	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
+		log.Error(err, "Failed to load MAC pool range start")
 		os.Exit(1)
 	}
 
-	rangeEnd, err := loadMacAddressFromEnvVar(poolmanager.RangeEndEnv)
+	rangeEnd, err := loadMacAddress(macPoolRangeEnd, poolmanager.RangeEndEnv)
 	if err != nil {
-		log.Error(err, "Failed to load mac address from environment variable")
+		log.Error(err, "Failed to load MAC pool range end")
 		os.Exit(1)
 	}
 

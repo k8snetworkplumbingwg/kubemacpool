@@ -116,6 +116,23 @@ lint-fix: $(GOLANGCI_LINT_BIN)
 lint-metrics: $(GO)
 	OCI_BIN=$(OCI_BIN) ./hack/prom_metric_linter.sh --operator-name="kmp" --sub-operator-name="kmp"
 
+GOVULNCHECK_BIN := $(BIN_DIR)/govulncheck
+
+$(GOVULNCHECK_BIN): $(GO)
+	GOFLAGS= GOBIN=$(BIN_DIR) $(GO) install golang.org/x/vuln/cmd/govulncheck@latest
+
+govulncheck: $(GOVULNCHECK_BIN)
+	@$(GOVULNCHECK_BIN) -format json ./...
+
+GOVULNCHECK_PARSER_BIN := $(BIN_DIR)/govulncheck-parser
+
+GOVULNCHECK_PARSER_SRC := $(wildcard tools/govulncheck-parser/*.go)
+
+$(GOVULNCHECK_PARSER_BIN): $(GO) $(GOVULNCHECK_PARSER_SRC)
+	$(GO) build -o $(GOVULNCHECK_PARSER_BIN) ./tools/govulncheck-parser
+
+govulncheck-parser: $(GOVULNCHECK_PARSER_BIN)
+
 install-deep-copy: $(GO)
 	$(DEEPCOPY_GEN)
 
@@ -231,4 +248,6 @@ vendor: $(GO)
 	lint \
 	lint-fix \
 	lint-metrics \
+	govulncheck \
+	govulncheck-parser \
 	prom-rules-verify

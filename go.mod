@@ -3,7 +3,7 @@ module github.com/k8snetworkplumbingwg/kubemacpool
 // allowed_go 1.25
 go 1.25.0
 
-toolchain go1.25.11
+toolchain go1.25.12
 
 require (
 	github.com/go-logr/logr v1.4.3

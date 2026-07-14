@@ -1,0 +1,227 @@
+# CodeRabbit Configuration
+# Full reference: https://docs.coderabbit.ai/reference/configuration
+
+# ---------------------------------------------------------------------------
+# General
+# ---------------------------------------------------------------------------
+language: en-US
+tone_instructions: >-
+  Act as a senior Kubernetes networking engineer: professional, constructive
+  feedback only. Serious about webhook safety, MAC pool integrity, and test
+  coverage. Flag issues with file/line references. End positively.
+early_access: false
+enable_free_tier: true
+
+# ---------------------------------------------------------------------------
+# Reviews
+# ---------------------------------------------------------------------------
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  high_level_summary_in_walkthrough: false
+  review_status: false
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+  poem: false
+  enable_prompt_for_ai_agents: true
+
+  path_filters:
+    - "!**/zz_generated.*"
+    - "!**/vendor/**"
+    - "!build/_output/**"
+    - "!tools/prom-rule-ci/**"
+    - "!_kubevirtci/**"
+    - "!go.sum"
+
+  path_instructions:
+    - path: "**/*.go"
+      instructions: |
+        Review against these kubemacpool project standards:
+
+        Go idioms:
+        - Use context.Background(), never context.TODO() (deprecated).
+        - Always wrap errors with fmt.Errorf("context: %w", err). Never swallow errors silently.
+        - Prefer standard library and apimachinery utilities (bytes.Compare, net.ParseMAC, k8s.io/apimachinery/pkg/util/sets) over custom implementations.
+        - Inline single-use short helper functions; extra indirection hurts readability.
+        - Avoid boolean function parameters; pass concrete values or use options instead.
+        - Use value types over pointers when mutation is not needed.
+        - Follow Go package naming conventions; avoid stuttering (e.g. tlsconfig.NewConfig()).
+        - Replace repeated string literals with named constants.
+        - Remove unused flags, env vars, imports, or dead code.
+
+        Error handling:
+        - Fail explicitly with clear errors rather than silent fallback behavior.
+        - Detect invalid states (e.g. negative pool size) and report configuration errors.
+        - Add nil checks where pointer dereferences could panic, but prefer value types.
+        - If a fail-open path is intentional, require a comment explaining the rationale.
+
+        Naming and clarity:
+        - Names must convey intent; no meaningless enumerations (IMAGE_1, IMAGE_2).
+        - Do not name packages the same as standard library packages.
+        - Comments must match the code. Remove stale comments.
+
+        Architecture:
+        - Do not change behavior unrelated to the PR's stated purpose.
+        - Consider maintenance burden before adding formatting/parsing/transformation code.
+        - All new Go source files must include the Apache 2.0 license header.
+
+    - path: "**/*_test.go"
+      instructions: |
+        Review unit tests against these kubemacpool testing standards:
+
+        - Test behavior through public APIs, not implementation details.
+        - Unit tests must be fast: MAC allocation happens on VM create/update,
+          not on VM start. Do not activate VMs or trigger heavy operations when
+          lighter alternatives exist.
+        - Use Gomega matchers: Eventually, Consistently, WithPolling, WithTimeout.
+          No manual polling loops or traditional Go error checking.
+        - Use Ginkgo assertions exclusively; do not mix with if-err-nil patterns.
+        - Assert final desired state, not transient intermediate states.
+        - Ensure test environment matches exactly what the test expects.
+        - Use defer for test resource cleanup.
+
+    - path: "tests/**"
+      instructions: |
+        These are end-to-end/functional tests that run against a real cluster.
+
+        - Use Ginkgo/Gomega exclusively; no manual polling or if-err-nil patterns.
+        - Use Eventually/Consistently with WithPolling and WithTimeout for async assertions.
+        - Assert final desired state, not transient intermediate states.
+        - Clean up test resources with defer.
+        - Precise test setup: ensure the environment matches exactly what the test expects.
+
+    - path: "go.mod"
+      instructions: |
+        - Do not mix module replacement/addition with feature work.
+          Dependency changes belong in dedicated PRs.
+        - Follow the Go version that imported k8s.io modules support.
+        - Understand the distinction between the go directive (minimum version)
+          and the toolchain directive (build toolchain version).
+
+    - path: "config/**"
+      instructions: |
+        - Follow existing kustomize conventions and patterns.
+        - Prometheus alerts must include a for duration (e.g. 5m) to prevent
+          flapping and give the system time to self-heal.
+
+  abort_on_close: true
+  slop_detection:
+    enabled: false
+
+  # ---------------------------------------------------------------------------
+  # Auto Review
+  # ---------------------------------------------------------------------------
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 10
+    ignore_title_keywords:
+      - "WIP"
+    labels:
+      - "!do-not-merge/work-in-progress"
+    drafts: false
+    ignore_usernames:
+      - "kubevirt-bot"
+      - "redhat-renovate-bot"
+
+  # ---------------------------------------------------------------------------
+  # Finishing Touches
+  # ---------------------------------------------------------------------------
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+
+  # ---------------------------------------------------------------------------
+  # Pre-merge Checks
+  # ---------------------------------------------------------------------------
+  pre_merge_checks:
+    override_requested_reviewers_only: false
+    docstrings:
+      mode: "off"
+    title:
+      mode: "off"
+    description:
+      mode: "off"
+    issue_assessment:
+      mode: "off"
+
+  # ---------------------------------------------------------------------------
+  # Tools
+  # ---------------------------------------------------------------------------
+  tools:
+    enabled: true
+    golangci-lint:
+      enabled: true
+    trufflehog:
+      enabled: true
+    osv-scanner:
+      enabled: true
+
+# ---------------------------------------------------------------------------
+# Chat
+# ---------------------------------------------------------------------------
+chat:
+  auto_reply: true
+  integrations:
+    jira:
+      usage: disabled
+    linear:
+      usage: disabled
+
+# ---------------------------------------------------------------------------
+# Knowledge Base
+# ---------------------------------------------------------------------------
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "CONTRIBUTING.md"
+  learnings:
+    scope: global
+  issues:
+    scope: local
+  jira:
+    usage: disabled
+  linear:
+    usage: disabled
+  pull_requests:
+    scope: global
+  mcp:
+    usage: disabled
+  linked_repositories:
+    - repository: "kubevirt/kubevirt"
+      instructions: "Core virtualization platform. kubemacpool allocates MACs for KubeVirt VMs. Use to verify VM/VMI API fields and interface specs."
+    - repository: "kubevirt/cluster-network-addons-operator"
+      instructions: "Operator that deploys kubemacpool. Use to verify deployment manifests, feature gates, and component lifecycle."
+    - repository: "k8snetworkplumbingwg/multus-cni"
+      instructions: "Multi-network CNI plugin. kubemacpool works alongside Multus via NetworkAttachmentDefinitions."
+
+# ---------------------------------------------------------------------------
+# Issue Enrichment
+# ---------------------------------------------------------------------------
+issue_enrichment:
+  auto_enrich:
+    enabled: false
+  planning:
+    enabled: false
+    auto_planning:
+      enabled: false
+  labeling:
+    auto_apply_labels: false

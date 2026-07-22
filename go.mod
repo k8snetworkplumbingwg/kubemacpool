@@ -1,7 +1,7 @@
 module github.com/k8snetworkplumbingwg/kubemacpool
 
 // allowed_go 1.20
-go 1.20
+go 1.25.0
 
 require (
 	github.com/go-logr/logr v1.2.3
@@ -66,11 +66,11 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.19.1 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
@@ -93,7 +93,7 @@ replace (
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
 	github.com/prometheus/client_golang => github.com/prometheus/client_golang v1.11.1
-	golang.org/x/text => golang.org/x/text v0.3.8
+	golang.org/x/text => golang.org/x/text v0.39.0
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v3 => gopkg.in/s1061123/multus-cni.v3 v3.0.0-20221012071351-54e57c230bdf
 	kubevirt.io/client-go => github.com/kubevirt/client-go v0.58.0
 	kubevirt.io/containerized-data-importer-api => kubevirt.io/containerized-data-importer-api v1.55.0

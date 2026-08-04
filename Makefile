@@ -32,7 +32,7 @@ KUSTOMIZE := GOFLAGS=-mod=mod $(GO) run sigs.k8s.io/kustomize/kustomize/v4@v4.5.
 CONTROLLER_GEN := GOFLAGS=-mod=mod $(GO) run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.0
 GOFMT := GOFLAGS=-mod=mod $(GO)fmt
 VET := GOFLAGS=-mod=mod $(GO) vet
-DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@latest
+DEEPCOPY_GEN := GOFLAGS=-mod=mod $(GO) install k8s.io/code-generator/cmd/deepcopy-gen@v0.34.1
 GO_VERSION = $(shell hack/go-version.sh)
 GOLANGCI_LINT_VERSION := v2.10.1
 GOLANGCI_LINT_BIN := $(BIN_DIR)/golangci-lint

@@ -671,7 +671,7 @@ func getVMCirros() *kubevirtv1.VirtualMachine {
 							Name: "containerdisk",
 							VolumeSource: kubevirtv1.VolumeSource{
 								ContainerDisk: &kubevirtv1.ContainerDiskSource{
-									Image: "quay.io/kubevirt/cirros-container-disk-demo:latest",
+									Image: "quay.io/kubevirt/cirros-container-disk-demo:v1.9.0",
 								},
 							},
 						},

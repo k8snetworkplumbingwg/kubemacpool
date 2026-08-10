@@ -26,7 +26,7 @@ CNAO_VERSION=v0.76.1
 export KUBEVIRT_DEPLOY_PROMETHEUS=true
 
 #use kubevirt latest z stream release
-KUBEVIRT_VERSION="v1.7.0"
+KUBEVIRT_VERSION="v1.9.0"
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
@@ -54,7 +54,10 @@ until ./cluster/kubectl.sh get crd kubevirts.kubevirt.io; do
     sleep 1
 done
 
-./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml
+curl -sSfL "https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-cr.yaml" \
+  | ./cluster/kubectl.sh create --dry-run=client -f - -o json \
+  | jq '.spec.configuration.developerConfiguration.disabledFeatureGates = ["ImageVolume"]' \
+  | ./cluster/kubectl.sh apply -f -
 
 # Ensure the KubeVirt CR is created
 count=0

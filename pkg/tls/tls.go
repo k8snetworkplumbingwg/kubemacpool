@@ -11,7 +11,7 @@ type Config struct {
 	MinTLSVersion uint16
 }
 
-func NewConfig(minTLSVersion, cipherSuites string) (*Config, error) {
+func NewConfig(minTLSVersion, cipherSuites, _ string) (*Config, error) {
 	minTLSVersionID, err := versionByName(minTLSVersion)
 	if err != nil {
 		return nil, err

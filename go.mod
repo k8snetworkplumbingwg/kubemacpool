@@ -27,7 +27,7 @@ require (
 	github.com/go-logfmt/logfmt v0.5.0 // indirect
 	github.com/golang/glog v1.2.4 // indirect
 	github.com/golang/mock v1.5.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.3.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0 // indirect
 	github.com/openshift/api v0.0.0 // indirect

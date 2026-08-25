@@ -57,6 +57,7 @@ func AddToManager(mgr manager.Manager, poolManager *pool_manager.PoolManager) er
 		TLSOpts: []func(*tls.Config){func(tlsConfig *tls.Config) {
 			tlsConfig.CipherSuites = cfg.CipherSuites
 			tlsConfig.MinVersion = cfg.MinTLSVersion
+			tlsConfig.CurvePreferences = cfg.GroupPreferences
 		}},
 	})
 

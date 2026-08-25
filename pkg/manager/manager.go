@@ -235,6 +235,7 @@ func (k *KubeMacPoolManager) initRuntimeManager(isKubevirtInstalled bool) error 
 			TLSOpts: []func(*tls.Config){func(cfg *tls.Config) {
 				cfg.CipherSuites = k.tlsConfig.CipherSuites
 				cfg.MinVersion = k.tlsConfig.MinTLSVersion
+				cfg.CurvePreferences = k.tlsConfig.GroupPreferences
 			}},
 		},
 		Cache: cacheOptions,

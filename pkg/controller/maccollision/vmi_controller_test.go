@@ -94,13 +94,95 @@ func withPhase(phase kubevirtv1.VirtualMachineInstancePhase) vmiOption {
 func withMACs(macs ...string) vmiOption {
 	return func(vmi *kubevirtv1.VirtualMachineInstance) {
 		for i, mac := range macs {
+			name := fmt.Sprintf("net%d", i)
+			vmi.Spec.Domain.Devices.Interfaces = append(vmi.Spec.Domain.Devices.Interfaces, kubevirtv1.Interface{
+				Name: name,
+				InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+					Masquerade: &kubevirtv1.InterfaceMasquerade{},
+				},
+			})
+			vmi.Spec.Networks = append(vmi.Spec.Networks, kubevirtv1.Network{
+				Name: name,
+				NetworkSource: kubevirtv1.NetworkSource{
+					Pod: &kubevirtv1.PodNetwork{},
+				},
+			})
 			vmi.Status.Interfaces = append(vmi.Status.Interfaces,
 				kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					Name: "net" + string(rune('0'+i)),
+					Name: name,
 					MAC:  mac,
 				},
 			)
 		}
+	}
+}
+
+func withUnsupportedPodNetworkMAC(name, mac string) vmiOption {
+	return func(vmi *kubevirtv1.VirtualMachineInstance) {
+		vmi.Spec.Domain.Devices.Interfaces = append(vmi.Spec.Domain.Devices.Interfaces, kubevirtv1.Interface{
+			Name: name,
+			InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+				Bridge: &kubevirtv1.InterfaceBridge{},
+			},
+		})
+		vmi.Spec.Networks = append(vmi.Spec.Networks, kubevirtv1.Network{
+			Name: name,
+			NetworkSource: kubevirtv1.NetworkSource{
+				Pod: &kubevirtv1.PodNetwork{},
+			},
+		})
+		vmi.Status.Interfaces = append(vmi.Status.Interfaces, kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			Name: name,
+			MAC:  mac,
+		})
+	}
+}
+
+func withPluginBindingPodNetworkMAC(name, plugin, mac string) vmiOption {
+	return func(vmi *kubevirtv1.VirtualMachineInstance) {
+		vmi.Spec.Domain.Devices.Interfaces = append(vmi.Spec.Domain.Devices.Interfaces, kubevirtv1.Interface{
+			Name:    name,
+			Binding: &kubevirtv1.PluginBinding{Name: plugin},
+		})
+		vmi.Spec.Networks = append(vmi.Spec.Networks, kubevirtv1.Network{
+			Name: name,
+			NetworkSource: kubevirtv1.NetworkSource{
+				Pod: &kubevirtv1.PodNetwork{},
+			},
+		})
+		vmi.Status.Interfaces = append(vmi.Status.Interfaces, kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			Name: name,
+			MAC:  mac,
+		})
+	}
+}
+
+func withMultusMAC(name, nadName, mac string) vmiOption {
+	return func(vmi *kubevirtv1.VirtualMachineInstance) {
+		vmi.Spec.Domain.Devices.Interfaces = append(vmi.Spec.Domain.Devices.Interfaces, kubevirtv1.Interface{
+			Name: name,
+			InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+				Bridge: &kubevirtv1.InterfaceBridge{},
+			},
+		})
+		vmi.Spec.Networks = append(vmi.Spec.Networks, kubevirtv1.Network{
+			Name: name,
+			NetworkSource: kubevirtv1.NetworkSource{
+				Multus: &kubevirtv1.MultusNetwork{NetworkName: nadName},
+			},
+		})
+		vmi.Status.Interfaces = append(vmi.Status.Interfaces, kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			Name: name,
+			MAC:  mac,
+		})
+	}
+}
+
+func withUnnamedStatusMAC(mac string) vmiOption {
+	return func(vmi *kubevirtv1.VirtualMachineInstance) {
+		vmi.Status.Interfaces = append(vmi.Status.Interfaces, kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			MAC: mac,
+		})
 	}
 }
 
@@ -955,6 +1037,118 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(reconcile.Result{}))
 				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+		})
+
+		Context("when VMI uses interfaces KubeMacPool does not allocate", func() {
+			const ovnGeneratedMAC = "0a:58:0a:0a:00:03"
+
+			It("should skip plugin-binding and bridge-on-pod MACs", func() {
+				vmi := newVMI(testNamespace, testVMIName,
+					withPhase(kubevirtv1.Running),
+					withPluginBindingPodNetworkMAC("pod", "l2bridge", ovnGeneratedMAC),
+					withUnsupportedPodNetworkMAC("unused", testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should not index unnamed status MACs", func() {
+				vmi := newVMI(testNamespace, testVMIName,
+					withPhase(kubevirtv1.Running),
+					withUnnamedStatusMAC(testMAC1))
+				other := newVMI(testNamespace, "other",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi, other)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: testVMIName},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should not report collisions when two Running VMIs share an unsupported pod-network MAC", func() {
+				vmi1 := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withUnsupportedPodNetworkMAC("pod", ovnGeneratedMAC))
+				vmi2 := newVMI(testNamespace, "vmi2",
+					withPhase(kubevirtv1.Running),
+					withUnsupportedPodNetworkMAC("pod", ovnGeneratedMAC))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should collide only on Multus MACs when mixed with unsupported pod-network", func() {
+				vmi1 := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withPluginBindingPodNetworkMAC("pod", "l2bridge", ovnGeneratedMAC),
+					withMultusMAC("sec", "nad1", testMAC1))
+				vmi2 := newVMI(testNamespace, "vmi2",
+					withPhase(kubevirtv1.Running),
+					withUnsupportedPodNetworkMAC("pod", ovnGeneratedMAC),
+					withMultusMAC("sec", "nad2", testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+
+				expectedMessage := fmt.Sprintf("MAC %s: Collision between vmi/%s/vmi1, vmi/%s/vmi2",
+					testMAC1, testNamespace, testNamespace)
+				Expect(mockRecorder.Events).To(ConsistOf(
+					MockEvent{
+						ObjectNamespace: testNamespace,
+						ObjectName:      "vmi1",
+						Type:            "Warning",
+						Reason:          "MACCollision",
+						Message:         expectedMessage,
+					},
+					MockEvent{
+						ObjectNamespace: testNamespace,
+						ObjectName:      "vmi2",
+						Type:            "Warning",
+						Reason:          "MACCollision",
+						Message:         expectedMessage,
+					},
+				))
+			})
+
+			It("should still detect masquerade MAC collisions", func() {
+				vmi1 := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				vmi2 := newVMI(testNamespace, "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMACs(testMAC1))
+				reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).NotTo(BeEmpty())
 			})
 		})
 	})

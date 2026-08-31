@@ -179,6 +179,96 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 				})
 			})
 
+			Context("and VMIs use unmanaged pod-network interfaces", func() {
+				const ovnGeneratedMAC = "0a:58:0a:0a:00:03"
+
+				It("should not detect collisions for the same MAC on unmanaged pod-network interfaces", Label(MetricsLabel), func() {
+					vmi1 := NewVMI(TestNamespace, "test-vmi-unmanaged-pod-1",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					vmi2 := NewVMI(TestNamespace, "test-vmi-unmanaged-pod-2",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					normalizedMAC, err := net.ParseMAC(ovnGeneratedMAC)
+					Expect(err).ToNot(HaveOccurred(), "Should parse OVN-generated MAC")
+
+					vmis := []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					}
+					waitForVMIsRunning(vmis)
+					expectNoMACCollisionEvents(vmis, "unmanaged pod-network MACs are not allocated by KubeMacPool")
+					expectNoMACCollisionGaugeConsistently(normalizedMAC.String())
+				})
+
+				It("should not detect collisions for the same unmanaged pod-network MAC across namespaces", Label(MetricsLabel), func() {
+					vmi1 := NewVMI(TestNamespace, "test-vmi-unmanaged-ns-1",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					vmi2 := NewVMI(OtherTestNamespace, "test-vmi-unmanaged-ns-2",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					normalizedMAC, err := net.ParseMAC(ovnGeneratedMAC)
+					Expect(err).ToNot(HaveOccurred(), "Should parse OVN-generated MAC")
+
+					vmis := []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					}
+					waitForVMIsRunning(vmis)
+					expectNoMACCollisionEvents(vmis, "unmanaged pod-network MACs are not allocated by KubeMacPool")
+					expectNoMACCollisionGaugeConsistently(normalizedMAC.String())
+				})
+
+				It("should detect collision only on Multus MACs when mixed with unmanaged pod-network", Label(MetricsLabel), func() {
+					const collidingMultusMAC = "02:00:00:00:00:40"
+					nadName1 := randName("br-mixed-1")
+					nadName2 := randName("br-mixed-2")
+					Expect(createNetworkAttachmentDefinition(TestNamespace, nadName1)).To(Succeed())
+					Expect(createNetworkAttachmentDefinition(TestNamespace, nadName2)).To(Succeed())
+					DeferCleanup(func() {
+						Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName1)).To(Succeed())
+						Expect(deleteNetworkAttachmentDefinition(TestNamespace, nadName2)).To(Succeed())
+					})
+
+					vmi1 := NewVMI(TestNamespace, "test-vmi-mixed-1",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()),
+						WithInterface(newInterface(nadName1, collidingMultusMAC)),
+						WithNetwork(newNetwork(nadName1)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi1)).To(Succeed())
+
+					vmi2 := NewVMI(TestNamespace, "test-vmi-mixed-2",
+						WithInterface(newInterface("pod", ovnGeneratedMAC)),
+						WithNetwork(newPodNetwork()),
+						WithInterface(newInterface(nadName2, collidingMultusMAC)),
+						WithNetwork(newNetwork(nadName2)))
+					Expect(testClient.CRClient.Create(context.TODO(), vmi2)).To(Succeed())
+
+					normalizedOvnMAC, err := net.ParseMAC(ovnGeneratedMAC)
+					Expect(err).ToNot(HaveOccurred())
+					normalizedMultusMAC, err := net.ParseMAC(collidingMultusMAC)
+					Expect(err).ToNot(HaveOccurred())
+
+					conflictingVMIs := []vmiReference{
+						{vmi1.Namespace, vmi1.Name},
+						{vmi2.Namespace, vmi2.Name},
+					}
+					waitForVMIsRunning(conflictingVMIs)
+					expectMACCollisionEvents(normalizedMultusMAC.String(), conflictingVMIs)
+					expectMACCollisionGauge(normalizedMultusMAC.String(), len(conflictingVMIs))
+					expectNoMACCollisionGaugeConsistently(normalizedOvnMAC.String())
+				})
+			})
+
 			Context("and VMIs have multiple interfaces with partial MAC collisions", Label(MACCollisionDetectionLabel), func() {
 				var net1Name, net2Name, net3Name string
 

@@ -183,9 +183,9 @@ func (r *VMIReconciler) checkMACCollisions(ctx context.Context, vmi *kubevirtv1.
 		return nil
 	}
 
-	macs := r.extractMACsFromVMI(vmi, logger)
+	macs := r.extractMACsFromVMI(vmi)
 	if len(macs) == 0 {
-		logger.V(1).Info("VMI has no MAC addresses, skipping collision check")
+		logger.V(1).Info("VMI has no managed MAC addresses, skipping collision check")
 		return nil
 	}
 
@@ -247,18 +247,11 @@ func (r *VMIReconciler) filterVMIsWithMAC(ctx context.Context, normalizedMAC str
 	return listRunningVMIsByMACWithExcludeUID(ctx, r.Client, normalizedMAC, excludeUID)
 }
 
-// extractMACsFromVMI returns a set of normalized MAC addresses from a VMI's status interfaces
-func (r *VMIReconciler) extractMACsFromVMI(vmi *kubevirtv1.VirtualMachineInstance, logger logr.Logger) map[string]struct{} {
+// extractMACsFromVMI returns a set of normalized MACs KubeMacPool allocates for.
+func (r *VMIReconciler) extractMACsFromVMI(vmi *kubevirtv1.VirtualMachineInstance) map[string]struct{} {
 	macs := make(map[string]struct{})
-	for _, iface := range vmi.Status.Interfaces {
-		if iface.MAC != "" {
-			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
-			if err != nil {
-				logger.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
-				continue
-			}
-			macs[normalizedMAC] = struct{}{}
-		}
+	for _, mac := range managedMACsFromVMI(vmi) {
+		macs[mac] = struct{}{}
 	}
 	return macs
 }

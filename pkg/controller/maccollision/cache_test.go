@@ -111,6 +111,40 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 		Expect(stripped.Status.Conditions).To(BeEmpty(), "Conditions should be stripped")
 	})
 
+	It("should keep spec networks and interfaces needed for allocation eligibility", func() {
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			Spec: kubevirtv1.VirtualMachineInstanceSpec{
+				Hostname: "should-be-stripped",
+				Networks: []kubevirtv1.Network{
+					{Name: "pod", NetworkSource: kubevirtv1.NetworkSource{Pod: &kubevirtv1.PodNetwork{}}},
+					{Name: "sec", NetworkSource: kubevirtv1.NetworkSource{Multus: &kubevirtv1.MultusNetwork{NetworkName: "nad"}}},
+				},
+				Domain: kubevirtv1.DomainSpec{
+					Devices: kubevirtv1.Devices{
+						Interfaces: []kubevirtv1.Interface{
+							{Name: "pod", Binding: &kubevirtv1.PluginBinding{Name: "l2bridge"}},
+							{Name: "sec", InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{Bridge: &kubevirtv1.InterfaceBridge{}}},
+						},
+						Disks: []kubevirtv1.Disk{{Name: "should-be-stripped"}},
+					},
+				},
+			},
+		}
+
+		result, err := maccollision.StripVMIForCollisionDetection(vmi)
+		Expect(err).ToNot(HaveOccurred())
+
+		stripped := result.(*kubevirtv1.VirtualMachineInstance)
+		Expect(stripped.Spec.Hostname).To(BeEmpty())
+		Expect(stripped.Spec.Domain.Devices.Disks).To(BeEmpty())
+		Expect(stripped.Spec.Networks).To(HaveLen(2))
+		Expect(stripped.Spec.Networks[0].Name).To(Equal("pod"))
+		Expect(stripped.Spec.Networks[1].Multus.NetworkName).To(Equal("nad"))
+		Expect(stripped.Spec.Domain.Devices.Interfaces).To(HaveLen(2))
+		Expect(stripped.Spec.Domain.Devices.Interfaces[0].Binding.Name).To(Equal("l2bridge"))
+		Expect(stripped.Spec.Domain.Devices.Interfaces[1].Bridge).NotTo(BeNil())
+	})
+
 	It("should handle non-VMI objects gracefully", func() {
 		nonVMI := &kubevirtv1.VirtualMachine{
 			ObjectMeta: metav1.ObjectMeta{Name: "test"},
@@ -123,15 +157,11 @@ var _ = Describe("StripVMIForCollisionDetection", func() {
 })
 
 var _ = Describe("IndexVMIByMAC", func() {
-	It("should return all MAC addresses from VMI status", func() {
-		vmi := &kubevirtv1.VirtualMachineInstance{
-			Status: kubevirtv1.VirtualMachineInstanceStatus{
-				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					{Name: "eth0", MAC: "02:00:00:00:00:01"},
-					{Name: "eth1", MAC: "02:00:00:00:00:02"},
-				},
-			},
-		}
+	It("should return MAC addresses from eligible masquerade interfaces", func() {
+		vmi := vmiWithMasqueradeStatusIfaces([]kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			{Name: "eth0", MAC: "02:00:00:00:00:01"},
+			{Name: "eth1", MAC: "02:00:00:00:00:02"},
+		})
 
 		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(HaveLen(2))
@@ -140,14 +170,10 @@ var _ = Describe("IndexVMIByMAC", func() {
 	})
 
 	It("should normalize MAC addresses to lowercase", func() {
-		vmi := &kubevirtv1.VirtualMachineInstance{
-			Status: kubevirtv1.VirtualMachineInstanceStatus{
-				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					{Name: "eth0", MAC: "02:00:00:00:00:AA"},
-					{Name: "eth1", MAC: "02:00:00:00:00:BB"},
-				},
-			},
-		}
+		vmi := vmiWithMasqueradeStatusIfaces([]kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			{Name: "eth0", MAC: "02:00:00:00:00:AA"},
+			{Name: "eth1", MAC: "02:00:00:00:00:BB"},
+		})
 
 		macs := maccollision.IndexVMIByMAC(vmi)
 		Expect(macs).To(HaveLen(2))
@@ -156,18 +182,76 @@ var _ = Describe("IndexVMIByMAC", func() {
 	})
 
 	It("should skip interfaces without MAC addresses", func() {
+		vmi := vmiWithMasqueradeStatusIfaces([]kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			{Name: "eth0", MAC: "02:00:00:00:00:01"},
+			{Name: "eth1", MAC: ""},
+		})
+
+		macs := maccollision.IndexVMIByMAC(vmi)
+		Expect(macs).To(HaveLen(1))
+		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
+	})
+
+	It("should skip unmanaged pod-network interfaces", func() {
 		vmi := &kubevirtv1.VirtualMachineInstance{
+			Spec: kubevirtv1.VirtualMachineInstanceSpec{
+				Networks: []kubevirtv1.Network{
+					{Name: "pod", NetworkSource: kubevirtv1.NetworkSource{Pod: &kubevirtv1.PodNetwork{}}},
+					{Name: "sec", NetworkSource: kubevirtv1.NetworkSource{Multus: &kubevirtv1.MultusNetwork{NetworkName: "nad"}}},
+				},
+				Domain: kubevirtv1.DomainSpec{
+					Devices: kubevirtv1.Devices{
+						Interfaces: []kubevirtv1.Interface{
+							{Name: "pod", InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{Bridge: &kubevirtv1.InterfaceBridge{}}},
+							{Name: "sec", InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{Bridge: &kubevirtv1.InterfaceBridge{}}},
+						},
+					},
+				},
+			},
 			Status: kubevirtv1.VirtualMachineInstanceStatus{
 				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					{Name: "eth0", MAC: "02:00:00:00:00:01"},
-					{Name: "eth1", MAC: ""},
+					{Name: "pod", MAC: "0a:58:0a:0a:00:03"},
+					{Name: "sec", MAC: "02:00:00:00:00:01"},
 				},
 			},
 		}
 
 		macs := maccollision.IndexVMIByMAC(vmi)
-		Expect(macs).To(HaveLen(1))
-		Expect(macs).To(ContainElement("02:00:00:00:00:01"))
+		Expect(macs).To(ConsistOf("02:00:00:00:00:01"))
+	})
+
+	It("should skip l2bridge binding on the pod network", func() {
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			Spec: kubevirtv1.VirtualMachineInstanceSpec{
+				Networks: []kubevirtv1.Network{
+					{Name: "pod", NetworkSource: kubevirtv1.NetworkSource{Pod: &kubevirtv1.PodNetwork{}}},
+				},
+				Domain: kubevirtv1.DomainSpec{
+					Devices: kubevirtv1.Devices{
+						Interfaces: []kubevirtv1.Interface{
+							{Name: "pod", Binding: &kubevirtv1.PluginBinding{Name: "l2bridge"}},
+						},
+					},
+				},
+			},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{Name: "pod", MAC: "0a:58:0a:0a:00:03"},
+				},
+			},
+		}
+
+		macs := maccollision.IndexVMIByMAC(vmi)
+		Expect(macs).To(BeEmpty())
+	})
+
+	It("should skip unnamed status interfaces", func() {
+		vmi := vmiWithMasqueradeStatusIfaces([]kubevirtv1.VirtualMachineInstanceNetworkInterface{
+			{MAC: "02:00:00:00:00:01"},
+		})
+
+		macs := maccollision.IndexVMIByMAC(vmi)
+		Expect(macs).To(BeEmpty())
 	})
 
 	It("should return empty slice for VMI with no interfaces", func() {
@@ -190,6 +274,28 @@ var _ = Describe("IndexVMIByMAC", func() {
 		Expect(macs).To(BeNil())
 	})
 })
+
+func vmiWithMasqueradeStatusIfaces(ifaces []kubevirtv1.VirtualMachineInstanceNetworkInterface) *kubevirtv1.VirtualMachineInstance {
+	vmi := &kubevirtv1.VirtualMachineInstance{
+		Status: kubevirtv1.VirtualMachineInstanceStatus{Interfaces: ifaces},
+	}
+	for _, statusIface := range ifaces {
+		if statusIface.Name == "" {
+			continue
+		}
+		vmi.Spec.Domain.Devices.Interfaces = append(vmi.Spec.Domain.Devices.Interfaces, kubevirtv1.Interface{
+			Name: statusIface.Name,
+			InterfaceBindingMethod: kubevirtv1.InterfaceBindingMethod{
+				Masquerade: &kubevirtv1.InterfaceMasquerade{},
+			},
+		})
+		vmi.Spec.Networks = append(vmi.Spec.Networks, kubevirtv1.Network{
+			Name:          statusIface.Name,
+			NetworkSource: kubevirtv1.NetworkSource{Pod: &kubevirtv1.PodNetwork{}},
+		})
+	}
+	return vmi
+}
 
 func podWithProcessedNetworks(name, namespace string, networks []*networkv1.NetworkSelectionElement) *corev1.Pod {
 	pod := podWithPendingNetworks(name, namespace, networks)

@@ -26,6 +26,8 @@ import (
 
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
+
+	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
 var cacheLog = logf.Log.WithName("MACCollision Cache")
@@ -39,15 +41,20 @@ const (
 )
 
 // StripVMIForCollisionDetection keeps only:
-// metadata (minimal), status.interfaces, status.phase, status.migrationState
-// Everything else is stripped to optimize cache memory usage.
+// metadata (minimal), spec.networks, spec.domain.devices.interfaces,
+// status.interfaces, status.phase, status.migrationState.
+// Everything else is stripped to reduce cache memory.
 func StripVMIForCollisionDetection(obj interface{}) (interface{}, error) {
 	vmi, ok := obj.(*kubevirtv1.VirtualMachineInstance)
 	if !ok {
 		return obj, nil
 	}
 
-	// Create minimal VMI with only fields needed for collision detection
+	networks := make([]kubevirtv1.Network, len(vmi.Spec.Networks))
+	copy(networks, vmi.Spec.Networks)
+	interfaces := make([]kubevirtv1.Interface, len(vmi.Spec.Domain.Devices.Interfaces))
+	copy(interfaces, vmi.Spec.Domain.Devices.Interfaces)
+
 	stripped := &kubevirtv1.VirtualMachineInstance{
 		TypeMeta: vmi.TypeMeta,
 		ObjectMeta: metav1.ObjectMeta{
@@ -55,6 +62,14 @@ func StripVMIForCollisionDetection(obj interface{}) (interface{}, error) {
 			Namespace:         vmi.Namespace,
 			UID:               vmi.UID,
 			DeletionTimestamp: vmi.DeletionTimestamp,
+		},
+		Spec: kubevirtv1.VirtualMachineInstanceSpec{
+			Networks: networks,
+			Domain: kubevirtv1.DomainSpec{
+				Devices: kubevirtv1.Devices{
+					Interfaces: interfaces,
+				},
+			},
 		},
 		Status: kubevirtv1.VirtualMachineInstanceStatus{
 			Phase:          vmi.Status.Phase,
@@ -66,28 +81,79 @@ func StripVMIForCollisionDetection(obj interface{}) (interface{}, error) {
 	return stripped, nil
 }
 
-// IndexVMIByMAC returns all MAC addresses from a VMI's status for indexing.
-// A VMI with multiple interfaces will be indexed under each MAC address.
-// This enables O(1) lookups of all VMIs that have a given MAC address.
+// IndexVMIByMAC returns MACs from a VMI that KubeMacPool would allocate.
+// Unmanaged pod-network interfaces (for example OVN-generated MACs on primary
+// UDN) are omitted so they are not treated as cluster-wide collisions.
 func IndexVMIByMAC(obj client.Object) []string {
 	vmi, ok := obj.(*kubevirtv1.VirtualMachineInstance)
 	if !ok {
 		return nil
 	}
 
-	macs := []string{}
-	for _, iface := range vmi.Status.Interfaces {
-		if iface.MAC != "" {
-			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
-			if err != nil {
-				cacheLog.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
-				continue
-			}
-			macs = append(macs, normalizedMAC)
-		}
-	}
+	return managedMACsFromVMI(vmi)
+}
 
+// managedMACsFromVMI returns normalized MACs from status interfaces that join
+// to a spec interface KubeMacPool allocates for.
+func managedMACsFromVMI(vmi *kubevirtv1.VirtualMachineInstance) []string {
+	networks := networksByName(vmi.Spec.Networks)
+	specIfaces := specInterfacesByName(vmi.Spec.Domain.Devices.Interfaces)
+
+	var macs []string
+	for _, statusIface := range vmi.Status.Interfaces {
+		mac, ok := allocatedMACFromStatusInterface(statusIface, specIfaces, networks, vmi)
+		if !ok {
+			continue
+		}
+		macs = append(macs, mac)
+	}
 	return macs
+}
+
+func networksByName(networks []kubevirtv1.Network) map[string]kubevirtv1.Network {
+	byName := make(map[string]kubevirtv1.Network, len(networks))
+	for _, network := range networks {
+		byName[network.Name] = network
+	}
+	return byName
+}
+
+func specInterfacesByName(ifaces []kubevirtv1.Interface) map[string]kubevirtv1.Interface {
+	byName := make(map[string]kubevirtv1.Interface, len(ifaces))
+	for _, iface := range ifaces {
+		byName[iface.Name] = iface
+	}
+	return byName
+}
+
+// specInterfaceNamedInStatus maps status.Name to the spec interface.
+// Name is the spec network name. Unmatched guest-agent NICs often omit it;
+// empty Name is not exclusively guest-agent.
+func specInterfaceNamedInStatus(statusIface kubevirtv1.VirtualMachineInstanceNetworkInterface, specIfaces map[string]kubevirtv1.Interface) (kubevirtv1.Interface, bool) {
+	if statusIface.Name == "" {
+		return kubevirtv1.Interface{}, false
+	}
+	specIface, found := specIfaces[statusIface.Name]
+	return specIface, found
+}
+
+func allocatedMACFromStatusInterface(statusIface kubevirtv1.VirtualMachineInstanceNetworkInterface, specIfaces map[string]kubevirtv1.Interface, networks map[string]kubevirtv1.Network, vmi *kubevirtv1.VirtualMachineInstance) (string, bool) {
+	if statusIface.MAC == "" {
+		return "", false
+	}
+	specIface, found := specInterfaceNamedInStatus(statusIface, specIfaces)
+	if !found {
+		return "", false
+	}
+	if !pool_manager.IsInterfaceSupported(specIface, networks) {
+		return "", false
+	}
+	normalizedMAC, err := NormalizeMacAddress(statusIface.MAC)
+	if err != nil {
+		cacheLog.Error(err, "failed to normalize MAC address", "mac", statusIface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
+		return "", false
+	}
+	return normalizedMAC, true
 }
 
 // StripPodForCollisionDetection keeps only fields needed for collision detection,

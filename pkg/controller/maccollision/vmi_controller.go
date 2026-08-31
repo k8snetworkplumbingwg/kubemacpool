@@ -185,7 +185,10 @@ func (r *VMIReconciler) checkMACCollisions(ctx context.Context, vmi *kubevirtv1.
 
 	macs := r.extractMACsFromVMI(vmi)
 	if len(macs) == 0 {
-		logger.V(1).Info("VMI has no managed MAC addresses, skipping collision check")
+		// Unplug of the last managed NIC leaves the VMI Running. Other
+		// colliders are not reconciled, so drop this VMI from tracking here.
+		logger.V(1).Info("VMI has no managed MAC addresses, removing from collision tracking")
+		r.removeVMIFromAllCollisions(vmi.Namespace, vmi.Name)
 		return nil
 	}
 

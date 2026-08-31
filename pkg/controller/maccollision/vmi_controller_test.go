@@ -19,11 +19,17 @@ import (
 	pool_manager "github.com/k8snetworkplumbingwg/kubemacpool/pkg/pool-manager"
 )
 
+type collisionMapUpdate struct {
+	objectRef  pool_manager.ObjectReference
+	collisions map[string][]pool_manager.ObjectReference
+}
+
 type MockPoolManager struct {
 	isVirtualMachineManagedCalls []string
 	isPodManagedCalls            []string
 	managedNamespaces            map[string]bool
 	kubevirtEnabled              bool
+	collisionMapUpdates          []collisionMapUpdate
 }
 
 func (m *MockPoolManager) IsVirtualMachineManaged(namespace string) (bool, error) {
@@ -46,7 +52,11 @@ func (m *MockPoolManager) IsKubevirtEnabled() bool {
 	return m.kubevirtEnabled
 }
 
-func (m *MockPoolManager) UpdateCollisionsMap(pool_manager.ObjectReference, map[string][]pool_manager.ObjectReference) {
+func (m *MockPoolManager) UpdateCollisionsMap(objectRef pool_manager.ObjectReference, collisions map[string][]pool_manager.ObjectReference) {
+	m.collisionMapUpdates = append(m.collisionMapUpdates, collisionMapUpdate{
+		objectRef:  objectRef,
+		collisions: collisions,
+	})
 }
 
 type MockEventRecorder struct {
@@ -1093,6 +1103,57 @@ var _ = Describe("VMI Collision Controller", func() {
 				Expect(err).ToNot(HaveOccurred())
 				Expect(result).To(Equal(reconcile.Result{}))
 				Expect(mockRecorder.Events).To(BeEmpty())
+			})
+
+			It("should clear collision tracking when the last managed NIC is unplugged", func() {
+				vmi1 := newVMI(testNamespace, "vmi1",
+					withPhase(kubevirtv1.Running),
+					withUnmanagedPodNetworkMAC("pod", ovnGeneratedMAC),
+					withMultusMAC("sec", "nad1", testMAC1))
+				vmi2 := newVMI(testNamespace, "vmi2",
+					withPhase(kubevirtv1.Running),
+					withMultusMAC("sec", "nad2", testMAC1))
+				var fakeClient client.Client
+				reconciler, mockRecorder, fakeClient = setupReconciler(mockPoolManager, vmi1, vmi2)
+
+				result, err := reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockRecorder.Events).NotTo(BeEmpty())
+
+				vmi1Ref := vmiObjectRef(testNamespace, "vmi1")
+				Expect(mockPoolManager.collisionMapUpdates).To(HaveLen(1))
+				Expect(mockPoolManager.collisionMapUpdates[0].objectRef).To(Equal(vmi1Ref))
+				Expect(mockPoolManager.collisionMapUpdates[0].collisions).To(HaveKey(testMAC1))
+
+				updated := &kubevirtv1.VirtualMachineInstance{}
+				Expect(fakeClient.Get(ctx, types.NamespacedName{Namespace: testNamespace, Name: "vmi1"}, updated)).To(Succeed())
+				for i := range updated.Spec.Domain.Devices.Interfaces {
+					if updated.Spec.Domain.Devices.Interfaces[i].Name == "sec" {
+						updated.Spec.Domain.Devices.Interfaces[i].State = kubevirtv1.InterfaceStateAbsent
+					}
+				}
+				remainingStatus := make([]kubevirtv1.VirtualMachineInstanceNetworkInterface, 0, len(updated.Status.Interfaces))
+				for _, iface := range updated.Status.Interfaces {
+					if iface.Name != "sec" {
+						remainingStatus = append(remainingStatus, iface)
+					}
+				}
+				updated.Status.Interfaces = remainingStatus
+				Expect(fakeClient.Update(ctx, updated)).To(Succeed())
+
+				result, err = reconciler.Reconcile(ctx, reconcile.Request{
+					NamespacedName: types.NamespacedName{Namespace: testNamespace, Name: "vmi1"},
+				})
+
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(reconcile.Result{}))
+				Expect(mockPoolManager.collisionMapUpdates).To(HaveLen(2))
+				Expect(mockPoolManager.collisionMapUpdates[1].objectRef).To(Equal(vmi1Ref))
+				Expect(mockPoolManager.collisionMapUpdates[1].collisions).To(BeNil())
 			})
 
 			It("should collide only on Multus MACs when mixed with unmanaged pod-network", func() {

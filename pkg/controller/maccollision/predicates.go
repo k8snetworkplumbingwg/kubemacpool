@@ -22,13 +22,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 )
-
-var predicateLog = logf.Log.WithName("MACCollision Predicate")
 
 func collisionRelevantChanges() predicate.TypedPredicate[*kubevirtv1.VirtualMachineInstance] {
 	return predicate.TypedFuncs[*kubevirtv1.VirtualMachineInstance]{
@@ -60,23 +57,13 @@ func collisionRelevantChanges() predicate.TypedPredicate[*kubevirtv1.VirtualMach
 }
 
 func macAddressesChanged(oldVMI, newVMI *kubevirtv1.VirtualMachineInstance) bool {
-	oldMACs := extractMACAddresses(oldVMI)
-	newMACs := extractMACAddresses(newVMI)
-
-	return !maps.Equal(oldMACs, newMACs)
+	return !maps.Equal(managedMACSet(oldVMI), managedMACSet(newVMI))
 }
 
-func extractMACAddresses(vmi *kubevirtv1.VirtualMachineInstance) map[string]struct{} {
+func managedMACSet(vmi *kubevirtv1.VirtualMachineInstance) map[string]struct{} {
 	macs := make(map[string]struct{})
-	for _, iface := range vmi.Status.Interfaces {
-		if iface.MAC != "" {
-			normalizedMAC, err := NormalizeMacAddress(iface.MAC)
-			if err != nil {
-				predicateLog.Error(err, "failed to normalize MAC address", "mac", iface.MAC, "vmi", vmi.Name, "namespace", vmi.Namespace)
-				continue
-			}
-			macs[normalizedMAC] = struct{}{}
-		}
+	for _, mac := range managedMACsFromVMI(vmi) {
+		macs[mac] = struct{}{}
 	}
 	return macs
 }

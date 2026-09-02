@@ -124,6 +124,31 @@ var _ = Describe("Pool", func() {
 			Entry("Invalid address: FF:FF:00:00:00:00, the first octet is not 02, 06, 0A or 0E", "FF:FF:00:00:00:00", true),
 		)
 
+		DescribeTable("IsInterfaceSupported", func(iface kubevirt.Interface, networks map[string]kubevirt.Network, expected bool) {
+			Expect(IsInterfaceSupported(iface, networks)).To(Equal(expected))
+		},
+			Entry("masquerade on pod network",
+				kubevirt.Interface{Name: "pod", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Masquerade: &kubevirt.InterfaceMasquerade{}}},
+				map[string]kubevirt.Network{"pod": {Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}},
+				true),
+			Entry("bridge on pod network",
+				kubevirt.Interface{Name: "pod", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Bridge: &kubevirt.InterfaceBridge{}}},
+				map[string]kubevirt.Network{"pod": {Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}},
+				false),
+			Entry("l2bridge binding on pod network",
+				kubevirt.Interface{Name: "pod", Binding: &kubevirt.PluginBinding{Name: "l2bridge"}},
+				map[string]kubevirt.Network{"pod": {Name: "pod", NetworkSource: kubevirt.NetworkSource{Pod: &kubevirt.PodNetwork{}}}},
+				false),
+			Entry("bridge on Multus network",
+				kubevirt.Interface{Name: "multus", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Bridge: &kubevirt.InterfaceBridge{}}},
+				map[string]kubevirt.Network{"multus": {Name: "multus", NetworkSource: kubevirt.NetworkSource{Multus: &kubevirt.MultusNetwork{NetworkName: "nad"}}}},
+				true),
+			Entry("missing network name is unsupported",
+				kubevirt.Interface{Name: "unknown", InterfaceBindingMethod: kubevirt.InterfaceBindingMethod{Bridge: &kubevirt.InterfaceBridge{}}},
+				map[string]kubevirt.Network{},
+				false),
+		)
+
 		DescribeTable("should check that a mac pool size is reported correctly", func(startMacAddr, endMacAddr string, expectedSize float64, needToSucceed bool) {
 			startMacAddrHW, err := net.ParseMAC(startMacAddr)
 			Expect(err).ToNot(HaveOccurred(), "Should succeed parsing startMacAddr")

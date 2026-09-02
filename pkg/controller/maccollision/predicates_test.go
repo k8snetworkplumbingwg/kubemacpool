@@ -104,21 +104,9 @@ var _ = Describe("Predicates", func() {
 		})
 
 		Context("when MAC addresses change", func() {
-			It("should trigger reconciliation when MAC is added", func() {
-				oldVMI := &kubevirtv1.VirtualMachineInstance{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-vmi",
-						Namespace: "test-ns",
-					},
-					Status: kubevirtv1.VirtualMachineInstanceStatus{
-						Phase: kubevirtv1.Running,
-					},
-				}
-
-				newVMI := oldVMI.DeepCopy()
-				newVMI.Status.Interfaces = []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					{Name: "eth0", MAC: testMAC1},
-				}
+			It("should trigger reconciliation when a managed MAC is added", func() {
+				oldVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running))
+				newVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC1))
 
 				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
 					ObjectOld: oldVMI,
@@ -128,22 +116,9 @@ var _ = Describe("Predicates", func() {
 				Expect(predicate.Update(e)).To(BeTrue())
 			})
 
-			It("should trigger reconciliation when MAC is removed", func() {
-				oldVMI := &kubevirtv1.VirtualMachineInstance{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-vmi",
-						Namespace: "test-ns",
-					},
-					Status: kubevirtv1.VirtualMachineInstanceStatus{
-						Phase: kubevirtv1.Running,
-						Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-							{Name: "eth0", MAC: testMAC1},
-						},
-					},
-				}
-
-				newVMI := oldVMI.DeepCopy()
-				newVMI.Status.Interfaces = []kubevirtv1.VirtualMachineInstanceNetworkInterface{}
+			It("should trigger reconciliation when a managed MAC is removed", func() {
+				oldVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC1))
+				newVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running))
 
 				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
 					ObjectOld: oldVMI,
@@ -153,22 +128,9 @@ var _ = Describe("Predicates", func() {
 				Expect(predicate.Update(e)).To(BeTrue())
 			})
 
-			It("should trigger reconciliation when MAC value changes", func() {
-				oldVMI := &kubevirtv1.VirtualMachineInstance{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-vmi",
-						Namespace: "test-ns",
-					},
-					Status: kubevirtv1.VirtualMachineInstanceStatus{
-						Phase: kubevirtv1.Running,
-						Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-							{Name: "eth0", MAC: testMAC1},
-						},
-					},
-				}
-
-				newVMI := oldVMI.DeepCopy()
-				newVMI.Status.Interfaces[0].MAC = testMAC2
+			It("should trigger reconciliation when a managed MAC value changes", func() {
+				oldVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC1))
+				newVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC2))
 
 				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
 					ObjectOld: oldVMI,
@@ -179,25 +141,8 @@ var _ = Describe("Predicates", func() {
 			})
 
 			It("should not trigger reconciliation when MAC order changes but set is same", func() {
-				oldVMI := &kubevirtv1.VirtualMachineInstance{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-vmi",
-						Namespace: "test-ns",
-					},
-					Status: kubevirtv1.VirtualMachineInstanceStatus{
-						Phase: kubevirtv1.Running,
-						Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-							{Name: "eth0", MAC: testMAC1},
-							{Name: "eth1", MAC: testMAC2},
-						},
-					},
-				}
-
-				newVMI := oldVMI.DeepCopy()
-				newVMI.Status.Interfaces = []kubevirtv1.VirtualMachineInstanceNetworkInterface{
-					{Name: "eth0", MAC: testMAC2},
-					{Name: "eth1", MAC: testMAC1},
-				}
+				oldVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC1, testMAC2))
+				newVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC2, testMAC1))
 
 				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
 					ObjectOld: oldVMI,
@@ -205,6 +150,37 @@ var _ = Describe("Predicates", func() {
 				}
 
 				Expect(predicate.Update(e)).To(BeFalse())
+			})
+
+			It("should not trigger reconciliation when only unmanaged pod-network MACs change", func() {
+				oldVMI := newVMI("test-ns", "test-vmi",
+					withPhase(kubevirtv1.Running),
+					withUnmanagedPodNetworkMAC("pod", testMAC1))
+				newVMI := newVMI("test-ns", "test-vmi",
+					withPhase(kubevirtv1.Running),
+					withUnmanagedPodNetworkMAC("pod", testMAC2))
+
+				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
+					ObjectOld: oldVMI,
+					ObjectNew: newVMI,
+				}
+
+				Expect(predicate.Update(e)).To(BeFalse())
+			})
+
+			It("should trigger reconciliation when spec drops the last managed NIC with the same status MAC", func() {
+				oldVMI := newVMI("test-ns", "test-vmi", withPhase(kubevirtv1.Running), withMACs(testMAC1))
+				newVMI := oldVMI.DeepCopy()
+				newVMI.Spec.Domain.Devices.Interfaces[0].InterfaceBindingMethod = kubevirtv1.InterfaceBindingMethod{
+					Bridge: &kubevirtv1.InterfaceBridge{},
+				}
+
+				e := event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
+					ObjectOld: oldVMI,
+					ObjectNew: newVMI,
+				}
+
+				Expect(predicate.Update(e)).To(BeTrue())
 			})
 		})
 

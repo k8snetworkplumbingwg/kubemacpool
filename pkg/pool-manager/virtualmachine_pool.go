@@ -73,7 +73,7 @@ func (p *PoolManager) AllocateVirtualMachineMac(virtualMachine *kubevirt.Virtual
 	copyVM := virtualMachine.DeepCopy()
 	newAllocations := map[string]string{}
 	for idx, iface := range copyVM.Spec.Template.Spec.Domain.Devices.Interfaces {
-		if iface.Masquerade == nil && networks[iface.Name].Multus == nil {
+		if !IsInterfaceSupported(iface, networks) {
 			logger.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 			continue
 		}
@@ -331,7 +331,8 @@ func (p *PoolManager) initVirtualMachineMap() error {
 
 func (p *PoolManager) initMacMapFromCluster(parentLogger logr.Logger) error {
 	err := p.forEachManagedVmInterfaceInClusterRunFunction(func(vmFullName string, iface kubevirt.Interface, networks map[string]kubevirt.Network) error {
-		if !validateInterfaceSupported(iface, networks) {
+		if !IsInterfaceSupported(iface, networks) {
+			log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
 			return nil
 		}
 
@@ -599,12 +600,10 @@ func (p *PoolManager) getvmInstance(vmFullName string) (*kubevirt.VirtualMachine
 	return vm, nil
 }
 
-func validateInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
-	if iface.Masquerade == nil && networks[iface.Name].Multus == nil {
-		log.Info("mac address can be set only for interface of type masquerade and slirp on the pod network")
-		return false
-	}
-	return true
+// IsInterfaceSupported reports whether KubeMacPool allocates a MAC for the
+// interface: masquerade on the pod network, or any Multus attachment.
+func IsInterfaceSupported(iface kubevirt.Interface, networks map[string]kubevirt.Network) bool {
+	return iface.Masquerade != nil || networks[iface.Name].Multus != nil
 }
 
 // IsVirtualMachineManaged checks if the namespace of a VirtualMachine instance is managed by kubemacpool

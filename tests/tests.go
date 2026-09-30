@@ -487,6 +487,15 @@ func newNetwork(name string) kubevirtv1.Network {
 	}
 }
 
+func newPodNetwork() kubevirtv1.Network {
+	return kubevirtv1.Network{
+		Name: "pod",
+		NetworkSource: kubevirtv1.NetworkSource{
+			Pod: &kubevirtv1.PodNetwork{},
+		},
+	}
+}
+
 func getOptInLabel(webhookName string) metav1.LabelSelectorRequirement {
 	return metav1.LabelSelectorRequirement{Key: webhookName, Operator: "In", Values: []string{"allocate"}}
 }

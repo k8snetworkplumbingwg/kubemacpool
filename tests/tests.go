@@ -226,6 +226,7 @@ func enableKubeVirtFeatureGate(featureGate string) error {
 	}
 
 	kv := &kvList.Items[0]
+	originalKV := kv.DeepCopy()
 	if kv.Spec.Configuration.DeveloperConfiguration == nil {
 		kv.Spec.Configuration.DeveloperConfiguration = &kubevirtv1.DeveloperConfiguration{}
 	}
@@ -243,9 +244,9 @@ func enableKubeVirtFeatureGate(featureGate string) error {
 		featureGate,
 	)
 
-	err = testClient.CRClient.Update(context.TODO(), kv)
+	err = testClient.CRClient.Patch(context.TODO(), kv, client.MergeFrom(originalKV))
 	if err != nil {
-		return fmt.Errorf("failed to update KubeVirt resource with feature gate %s: %v", featureGate, err)
+		return fmt.Errorf("failed to patch KubeVirt resource with feature gate %s: %v", featureGate, err)
 	}
 
 	const kvPollingInterval = 10 * time.Second

@@ -1,0 +1,131 @@
+name: Renovate PR opener
+
+on:
+  push:
+    branches:
+      - "renovate/**"
+
+concurrency:
+  group: renovate-pr-opener-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      security_summary: ${{ steps.security.outputs.security_summary }}
+      pr_exists: ${{ steps.existing_pr.outputs.pr_exists }}
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check for existing pull request
+        id: existing_pr
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" != "0" ]]; then
+            echo "pr_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Open pull request already exists for ${GITHUB_REF_NAME}; skipping pull request creation."
+          else
+            echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out candidate branch
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate vendoring and Go version
+        run: |
+          make vendor
+          make check-go-version
+          git diff --exit-code
+
+      - name: Validate security update
+        id: security
+        if: startsWith(github.ref, 'refs/heads/renovate/security/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASE_REF: origin/main
+          ARTIFACT_DIR: ${{ runner.temp }}/renovate-security-gate
+        run: |
+          set -o pipefail
+          mkdir -p "${ARTIFACT_DIR}"
+          if ! git diff --quiet "${BASE_REF}...HEAD" -- go.mod go.sum vendor; then
+            ./hack/renovate-security-gate.sh 7.0 2>&1 | tee "${ARTIFACT_DIR}/security-gate.log"
+          else
+            echo "Security update does not change Go module files; skipping the Go vulnerability gate." | tee "${ARTIFACT_DIR}/security-gate.log"
+          fi
+
+      - name: Upload security gate artifacts
+        if: always() && startsWith(github.ref, 'refs/heads/renovate/security/')
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: renovate-security-gate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/renovate-security-gate/
+          if-no-files-found: warn
+          retention-days: 7
+
+  open-pr:
+    needs: validate
+    if: needs.validate.result == 'success' && needs.validate.outputs.pr_exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out candidate branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Open validated pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
+        run: |
+          if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" == "0" ]]; then
+            gh pr create \
+              --base main \
+              --head "${GITHUB_REF_NAME}" \
+              --fill-first \
+              --label dependencies \
+              --label release-note-none
+          else
+            echo "Pull request already exists for ${GITHUB_REF_NAME}"
+          fi
+          if [[ -n "${SECURITY_SUMMARY}" ]]; then
+            PR_NUMBER="$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq '.[0].number')"
+            EXISTING_BODY="$(gh pr view "${PR_NUMBER}" --json body --jq '.body')"
+            NEW_BODY="$(printf '%s\n\n%s' "${EXISTING_BODY}" "${SECURITY_SUMMARY}")"
+            gh pr edit "${PR_NUMBER}" \
+              --body "${NEW_BODY}"
+          fi
+
+  cleanup:
+    needs: validate
+    if: always() && needs.validate.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Check out candidate branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Delete rejected branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" == "0" ]]; then
+            git push origin \
+              --delete \
+              --force-with-lease="refs/heads/${GITHUB_REF_NAME}:${GITHUB_SHA}" \
+              "${GITHUB_REF_NAME}"
+          else
+            echo "Open pull request exists for ${GITHUB_REF_NAME}; keeping branch"
+          fi

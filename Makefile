@@ -133,6 +133,15 @@ $(GOVULNCHECK_PARSER_BIN): $(GO) $(GOVULNCHECK_PARSER_SRC)
 
 govulncheck-parser: $(GOVULNCHECK_PARSER_BIN)
 
+RENOVATE_SECURITY_GATE_BIN := $(BIN_DIR)/renovate-security-gate
+
+RENOVATE_SECURITY_GATE_SRC := $(wildcard tools/renovate-security-gate/*.go)
+
+$(RENOVATE_SECURITY_GATE_BIN): $(GO) $(RENOVATE_SECURITY_GATE_SRC)
+	$(GO) build -o $(RENOVATE_SECURITY_GATE_BIN) ./tools/renovate-security-gate
+
+renovate-security-gate: $(RENOVATE_SECURITY_GATE_BIN)
+
 install-deep-copy: $(GO)
 	$(DEEPCOPY_GEN)
 
@@ -250,4 +259,5 @@ vendor: $(GO)
 	lint-metrics \
 	govulncheck \
 	govulncheck-parser \
+	renovate-security-gate \
 	prom-rules-verify

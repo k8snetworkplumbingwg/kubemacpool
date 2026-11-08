@@ -1,25 +1,54 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "baseBranches": ["release-0.45", "release-0.44", "release-0.43", "release-0.42", "release-0.41", "release-0.39" ,"main"],
+  "baseBranchPatterns": ["main"],
+  "enabledManagers": ["gomod", "github-actions"],
+  "branchTopic": "{{{depNameSanitized}}}-{{{newVersion}}}",
+  "rebaseWhen": "conflicted",
   "prConcurrentLimit": 3,
+  "prCreation": "status-success",
   "lockFileMaintenance": {
     "enabled": false
   },
-  "postUpdateOptions": ["gomodTidy"],
-  "labels": ["release-note-none"],
-  "extends": [":gitSignOff"],
+  "postUpgradeTasks": {
+    "commands": ["make vendor"],
+    "fileFilters": ["go.mod", "go.sum", "vendor/**"],
+    "executionMode": "branch",
+    "installTools": {
+      "golang": {}
+    }
+  },
   "packageRules": [
     {
+      "description": "Group Go digest, patch, and minor updates",
+      "matchManagers": ["gomod"],
       "groupName": "all dependencies",
-      "groupSlug": "all",
-      "enabled": false,
+      "matchUpdateTypes": ["digest", "patch", "minor"]
+    },
+    {
+      "description": "Group direct major Go updates and rewrite import paths",
+      "matchManagers": ["gomod"],
+      "groupName": "major dependencies",
+      "matchUpdateTypes": ["major"],
+      "matchDepTypes": ["require"],
+      "postUpdateOptions": ["gomodUpdateImportPaths"]
+    },
+    {
+      "description": "Disable routine k8s.io and sigs.k8s.io updates; vulnerability alerts still override this",
+      "matchManagers": ["gomod"],
       "matchPackageNames": [
-        "*"
-      ]
+        "k8s.io/{/,}**",
+        "sigs.k8s.io/{/,}**"
+      ],
+      "enabled": false
     }
   ],
+  "labels": ["release-note-none"],
+  "extends": [":gitSignOff"],
   "vulnerabilityAlerts": {
-    "enabled": true
+    "enabled": true,
+    "additionalBranchPrefix": "security/",
+    "prCreation": "status-success",
+    "recreateWhen": "always"
   },
   "osvVulnerabilityAlerts": true,
   "assigneesFromCodeOwners": true,

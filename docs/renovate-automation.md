@@ -117,6 +117,19 @@ The Renovate workflow checks out the repository with
 `persist-credentials: false`; the Renovate action clones and pushes with its
 own token.
 
+## Dependency dashboard
+
+Renovate maintains a single dependency dashboard issue that lists pending
+branches waiting for green status checks, vulnerable dependencies, ignored
+or blocked updates with their reasons, and errored updates. It is the
+primary overview of the pilot's state and is updated on every Renovate run;
+edits to the issue do not generate notifications.
+
+The dashboard is a visibility surface only. Renovate's `status-success`
+pull-request creation ignores forced creation from the dashboard, so the
+dashboard's approval checkbox cannot open a pull request before the
+branch's validation succeeds.
+
 ## Authentication
 
 The workflow authenticates Renovate as a GitHub App so the credential is

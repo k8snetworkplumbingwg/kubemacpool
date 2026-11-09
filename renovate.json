@@ -43,7 +43,7 @@
     }
   ],
   "labels": ["release-note-none"],
-  "extends": [":gitSignOff"],
+  "extends": [":gitSignOff", ":dependencyDashboard"],
   "vulnerabilityAlerts": {
     "enabled": true,
     "additionalBranchPrefix": "security/",

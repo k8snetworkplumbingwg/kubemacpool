@@ -119,11 +119,32 @@ own token.
 
 ## Authentication
 
-The workflow requires a `RENOVATE_TOKEN` repository secret backed by a
-personal access token with repository write access. GitHub App installation
-tokens are not supported because they expire after one hour. The default
-`GITHUB_TOKEN` cannot be used because pushes created with it do not trigger the
-PR opener workflow.
+The workflow authenticates Renovate as a GitHub App so the credential is
+owned by the organization instead of a personal account. It requires two
+repository secrets:
+
+- `RENOVATE_APP_ID`: the numeric App ID of the GitHub App.
+- `RENOVATE_APP_PRIVATE_KEY`: the contents of the private key (`.pem`)
+  generated for the App.
+
+The GitHub App must be installed on this repository with the following
+permissions:
+
+- Contents (read & write): pushing `renovate/**` branches.
+- Pull requests (read & write): creating, labeling, and assigning pull
+  requests.
+- Issues (read & write): maintaining the dependency dashboard issue.
+- Workflows (read & write): committing updates to files under
+  `.github/workflows/` from the github-actions manager.
+- Dependabot alerts (read): vulnerability alerts.
+
+Each workflow run mints a fresh installation token through
+`actions/create-github-app-token`. Installation tokens expire after one
+hour, which does not matter because every run mints a new token and a
+Renovate run completes within minutes. The default `GITHUB_TOKEN` cannot
+be used because pushes created with it do not trigger the PR opener
+workflow; pushes created with a GitHub App installation token do trigger
+it.
 
 The workflow runs only through GitHub's `workflow_dispatch` trigger during the
 pilot phase. After the workflow is available on `main`, it can be run from the

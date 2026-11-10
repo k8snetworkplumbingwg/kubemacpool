@@ -62,8 +62,12 @@ All Renovate branches are checked with:
 - `make check-go-version`
 - a clean Git tree after vendoring
 
-Security branches use the `renovate/security/**` prefix. Branches that
-change Go module files additionally run `govulncheck` against both:
+Security branches use the `renovate/security/**` prefix and run the Go
+vulnerability gate before those checks, so the gate's verdict is recorded
+even when the update later fails vendoring. The gate wrapper reports its
+outcome as an exit status: `0` approved, `1` rejected, `2` scan failure,
+and `3` held for human review. Branches that change Go module files run
+`govulncheck` against both:
 
 - the merge base with `main`
 - the candidate branch
@@ -120,6 +124,34 @@ Instead, the `security-review-tracker` job maintains one
 A maintainer takes the update by opening the pull request from the compare
 view linked in the issue, or rejects it by closing the issue and letting the
 branch be cleaned up once a score confirms the decision.
+
+### Updates that fail validation
+
+A security update can pass the gate and still fail automated validation —
+for example when a major bump changes an API and vendoring or the build
+breaks. A scan failure is tracked the same way: when a `govulncheck` scan
+cannot complete, for example because the update breaks compilation of the
+scanned code, the gate cannot evaluate the update at all. Such updates
+need human work, so the `security-intervention-tracker` job maintains one
+`[renovate-security-intervention] <branch>` issue per failing branch:
+
+- a new issue is created the first time a gate-approved or unevaluable
+  update fails validation, linking the validation log and explaining how
+  to resolve it
+- an open issue is updated on every evaluation, so it always points at the
+  latest run
+- a closed issue is left alone, respecting an earlier human decision
+- the issue closes itself once validation passes and the pull request is
+  opened, so a failed pull-request creation keeps the issue open
+
+The compare view linked in the issue targets the evaluated commit rather
+than the branch, because cleanup deletes the candidate branch while the
+issue remains the durable recovery record.
+
+The candidate branch is still cleaned up like any rejected branch, so it
+cannot go stale; Renovate recreates it on every run and the issue is the
+durable record. Tracker issues are looked up by their dedicated label, so
+the lookup stays correct even when the repository accumulates many issues.
 
 ## Debug artifacts
 

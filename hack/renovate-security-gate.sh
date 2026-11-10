@@ -36,12 +36,19 @@ trap cleanup EXIT INT TERM
 BASE_SHA="$(git merge-base "${BASE_REF}" HEAD)"
 git worktree add --detach "${BASE_DIR}" "${BASE_SHA}" >/dev/null
 
-make -s -C "${PROJECT_ROOT}" --no-print-directory govulncheck >"${CANDIDATE_JSON}"
+# Exit codes: 0 gate passed, 1 gate rejected, 2 scan failure, 3 needs review.
+if ! make -s -C "${PROJECT_ROOT}" --no-print-directory govulncheck >"${CANDIDATE_JSON}"; then
+    echo "candidate govulncheck scan failed" >&2
+    exit 2
+fi
 (
     cd "${BASE_DIR}"
     PATH="${PROJECT_ROOT}/build/_output/bin/go/bin:${PATH}" \
         "${PROJECT_ROOT}/build/_output/bin/govulncheck" -format json ./... >"${BASE_JSON}"
-)
+) || {
+    echo "baseline govulncheck scan failed" >&2
+    exit 2
+}
 
 make -C "${PROJECT_ROOT}" --no-print-directory renovate-security-gate >/dev/null
 set +e

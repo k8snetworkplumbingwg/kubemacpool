@@ -147,22 +147,14 @@ Passing the file both ways applies it twice — once as file config and once as
 repository config — which concatenates array options such as `extends` and
 applied `:gitSignOff` twice, duplicating every commit sign-off.
 
-The update policy is:
-
-- Go digest, patch, and minor updates are grouped into a single
-  `all dependencies` branch; direct major updates are grouped into a separate
-  `major dependencies` branch that also rewrites import paths
-  (`gomodUpdateImportPaths`).
-- Routine updates for `k8s.io/**` and `sigs.k8s.io/**` are disabled because
-  they currently require code changes. Vulnerability alerts override this
-  rule, so security fixes for those modules still flow through the
-  `renovate/security/**` path and the CVSS gate.
-- Indirect Go modules keep Renovate's default of no routine updates; their
-  security fixes still flow through vulnerability alerts.
-- GitHub Actions are updated to newer tags, one branch per action.
-- `postUpgradeTasks` runs `make vendor` once per branch (`executionMode:
-  branch`) after installing Go via `installTools`, and commits only
-  `go.mod`, `go.sum`, and `vendor/**`.
+The update policy is security-only: a blanket package rule disables every
+routine update, so Renovate never proposes digest, patch, minor, or major
+bumps on its own. Vulnerability alerts override the rule through Renovate's
+forced `vulnerabilityAlerts` settings, so every `renovate/security/**`
+branch is alert-driven and passes the CVSS gate before a pull request can
+open. `postUpgradeTasks` runs `make vendor` once per branch
+(`executionMode: branch`) after installing Go via `installTools`, and
+commits only `go.mod`, `go.sum`, and `vendor/**`.
 
 The Renovate workflow checks out the repository with
 `persist-credentials: false`; the Renovate action clones and pushes with its

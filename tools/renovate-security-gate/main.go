@@ -46,20 +46,23 @@ const (
 )
 
 type CVSSAssessment struct {
-	OSV    string
-	CVE    string
-	Score  *float64
-	Status string
-	Reason string
+	OSV    string   `json:"osv"`
+	CVE    string   `json:"cve"`
+	Score  *float64 `json:"score"`
+	Status string   `json:"status"`
+	Reason string   `json:"reason"`
 }
 
 type SecurityGateResult struct {
-	Fixed           []OSVEntry
-	Introduced      []OSVEntry
-	CVSSAssessments []CVSSAssessment
-	SanityPassed    bool
-	ThresholdPassed bool
+	Fixed           []OSVEntry       `json:"fixed"`
+	Introduced      []OSVEntry       `json:"introduced"`
+	CVSSAssessments []CVSSAssessment `json:"cvss_assessments"`
+	SanityPassed    bool             `json:"sanity_passed"`
+	ThresholdPassed bool             `json:"threshold_passed"`
+	NeedsReview     bool             `json:"needs_review"`
 }
+
+var errNeedsReview = errors.New("security gate needs human review")
 
 type cvssResolver interface {
 	CVSSScore(ctx context.Context, cve string) (float64, error)
@@ -381,20 +384,23 @@ func CheckSecurityGate(ctx context.Context, base, candidate io.Reader, threshold
 	}
 
 	fixed, introduced := diffReachable(baseReachable, candidateReachable)
-	assessments, thresholdPassed := assessFixedVulnerabilities(ctx, fixed, threshold, resolver)
+	assessments, thresholdPassed, needsReview := assessFixedVulnerabilities(ctx, fixed, threshold, resolver)
+	sanityPassed := len(fixed) > 0 && len(introduced) == 0
 
 	return &SecurityGateResult{
 		Fixed:           fixed,
 		Introduced:      introduced,
 		CVSSAssessments: assessments,
-		SanityPassed:    len(fixed) > 0 && len(introduced) == 0,
+		SanityPassed:    sanityPassed,
 		ThresholdPassed: thresholdPassed,
+		NeedsReview:     needsReview && sanityPassed,
 	}, nil
 }
 
-func assessFixedVulnerabilities(ctx context.Context, fixed []OSVEntry, threshold float64, resolver cvssResolver) ([]CVSSAssessment, bool) {
+func assessFixedVulnerabilities(ctx context.Context, fixed []OSVEntry, threshold float64, resolver cvssResolver) ([]CVSSAssessment, bool, bool) {
 	assessments := make([]CVSSAssessment, 0, len(fixed))
 	thresholdPassed := false
+	unclear := false
 	for _, entry := range fixed {
 		assessment := CVSSAssessment{OSV: entry.ID}
 		cve := CVEFromOSV(entry)
@@ -403,7 +409,7 @@ func assessFixedVulnerabilities(ctx context.Context, fixed []OSVEntry, threshold
 			assessment.Status = CVSSUnclear
 			assessment.Reason = "OSV has no CVE alias"
 			assessments = append(assessments, assessment)
-			thresholdPassed = true
+			unclear = true
 			continue
 		}
 
@@ -412,7 +418,7 @@ func assessFixedVulnerabilities(ctx context.Context, fixed []OSVEntry, threshold
 			assessment.Status = CVSSUnclear
 			assessment.Reason = fmt.Sprintf("CVSS lookup failed: %v", err)
 			assessments = append(assessments, assessment)
-			thresholdPassed = true
+			unclear = true
 			continue
 		}
 
@@ -432,7 +438,7 @@ func assessFixedVulnerabilities(ctx context.Context, fixed []OSVEntry, threshold
 		}
 		return assessments[i].CVE < assessments[j].CVE
 	})
-	return assessments, thresholdPassed
+	return assessments, thresholdPassed, unclear && !thresholdPassed
 }
 
 func statusLabel(passed bool) string {
@@ -440,6 +446,17 @@ func statusLabel(passed bool) string {
 		return "PASS"
 	}
 	return "FAIL"
+}
+
+func thresholdStatusLabel(result *SecurityGateResult) string {
+	switch {
+	case result.ThresholdPassed:
+		return "PASS"
+	case result.NeedsReview:
+		return "NEEDS REVIEW"
+	default:
+		return "FAIL"
+	}
 }
 
 func cvssLabel(assessment CVSSAssessment) string {
@@ -458,8 +475,10 @@ func printSecurityReport(result *SecurityGateResult, threshold float64) {
 		fmt.Printf("FAIL: Candidate introduces reachable vulnerabilities: %s\n", osvIDs(result.Introduced))
 	}
 
-	fmt.Printf("CVSS threshold check (%.1f): %s\n", threshold, statusLabel(result.ThresholdPassed))
-	if !result.ThresholdPassed && len(result.CVSSAssessments) > 0 {
+	fmt.Printf("CVSS threshold check (%.1f): %s\n", threshold, thresholdStatusLabel(result))
+	if result.NeedsReview {
+		fmt.Println("NEEDS REVIEW: CVSS score unavailable for at least one fixed CVE; human review required.")
+	} else if !result.ThresholdPassed && len(result.CVSSAssessments) > 0 {
 		fmt.Printf("FAIL: Every fixed CVE with a known CVSS score is below the %.1f threshold.\n", threshold)
 	}
 	for _, assessment := range result.CVSSAssessments {
@@ -503,10 +522,14 @@ func writeSecuritySummary(result *SecurityGateResult, threshold float64, output 
 		}
 	}
 
-	if _, err := fmt.Fprintf(output, "\n### CVSS threshold check (%.1f): %s\n\n", threshold, statusLabel(result.ThresholdPassed)); err != nil {
+	if _, err := fmt.Fprintf(output, "\n### CVSS threshold check (%.1f): %s\n\n", threshold, thresholdStatusLabel(result)); err != nil {
 		return err
 	}
-	if !result.ThresholdPassed && len(result.CVSSAssessments) > 0 {
+	if result.NeedsReview {
+		if _, err := fmt.Fprintf(output, "- CVSS score unavailable for at least one fixed CVE; the update is held for human review\n"); err != nil {
+			return err
+		}
+	} else if !result.ThresholdPassed && len(result.CVSSAssessments) > 0 {
 		if _, err := fmt.Fprintf(output, "- Every fixed CVE with a known CVSS score is below the %.1f threshold\n", threshold); err != nil {
 			return err
 		}
@@ -537,11 +560,16 @@ func writeSecuritySummary(result *SecurityGateResult, threshold float64, output 
 }
 
 func run(args []string) error {
+	return runWithResolver(args, nil)
+}
+
+func runWithResolver(args []string, resolver cvssResolver) error {
 	flags := flag.NewFlagSet("renovate-security-gate", flag.ContinueOnError)
 	basePath := flags.String("base", "", "path to baseline govulncheck JSON")
 	candidatePath := flags.String("candidate", "", "path to candidate govulncheck JSON")
 	threshold := flags.Float64("threshold", 7.0, "minimum CVSS score")
 	summaryPath := flags.String("summary", "", "path to write a Markdown PR summary")
+	resultPath := flags.String("result", "", "path to write a machine-readable JSON result")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -564,7 +592,7 @@ func run(args []string) error {
 	}
 	defer candidateFile.Close()
 
-	result, err := CheckSecurityGate(context.Background(), baseFile, candidateFile, *threshold, nil)
+	result, err := CheckSecurityGate(context.Background(), baseFile, candidateFile, *threshold, resolver)
 	if err != nil {
 		return err
 	}
@@ -584,7 +612,31 @@ func run(args []string) error {
 		}
 	}
 
-	if !result.SanityPassed || !result.ThresholdPassed {
+	if *resultPath != "" {
+		encoded, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encoding security gate result: %w", err)
+		}
+		resultFile, err := os.Create(*resultPath)
+		if err != nil {
+			return fmt.Errorf("creating security gate result: %w", err)
+		}
+		if _, err := resultFile.Write(encoded); err != nil {
+			resultFile.Close()
+			return fmt.Errorf("writing security gate result: %w", err)
+		}
+		if err := resultFile.Close(); err != nil {
+			return fmt.Errorf("closing security gate result: %w", err)
+		}
+	}
+
+	if !result.SanityPassed {
+		return errors.New("security gate failed")
+	}
+	if result.NeedsReview {
+		return errNeedsReview
+	}
+	if !result.ThresholdPassed {
 		return errors.New("security gate failed")
 	}
 	return nil
@@ -593,6 +645,9 @@ func run(args []string) error {
 func main() {
 	if err := run(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if errors.Is(err, errNeedsReview) {
+			os.Exit(3)
+		}
 		os.Exit(1)
 	}
 }

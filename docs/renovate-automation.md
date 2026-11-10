@@ -23,7 +23,7 @@ The automation uses two GitHub Actions workflows:
 4. If validation succeeds and no open pull request already exists, the opener
    workflow opens the pull request.
 5. If validation fails, the opener workflow deletes the branch unless an open
-   pull request already exists.
+   pull request already exists or the update is held for human review.
 
 The state of an existing pull request is handled as follows:
 
@@ -64,8 +64,9 @@ change Go module files additionally run `govulncheck` against both:
    - passes only when the candidate removes at least one reachable vulnerability and introduces none
    - Renovate does not expose the triggering CVE ID in branch metadata, so the gate verifies removal of at least one reachable baseline vulnerability
 2. **CVSS threshold check**
-   - passes when at least one fixed CVE is at or above the threshold, or when its CVSS score is unclear
+   - passes when at least one fixed CVE is at or above the threshold
    - fails when every fixed CVE has a known score below the threshold
+   - is held for human review when no fixed CVE meets the threshold and at least one score is unclear
    - records every fixed CVE and its CVSS result, including unclear results, in the pull-request description
 
 The threshold follows Red Hat Product Security’s guidance for vulnerabilities with CVSS scores of `7.0` and above.
@@ -82,12 +83,38 @@ files.
 
 If either check fails, the PR opener workflow deletes the rejected branch when no pull request is already open.
 
+### Unclear CVSS scores
+
+When no fixed CVE meets the threshold and at least one CVSS score is
+unclear, the gate cannot decide automatically. The validation fails with a
+dedicated status, which keeps the branch alive (cleanup is skipped) and
+stops both the opener workflow and Renovate's `status-success` policy from
+opening a pull request. This hold only applies when the sanity check
+passed: a branch that introduces reachable vulnerabilities is rejected and
+cleaned up like any other false alarm, even if it also fixes an unclear
+one.
+
+Instead, the `security-review-tracker` job maintains one
+`[renovate-security-review] <CVE>` issue per unclear CVE:
+
+- a new issue is created when the CVE is first seen, explaining how to take
+  or reject the update
+- an open issue is updated on every Renovate run, so it always points at the
+  latest evaluation
+- a closed issue is left alone, respecting an earlier human rejection
+- the issue closes itself once a CVSS score becomes available, because the
+  gate can then pass or reject the update automatically
+
+A maintainer takes the update by opening the pull request from the compare
+view linked in the issue, or rejects it by closing the issue and letting the
+branch be cleaned up once a score confirms the decision.
+
 ## Debug artifacts
 
 The Renovate workflow uploads a debug log and the input configuration file.
 The security validation uploads its console log, the raw baseline and candidate
-`govulncheck` JSON, and the Markdown CVSS summary. Artifacts are retained for
-seven days.
+`govulncheck` JSON, the Markdown CVSS summary, and the machine-readable gate
+result. Artifacts are retained for seven days.
 
 ## Renovate configuration
 

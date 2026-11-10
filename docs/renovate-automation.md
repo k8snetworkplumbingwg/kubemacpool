@@ -111,7 +111,8 @@ branch be cleaned up once a score confirms the decision.
 
 ## Debug artifacts
 
-The Renovate workflow uploads a debug log and the input configuration file.
+The Renovate workflow uploads a debug log and the repository configuration
+file.
 The security validation uploads its console log, the raw baseline and candidate
 `govulncheck` JSON, the Markdown CVSS summary, and the machine-readable gate
 result. Artifacts are retained for seven days.
@@ -127,6 +128,12 @@ create one after the same green status checks, so the two can never race.
 Branch topics include the dependency and target version. Renovate rebases an
 existing branch only when it is conflicted, and closed security pull requests
 are recreated on later Renovate runs.
+
+Renovate discovers `renovate.json` from the repository itself; the workflow
+deliberately does not pass it through the action's `configurationFile` input.
+Passing the file both ways applies it twice — once as file config and once as
+repository config — which concatenates array options such as `extends` and
+applied `:gitSignOff` twice, duplicating every commit sign-off.
 
 The update policy is:
 

@@ -1,7 +1,7 @@
 # Manually triggered Renovate workflow for dependency updates.
 #
 # Requires a GitHub App installed on this repository with contents:write,
-# pull-requests:write, issues:write, workflows:write, and
+# pull-requests:write, issues:write, workflows:write, statuses:write, and
 # dependabot-alerts:read permissions. Store the App ID and private key in
 # the RENOVATE_APP_ID and RENOVATE_APP_PRIVATE_KEY Actions secrets.
 

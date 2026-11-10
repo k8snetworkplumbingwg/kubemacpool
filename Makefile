@@ -52,7 +52,7 @@ $(GO):
 
 # Run tests
 test: $(GO)
-	$(GO) test ./pkg/... ./cmd/... -coverprofile cover.out
+	$(GO) test ./pkg/... ./cmd/... ./tools/... -coverprofile cover.out
 
 functest: $(GO) virtctl
 	GO=$(GO) TEST_ARGS="$(E2E_TEST_ARGS)" ./hack/functest.sh

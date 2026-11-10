@@ -25,8 +25,11 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -84,14 +87,15 @@ func scorePtr(score float64) *float64 {
 
 var _ = Describe("CheckSecurityGate", func() {
 	type testCase struct {
-		base               string
-		candidate          string
-		threshold          float64
-		resolver           fakeCVSSResolver
-		expectedSanity     bool
-		expectedThreshold  bool
-		expectedAssessment []CVSSAssessment
-		err                string
+		base                string
+		candidate           string
+		threshold           float64
+		resolver            fakeCVSSResolver
+		expectedSanity      bool
+		expectedThreshold   bool
+		expectedNeedsReview bool
+		expectedAssessment  []CVSSAssessment
+		err                 string
 	}
 
 	DescribeTable("should evaluate candidate branches",
@@ -111,6 +115,7 @@ var _ = Describe("CheckSecurityGate", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.SanityPassed).To(Equal(test.expectedSanity))
 			Expect(result.ThresholdPassed).To(Equal(test.expectedThreshold))
+			Expect(result.NeedsReview).To(Equal(test.expectedNeedsReview))
 			Expect(result.CVSSAssessments).To(Equal(test.expectedAssessment))
 		},
 		Entry("passes when a reachable high-severity CVE is fixed", testCase{
@@ -185,46 +190,83 @@ var _ = Describe("CheckSecurityGate", func() {
 			expectedThreshold:  false,
 			expectedAssessment: []CVSSAssessment{},
 		}),
-		Entry("passes the threshold when an OSV has no CVE alias", testCase{
+		Entry("holds the update for human review when an OSV has no CVE alias", testCase{
 			base: govulncheckJSON(govulncheckInput{
 				entry:     OSVEntry{ID: "GO-2025-3488", Aliases: []string{"GHSA-6v2p-p543-phr9"}},
 				reachable: true,
 			}),
-			candidate:         govulncheckJSON(),
-			threshold:         7.0,
-			resolver:          fakeCVSSResolver{},
-			expectedSanity:    true,
-			expectedThreshold: true,
+			candidate:           govulncheckJSON(),
+			threshold:           7.0,
+			resolver:            fakeCVSSResolver{},
+			expectedSanity:      true,
+			expectedThreshold:   false,
+			expectedNeedsReview: true,
 			expectedAssessment: []CVSSAssessment{
 				{OSV: "GO-2025-3488", Status: CVSSUnclear, Reason: "OSV has no CVE alias"},
 			},
 		}),
-		Entry("passes the threshold when CVSS is unclear", testCase{
+		Entry("holds the update for human review when CVSS is unclear", testCase{
 			base: govulncheckJSON(govulncheckInput{
 				entry:     OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}},
 				reachable: true,
 			}),
-			candidate:         govulncheckJSON(),
-			threshold:         7.0,
-			resolver:          fakeCVSSResolver{err: errors.New("advisory unavailable")},
-			expectedSanity:    true,
-			expectedThreshold: true,
+			candidate:           govulncheckJSON(),
+			threshold:           7.0,
+			resolver:            fakeCVSSResolver{err: errors.New("advisory unavailable")},
+			expectedSanity:      true,
+			expectedThreshold:   false,
+			expectedNeedsReview: true,
 			expectedAssessment: []CVSSAssessment{
 				{OSV: "GO-2025-3488", CVE: "CVE-2025-22868", Status: CVSSUnclear, Reason: "CVSS lookup failed: advisory unavailable"},
 			},
 		}),
-		Entry("passes the threshold when at least one fixed CVE is unclear", testCase{
+		Entry("holds the update for human review when every scored CVE is below the threshold", testCase{
 			base: govulncheckJSON(
 				govulncheckInput{entry: OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}}, reachable: true},
 				govulncheckInput{entry: OSVEntry{ID: "GO-2025-3503", Aliases: []string{"CVE-2025-22870"}}, reachable: true},
 			),
-			candidate:         govulncheckJSON(),
-			threshold:         7.0,
-			resolver:          fakeCVSSResolver{scores: map[string]float64{"CVE-2025-22868": 6.0}},
-			expectedSanity:    true,
-			expectedThreshold: true,
+			candidate:           govulncheckJSON(),
+			threshold:           7.0,
+			resolver:            fakeCVSSResolver{scores: map[string]float64{"CVE-2025-22868": 6.0}},
+			expectedSanity:      true,
+			expectedThreshold:   false,
+			expectedNeedsReview: true,
 			expectedAssessment: []CVSSAssessment{
 				{OSV: "GO-2025-3488", CVE: "CVE-2025-22868", Score: scorePtr(6.0), Status: CVSSBelowThreshold},
+				{OSV: "GO-2025-3503", CVE: "CVE-2025-22870", Status: CVSSUnclear, Reason: "CVSS lookup failed: no score configured for CVE-2025-22870"},
+			},
+		}),
+		Entry("does not hold the update for review when the sanity check fails", testCase{
+			base: govulncheckJSON(govulncheckInput{
+				entry:     OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}},
+				reachable: true,
+			}),
+			candidate: govulncheckJSON(govulncheckInput{
+				entry:     OSVEntry{ID: "GO-2025-3503", Aliases: []string{"CVE-2025-22870"}},
+				reachable: true,
+			}),
+			threshold:           7.0,
+			resolver:            fakeCVSSResolver{err: errors.New("advisory unavailable")},
+			expectedSanity:      false,
+			expectedThreshold:   false,
+			expectedNeedsReview: false,
+			expectedAssessment: []CVSSAssessment{
+				{OSV: "GO-2025-3488", CVE: "CVE-2025-22868", Status: CVSSUnclear, Reason: "CVSS lookup failed: advisory unavailable"},
+			},
+		}),
+		Entry("passes when one fixed CVE meets the threshold and another is unclear", testCase{
+			base: govulncheckJSON(
+				govulncheckInput{entry: OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}}, reachable: true},
+				govulncheckInput{entry: OSVEntry{ID: "GO-2025-3503", Aliases: []string{"CVE-2025-22870"}}, reachable: true},
+			),
+			candidate:           govulncheckJSON(),
+			threshold:           7.0,
+			resolver:            fakeCVSSResolver{scores: map[string]float64{"CVE-2025-22868": 7.5}},
+			expectedSanity:      true,
+			expectedThreshold:   true,
+			expectedNeedsReview: false,
+			expectedAssessment: []CVSSAssessment{
+				{OSV: "GO-2025-3488", CVE: "CVE-2025-22868", Score: scorePtr(7.5), Status: CVSSMeetsThreshold},
 				{OSV: "GO-2025-3503", CVE: "CVE-2025-22870", Status: CVSSUnclear, Reason: "CVSS lookup failed: no score configured for CVE-2025-22870"},
 			},
 		}),
@@ -317,6 +359,131 @@ var _ = Describe("CheckSecurityGate", func() {
 		})
 	})
 
+	Describe("nvdResolver", func() {
+		nvdPayload := func(metrics string) string {
+			return fmt.Sprintf(`{"vulnerabilities":[{"cve":{"metrics":%s}}]}`, metrics)
+		}
+
+		It("prefers primary metrics over secondary ones", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				Expect(request.URL.Query().Get("cveId")).To(Equal("CVE-2026-81870"))
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}],
+					"cvssMetricV31": [{"type": "Primary", "cvssData": {"baseScore": 7.5}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(7.5))
+		})
+
+		It("falls back to secondary metrics and newer CVSS versions", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}],
+					"cvssMetricV31": [{"type": "Secondary", "cvssData": {"baseScore": 6.1}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(2.0))
+		})
+
+		It("treats a missing NVD entry as unknown", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(`{"vulnerabilities":[]}`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).To(MatchError(ContainSubstring("no NVD entry")))
+			Expect(score).To(Equal(0.0))
+		})
+
+		It("retries transient NVD failures", func() {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				requests++
+				if requests == 1 {
+					writer.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL, retries: 2, backoff: time.Millisecond}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(2.0))
+			Expect(requests).To(Equal(2))
+		})
+	})
+
+	Describe("chainedResolver", func() {
+		It("falls back to the next resolver when the first one fails", func() {
+			failing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(http.StatusForbidden)
+			}))
+			defer failing.Close()
+
+			working := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(`[{"cvss":{"score":7.5},"withdrawn_at":null}]`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer working.Close()
+
+			resolver := newChainedResolver(
+				&githubAdvisoryResolver{client: failing.Client(), endpoint: failing.URL},
+				&githubAdvisoryResolver{client: working.Client(), endpoint: working.URL},
+			)
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(7.5))
+		})
+
+		It("reports every resolver when they all fail", func() {
+			first := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(http.StatusForbidden)
+			}))
+			defer first.Close()
+
+			second := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				_, err := writer.Write([]byte(`{"vulnerabilities":[]}`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer second.Close()
+
+			resolver := newChainedResolver(
+				&githubAdvisoryResolver{client: first.Client(), endpoint: first.URL},
+				&nvdResolver{client: second.Client(), endpoint: second.URL},
+			)
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
+			Expect(err).To(MatchError(ContainSubstring("CVSS lookup failed for CVE-2025-22868")))
+			Expect(err).To(MatchError(ContainSubstring("403")))
+			Expect(err).To(MatchError(ContainSubstring("no NVD entry")))
+			Expect(score).To(Equal(0.0))
+		})
+	})
+
 	Describe("run", func() {
 		type testCase struct {
 			threshold float64
@@ -336,6 +503,46 @@ var _ = Describe("CheckSecurityGate", func() {
 			Entry("NaN", testCase{threshold: math.NaN()}),
 			Entry("positive infinity", testCase{threshold: math.Inf(1)}),
 		)
+
+		It("writes a machine-readable result and signals needs-review", func() {
+			baseFile, err := os.CreateTemp(GinkgoT().TempDir(), "base-*.json")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = baseFile.WriteString(govulncheckJSON(govulncheckInput{
+				entry:     OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}},
+				reachable: true,
+			}))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(baseFile.Close()).To(Succeed())
+
+			candidateFile, err := os.CreateTemp(GinkgoT().TempDir(), "candidate-*.json")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(candidateFile.Close()).To(Succeed())
+
+			resultPath := filepath.Join(GinkgoT().TempDir(), "result.json")
+			summaryPath := filepath.Join(GinkgoT().TempDir(), "summary.md")
+			err = runWithResolver([]string{
+				"--base", baseFile.Name(),
+				"--candidate", candidateFile.Name(),
+				"--threshold", "7.0",
+				"--summary", summaryPath,
+				"--result", resultPath,
+			}, fakeCVSSResolver{err: errors.New("advisory unavailable")})
+			Expect(err).To(MatchError(errNeedsReview))
+
+			encoded, err := os.ReadFile(resultPath)
+			Expect(err).NotTo(HaveOccurred())
+			var result SecurityGateResult
+			Expect(json.Unmarshal(encoded, &result)).To(Succeed())
+			Expect(result.SanityPassed).To(BeTrue())
+			Expect(result.ThresholdPassed).To(BeFalse())
+			Expect(result.NeedsReview).To(BeTrue())
+			Expect(result.CVSSAssessments).To(HaveLen(1))
+			Expect(result.CVSSAssessments[0].Status).To(Equal(CVSSUnclear))
+
+			summary, err := os.ReadFile(summaryPath)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(summary)).To(ContainSubstring("CVSS threshold check (7.0): NEEDS REVIEW"))
+		})
 	})
 
 	Describe("writeSecuritySummary", func() {

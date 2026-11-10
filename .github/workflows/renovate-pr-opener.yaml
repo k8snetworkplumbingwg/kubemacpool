@@ -15,6 +15,9 @@ jobs:
     outputs:
       security_summary: ${{ steps.security.outputs.security_summary }}
       pr_exists: ${{ steps.existing_pr.outputs.pr_exists }}
+      needs_review: ${{ steps.security.outputs.needs_review }}
+      review_ids: ${{ steps.security.outputs.review_ids }}
+      resolved_ids: ${{ steps.security.outputs.resolved_ids }}
     permissions:
       contents: read
       pull-requests: read
@@ -80,6 +83,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.ref }}
+          fetch-depth: 0
 
       - name: Open validated pull request
         env:
@@ -105,8 +109,8 @@ jobs:
           fi
 
   cleanup:
-    needs: validate
-    if: always() && needs.validate.result == 'failure'
+    needs: [validate, open-pr]
+    if: always() && (needs.validate.result == 'failure' || needs.open-pr.result == 'failure') && needs.validate.outputs.needs_review != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -129,3 +133,82 @@ jobs:
           else
             echo "Open pull request exists for ${GITHUB_REF_NAME}; keeping branch"
           fi
+
+  security-review-tracker:
+    needs: [validate, open-pr, cleanup]
+    if: always() && startsWith(github.ref, 'refs/heads/renovate/security/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Track security updates awaiting human review
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NEEDS_REVIEW: ${{ needs.validate.outputs.needs_review }}
+          REVIEW_IDS: ${{ needs.validate.outputs.review_ids }}
+          RESOLVED_IDS: ${{ needs.validate.outputs.resolved_ids }}
+          SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          find_issue() {
+            gh issue list --state all --limit 500 --json number,title,state \
+              --jq ".[] | select(.title == \"${1}\") | .number"
+          }
+
+          if [[ "${NEEDS_REVIEW}" == "true" ]]; then
+            for id in ${REVIEW_IDS}; do
+              title="[renovate-security-review] ${id}"
+              existing="$(find_issue "${title}")"
+              compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${BRANCH}"
+              {
+                printf '## Renovate security update awaiting human review\n\n'
+                printf 'Renovate prepared a security update on branch %s, but the CVSS score\n' "${BRANCH}"
+                printf 'for the fixed vulnerability is unavailable, so the update is held for\n'
+                printf 'human review instead of opening a pull request automatically.\n\n'
+                printf '%s\n\n' "${SECURITY_SUMMARY}"
+                printf '### How to resolve\n\n'
+                printf '**Take the update**: open a pull request from the compare view:\n\n'
+                printf '%s\n\n' "${compare_url}"
+                printf 'or run:\n\n'
+                printf '    gh pr create --base main --head %s --fill-first --label dependencies --label release-note-none\n\n' "${BRANCH}"
+                printf '**Reject the update**: close this issue. The branch is re-evaluated on\n'
+                printf 'every Renovate run and is cleaned up automatically once a CVSS score\n'
+                printf 'confirms the update is below the threshold.\n\n'
+                printf 'This issue updates itself on every Renovate run and closes automatically\n'
+                printf 'once a CVSS score becomes available. Last evaluated: %s\n' "${RUN_URL}"
+              } > /tmp/issue-body.md
+
+              if [[ -n "${existing}" ]]; then
+                state="$(gh issue view "${existing}" --json state --jq .state)"
+                if [[ "${state}" == "OPEN" ]]; then
+                  gh issue edit "${existing}" --body-file /tmp/issue-body.md
+                else
+                  echo "Issue ${existing} for ${id} is ${state}; respecting the human decision."
+                fi
+              else
+                gh label create renovate-security-review \
+                  --description "Renovate security updates held for human review" \
+                  --color FBCA04 \
+                  --force >/dev/null
+                gh issue create \
+                  --title "${title}" \
+                  --body-file /tmp/issue-body.md \
+                  --label renovate-security-review
+              fi
+            done
+          fi
+
+          for id in ${RESOLVED_IDS}; do
+            title="[renovate-security-review] ${id}"
+            existing="$(find_issue "${title}")"
+            if [[ -n "${existing}" ]]; then
+              state="$(gh issue view "${existing}" --json state --jq .state)"
+              if [[ "${state}" == "OPEN" ]]; then
+                gh issue close "${existing}" \
+                  --comment "Resolved: a CVSS score for ${id} is now available (${RUN_URL}); the security update no longer requires human review."
+              fi
+            fi
+          done

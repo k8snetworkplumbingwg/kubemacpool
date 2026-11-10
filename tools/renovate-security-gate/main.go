@@ -28,6 +28,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -127,7 +128,8 @@ func (resolver *githubAdvisoryResolver) CVSSScore(ctx context.Context, cve strin
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		body, _ := io.ReadAll(response.Body)
+		// Best effort: the body only adds context to an error that is already being returned.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
 		return 0, fmt.Errorf("GitHub Advisory API returned %s: %s", response.Status, string(body))
 	}
 
@@ -149,6 +151,156 @@ func (resolver *githubAdvisoryResolver) CVSSScore(ctx context.Context, cve strin
 		return 0, fmt.Errorf("no CVSS score for %s", cve)
 	}
 	return *active[0].CVSS.Score, nil
+}
+
+type nvdMetric struct {
+	Type     string `json:"type"`
+	CVSSData struct {
+		BaseScore *float64 `json:"baseScore"`
+	} `json:"cvssData"`
+}
+
+type nvdMetrics struct {
+	CVSSMetricV40 []nvdMetric `json:"cvssMetricV40"`
+	CVSSMetricV31 []nvdMetric `json:"cvssMetricV31"`
+	CVSSMetricV30 []nvdMetric `json:"cvssMetricV30"`
+	CVSSMetricV2  []nvdMetric `json:"cvssMetricV2"`
+}
+
+type nvdResponse struct {
+	Vulnerabilities []struct {
+		CVE struct {
+			Metrics nvdMetrics `json:"metrics"`
+		} `json:"cve"`
+	} `json:"vulnerabilities"`
+}
+
+var (
+	errNVDEntryNotFound = errors.New("no NVD entry")
+	errNVDNoScore       = errors.New("no CVSS score in NVD")
+)
+
+type nvdResolver struct {
+	client   *http.Client
+	endpoint string
+	retries  int
+	backoff  time.Duration
+}
+
+func newNVDResolver(client *http.Client) *nvdResolver {
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	return &nvdResolver{
+		client:   client,
+		endpoint: "https://services.nvd.nist.gov/rest/json/cves/2.0",
+		retries:  2,
+		backoff:  2 * time.Second,
+	}
+}
+
+func (resolver *nvdResolver) CVSSScore(ctx context.Context, cve string) (float64, error) {
+	var lastErr error
+	for attempt := 0; attempt <= resolver.retries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(time.Duration(attempt) * resolver.backoff):
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		}
+		score, err := resolver.query(ctx, cve)
+		if err == nil {
+			return score, nil
+		}
+		lastErr = err
+		if errors.Is(err, errNVDEntryNotFound) || errors.Is(err, errNVDNoScore) {
+			return 0, err
+		}
+	}
+	return 0, fmt.Errorf("querying NVD API after %d attempts: %w", resolver.retries+1, lastErr)
+}
+
+func (resolver *nvdResolver) query(ctx context.Context, cve string) (float64, error) {
+	client := resolver.client
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodGet,
+		fmt.Sprintf("%s?cveId=%s", resolver.endpoint, url.QueryEscape(cve)),
+		nil,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("creating NVD request: %w", err)
+	}
+	request.Header.Set("Accept", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return 0, fmt.Errorf("querying NVD API: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// Best effort: the body only adds context to an error that is already being returned.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
+		return 0, fmt.Errorf("NVD API returned %s: %s", response.Status, string(body))
+	}
+
+	var payload nvdResponse
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decoding NVD response: %w", err)
+	}
+	if len(payload.Vulnerabilities) != 1 {
+		return 0, fmt.Errorf("%w for %s: got %d entries", errNVDEntryNotFound, cve, len(payload.Vulnerabilities))
+	}
+	return selectNVDScore(cve, payload.Vulnerabilities[0].CVE.Metrics)
+}
+
+// selectNVDScore prefers primary metrics and newer CVSS versions.
+func selectNVDScore(cve string, metrics nvdMetrics) (float64, error) {
+	groups := [][]nvdMetric{
+		metrics.CVSSMetricV40,
+		metrics.CVSSMetricV31,
+		metrics.CVSSMetricV30,
+		metrics.CVSSMetricV2,
+	}
+	for _, requirePrimary := range []bool{true, false} {
+		for _, group := range groups {
+			for _, metric := range group {
+				if requirePrimary && metric.Type != "Primary" {
+					continue
+				}
+				if metric.CVSSData.BaseScore != nil {
+					return *metric.CVSSData.BaseScore, nil
+				}
+			}
+		}
+	}
+	return 0, fmt.Errorf("%w for %s", errNVDNoScore, cve)
+}
+
+type chainedResolver struct {
+	resolvers []cvssResolver
+}
+
+func newChainedResolver(resolvers ...cvssResolver) cvssResolver {
+	return &chainedResolver{resolvers: resolvers}
+}
+
+func (resolver *chainedResolver) CVSSScore(ctx context.Context, cve string) (float64, error) {
+	messages := make([]string, 0, len(resolver.resolvers))
+	for _, candidate := range resolver.resolvers {
+		score, err := candidate.CVSSScore(ctx, cve)
+		if err == nil {
+			return score, nil
+		}
+		messages = append(messages, err.Error())
+	}
+	return 0, fmt.Errorf("CVSS lookup failed for %s: %s", cve, strings.Join(messages, "; "))
 }
 
 func diffReachable(base, candidate map[string]OSVEntry) (fixed, introduced []OSVEntry) {
@@ -216,7 +368,7 @@ func decodeReachableOSVs(input io.Reader) (map[string]OSVEntry, error) {
 
 func CheckSecurityGate(ctx context.Context, base, candidate io.Reader, threshold float64, resolver cvssResolver) (*SecurityGateResult, error) {
 	if resolver == nil {
-		resolver = newGitHubAdvisoryResolver(nil)
+		resolver = newChainedResolver(newGitHubAdvisoryResolver(nil), newNVDResolver(nil))
 	}
 
 	baseReachable, err := decodeReachableOSVs(base)

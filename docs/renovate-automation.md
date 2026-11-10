@@ -70,6 +70,11 @@ change Go module files additionally run `govulncheck` against both:
 
 The threshold follows Red Hat Product Security’s guidance for vulnerabilities with CVSS scores of `7.0` and above.
 
+CVSS scores are resolved through the GitHub Advisory API first and fall back
+to the NVD CVE API, preferring primary metrics and the newest CVSS version.
+Fresh Go advisories often have no score on GitHub while NVD already publishes
+one, so the fallback keeps reachable fixes from looking unclear.
+
 Security branches that only update GitHub Actions dependencies do not change
 Go module files and skip the Go vulnerability gate. GitHub's Dependabot alert
 for the action justifies the update, and the change is limited to workflow

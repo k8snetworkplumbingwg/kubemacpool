@@ -27,6 +27,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -313,6 +314,131 @@ var _ = Describe("CheckSecurityGate", func() {
 			}
 			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
 			Expect(err).To(MatchError("no CVSS score for CVE-2025-22868"))
+			Expect(score).To(Equal(0.0))
+		})
+	})
+
+	Describe("nvdResolver", func() {
+		nvdPayload := func(metrics string) string {
+			return fmt.Sprintf(`{"vulnerabilities":[{"cve":{"metrics":%s}}]}`, metrics)
+		}
+
+		It("prefers primary metrics over secondary ones", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				Expect(request.URL.Query().Get("cveId")).To(Equal("CVE-2026-81870"))
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}],
+					"cvssMetricV31": [{"type": "Primary", "cvssData": {"baseScore": 7.5}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(7.5))
+		})
+
+		It("falls back to secondary metrics and newer CVSS versions", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}],
+					"cvssMetricV31": [{"type": "Secondary", "cvssData": {"baseScore": 6.1}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(2.0))
+		})
+
+		It("treats a missing NVD entry as unknown", func() {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(`{"vulnerabilities":[]}`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).To(MatchError(ContainSubstring("no NVD entry")))
+			Expect(score).To(Equal(0.0))
+		})
+
+		It("retries transient NVD failures", func() {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				requests++
+				if requests == 1 {
+					writer.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(nvdPayload(`{
+					"cvssMetricV40": [{"type": "Secondary", "cvssData": {"baseScore": 2.0}}]
+				}`)))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer server.Close()
+
+			resolver := &nvdResolver{client: server.Client(), endpoint: server.URL, retries: 2, backoff: time.Millisecond}
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2026-81870")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(2.0))
+			Expect(requests).To(Equal(2))
+		})
+	})
+
+	Describe("chainedResolver", func() {
+		It("falls back to the next resolver when the first one fails", func() {
+			failing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(http.StatusForbidden)
+			}))
+			defer failing.Close()
+
+			working := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				_, err := writer.Write([]byte(`[{"cvss":{"score":7.5},"withdrawn_at":null}]`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer working.Close()
+
+			resolver := newChainedResolver(
+				&githubAdvisoryResolver{client: failing.Client(), endpoint: failing.URL},
+				&githubAdvisoryResolver{client: working.Client(), endpoint: working.URL},
+			)
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(score).To(Equal(7.5))
+		})
+
+		It("reports every resolver when they all fail", func() {
+			first := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				writer.WriteHeader(http.StatusForbidden)
+			}))
+			defer first.Close()
+
+			second := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				_, err := writer.Write([]byte(`{"vulnerabilities":[]}`))
+				Expect(err).NotTo(HaveOccurred())
+			}))
+			defer second.Close()
+
+			resolver := newChainedResolver(
+				&githubAdvisoryResolver{client: first.Client(), endpoint: first.URL},
+				&nvdResolver{client: second.Client(), endpoint: second.URL},
+			)
+			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
+			Expect(err).To(MatchError(ContainSubstring("CVSS lookup failed for CVE-2025-22868")))
+			Expect(err).To(MatchError(ContainSubstring("403")))
+			Expect(err).To(MatchError(ContainSubstring("no NVD entry")))
 			Expect(score).To(Equal(0.0))
 		})
 	})

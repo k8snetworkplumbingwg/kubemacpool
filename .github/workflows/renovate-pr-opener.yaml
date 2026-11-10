@@ -80,6 +80,7 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.ref }}
+          fetch-depth: 0
 
       - name: Open validated pull request
         env:
@@ -105,8 +106,8 @@ jobs:
           fi
 
   cleanup:
-    needs: validate
-    if: always() && needs.validate.result == 'failure'
+    needs: [validate, open-pr]
+    if: always() && (needs.validate.result == 'failure' || needs.open-pr.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       contents: write

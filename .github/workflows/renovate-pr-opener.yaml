@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       security_summary: ${{ steps.security.outputs.security_summary }}
-      pr_exists: ${{ steps.existing_pr.outputs.pr_exists }}
       needs_review: ${{ steps.security.outputs.needs_review }}
       review_ids: ${{ steps.security.outputs.review_ids }}
       resolved_ids: ${{ steps.security.outputs.resolved_ids }}
@@ -22,17 +21,16 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - name: Check for existing pull request
-        id: existing_pr
+      - name: Report existing pull request
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" != "0" ]]; then
-            echo "pr_exists=true" >> "$GITHUB_OUTPUT"
-            echo "Open pull request already exists for ${GITHUB_REF_NAME}; skipping pull request creation."
+          open_prs="$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')"
+          if [[ "${open_prs}" != "0" ]]; then
+            echo "An open pull request already exists for ${GITHUB_REF_NAME}; its body is refreshed after validation."
           else
-            echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+            echo "No open pull request for ${GITHUB_REF_NAME}; one is created after validation."
           fi
 
       - name: Check out candidate branch
@@ -73,7 +71,7 @@ jobs:
 
   open-pr:
     needs: validate
-    if: needs.validate.result == 'success' && needs.validate.outputs.pr_exists != 'true'
+    if: needs.validate.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -91,21 +89,55 @@ jobs:
           SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
         run: |
           if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" == "0" ]]; then
+            SUBJECT="$(git log -1 --pretty=%s)"
+            COMMIT_BODY="$(git log -1 --pretty=%b | grep -v '^Signed-off-by:' || true)"
+            {
+              if [[ -n "${COMMIT_BODY//[[:space:]]/}" ]]; then
+                printf '%s\n\n' "${COMMIT_BODY}"
+              fi
+              printf -- '---\n\n'
+              printf 'This update was opened automatically after the renovate-pr-opener\n'
+              printf 'workflow validated it (vendoring and Go toolchain version'
+              if [[ "${GITHUB_REF_NAME}" == renovate/security/* ]]; then
+                printf ', plus the security gate: a reachable vulnerability fix with CVSS >= 7.0'
+              fi
+              printf ').\n'
+              if [[ -n "${SECURITY_SUMMARY}" ]]; then
+                printf '\n<!-- security-summary:start -->\n%s\n<!-- security-summary:end -->\n' "${SECURITY_SUMMARY}"
+              fi
+            } > /tmp/pr-body.md
             gh pr create \
               --base main \
               --head "${GITHUB_REF_NAME}" \
-              --fill-first \
+              --title "${SUBJECT}" \
+              --body-file /tmp/pr-body.md \
               --label dependencies \
               --label release-note-none
           else
             echo "Pull request already exists for ${GITHUB_REF_NAME}"
-          fi
-          if [[ -n "${SECURITY_SUMMARY}" ]]; then
             PR_NUMBER="$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq '.[0].number')"
             EXISTING_BODY="$(gh pr view "${PR_NUMBER}" --json body --jq '.body')"
-            NEW_BODY="$(printf '%s\n\n%s' "${EXISTING_BODY}" "${SECURITY_SUMMARY}")"
-            gh pr edit "${PR_NUMBER}" \
-              --body "${NEW_BODY}"
+            # Replace the previous generated security summary instead of
+            # appending, so the body always holds exactly one current summary.
+            BASE_BODY="$(printf '%s' "${EXISTING_BODY}" | awk '
+              /<!-- security-summary:start -->/ { skip=1; next }
+              /<!-- security-summary:end -->/ { skip=0; next }
+              !skip { lines[++n] = $0 }
+              END {
+                while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+                for (i = 1; i <= n; i++) print lines[i]
+              }
+            ')"
+            if [[ -n "${SECURITY_SUMMARY}" ]]; then
+              NEW_BODY="$(printf '%s\n\n<!-- security-summary:start -->\n%s\n<!-- security-summary:end -->' \
+                "${BASE_BODY}" "${SECURITY_SUMMARY}")"
+            else
+              NEW_BODY="${BASE_BODY}"
+            fi
+            if [[ "${NEW_BODY}" != "${EXISTING_BODY}" ]]; then
+              gh pr edit "${PR_NUMBER}" \
+                --body "${NEW_BODY}"
+            fi
           fi
 
   cleanup:

@@ -28,8 +28,8 @@ The automation uses two GitHub Actions workflows:
 The state of an existing pull request is handled as follows:
 
 - If an open pull request already exists for a Renovate branch, the PR opener
-  still validates pushes to that branch but does not create a duplicate pull
-  request.
+  still validates pushes to that branch, does not create a duplicate pull
+  request, and refreshes the pull-request body with the latest CVSS summary.
 - If a security pull request is manually closed and its branch was deleted,
   the next Renovate run creates a fresh branch, which restarts validation.
 - If a security pull request is manually closed but its branch remains and is
@@ -41,6 +41,18 @@ The state of an existing pull request is handled as follows:
   Renovate recreates the pull request without a new push; that branch already
   passed validation. When the branch no longer exists, the fresh branch
   restarts validation.
+
+## Pull requests
+
+The opener workflow builds each pull request from the candidate branch's
+latest commit: the commit subject becomes the pull-request title, and the
+body carries the commit message without sign-off trailers, a note about the
+validation that ran, and — for security updates — the CVSS summary from the
+gate. The CVSS summary sits in a delimited section of the body that is
+replaced on every refresh, so repeated evaluations never accumulate stale
+summaries. Sign-off trailers stay in the commits, where DCO validation reads
+them, and are kept out of the pull-request description. When a pull request
+already exists, the CVSS summary is appended only if it changed.
 
 ## Validation
 

@@ -149,6 +149,8 @@ permissions:
 - Issues (read & write): maintaining the dependency dashboard issue.
 - Workflows (read & write): committing updates to files under
   `.github/workflows/` from the github-actions manager.
+- Commit statuses (read & write): reporting `renovate/artifacts` statuses
+  when post-upgrade tasks fail.
 - Dependabot alerts (read): vulnerability alerts.
 
 Each workflow run mints a fresh installation token through

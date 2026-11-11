@@ -41,14 +41,12 @@ if ! make -s -C "${PROJECT_ROOT}" --no-print-directory govulncheck >"${CANDIDATE
     echo "candidate govulncheck scan failed" >&2
     exit 2
 fi
-(
-    cd "${BASE_DIR}"
-    PATH="${PROJECT_ROOT}/build/_output/bin/go/bin:${PATH}" \
-        "${PROJECT_ROOT}/build/_output/bin/govulncheck" -format json ./... >"${BASE_JSON}"
-) || {
+# The baseline is scanned with its own toolchain, installed from its go.mod,
+# so a toolchain-only security update shows up as a fixed vulnerability.
+if ! make -s -C "${BASE_DIR}" --no-print-directory govulncheck >"${BASE_JSON}"; then
     echo "baseline govulncheck scan failed" >&2
     exit 2
-}
+fi
 
 make -C "${PROJECT_ROOT}" --no-print-directory renovate-security-gate >/dev/null
 set +e

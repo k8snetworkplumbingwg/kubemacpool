@@ -72,6 +72,10 @@ and `3` held for human review. Branches that change Go module files run
 - the merge base with `main`
 - the candidate branch
 
+Each revision is scanned with its own Go toolchain, installed from its own
+`go.mod`, so an update that only bumps the toolchain to pick up a
+standard-library fix still shows up as a fixed vulnerability in the diff.
+
 `renovate-security-gate` parses both raw `govulncheck` reports and reports two separate checks:
 
 1. **Govulncheck sanity check**

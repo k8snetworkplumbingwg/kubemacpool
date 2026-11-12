@@ -19,31 +19,13 @@
   },
   "packageRules": [
     {
-      "description": "Group Go digest, patch, and minor updates",
-      "matchManagers": ["gomod"],
-      "groupName": "all dependencies",
-      "matchUpdateTypes": ["digest", "patch", "minor"]
-    },
-    {
-      "description": "Group direct major Go updates and rewrite import paths",
-      "matchManagers": ["gomod"],
-      "groupName": "major dependencies",
-      "matchUpdateTypes": ["major"],
-      "matchDepTypes": ["require"],
-      "postUpdateOptions": ["gomodUpdateImportPaths"]
-    },
-    {
-      "description": "Disable routine k8s.io and sigs.k8s.io updates; vulnerability alerts still override this",
-      "matchManagers": ["gomod"],
-      "matchPackageNames": [
-        "k8s.io/{/,}**",
-        "sigs.k8s.io/{/,}**"
-      ],
+      "description": "Disable routine updates; only vulnerability-driven updates are processed",
+      "matchManagers": ["gomod", "github-actions"],
       "enabled": false
     }
   ],
   "labels": ["release-note-none"],
-  "extends": [":gitSignOff", ":dependencyDashboard"],
+  "extends": [":gitSignOff"],
   "vulnerabilityAlerts": {
     "enabled": true,
     "additionalBranchPrefix": "security/",

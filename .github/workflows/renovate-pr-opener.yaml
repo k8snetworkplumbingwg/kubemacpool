@@ -14,37 +14,30 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       security_summary: ${{ steps.security.outputs.security_summary }}
-      pr_exists: ${{ steps.existing_pr.outputs.pr_exists }}
       needs_review: ${{ steps.security.outputs.needs_review }}
       review_ids: ${{ steps.security.outputs.review_ids }}
       resolved_ids: ${{ steps.security.outputs.resolved_ids }}
+      gate_status: ${{ steps.security.outputs.gate_status }}
     permissions:
       contents: read
       pull-requests: read
     steps:
-      - name: Check for existing pull request
-        id: existing_pr
+      - name: Report existing pull request
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" != "0" ]]; then
-            echo "pr_exists=true" >> "$GITHUB_OUTPUT"
-            echo "Open pull request already exists for ${GITHUB_REF_NAME}; skipping pull request creation."
+          open_prs="$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')"
+          if [[ "${open_prs}" != "0" ]]; then
+            echo "An open pull request already exists for ${GITHUB_REF_NAME}; its body is refreshed after validation."
           else
-            echo "pr_exists=false" >> "$GITHUB_OUTPUT"
+            echo "No open pull request for ${GITHUB_REF_NAME}; one is created after validation."
           fi
 
       - name: Check out candidate branch
         uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-
-      - name: Validate vendoring and Go version
-        run: |
-          make vendor
-          make check-go-version
-          git diff --exit-code
 
       - name: Validate security update
         id: security
@@ -57,9 +50,15 @@ jobs:
           set -o pipefail
           mkdir -p "${ARTIFACT_DIR}"
           if ! git diff --quiet "${BASE_REF}...HEAD" -- go.mod go.sum vendor; then
+            set +e
             ./hack/renovate-security-gate.sh 7.0 2>&1 | tee "${ARTIFACT_DIR}/security-gate.log"
+            status="${PIPESTATUS[0]}"
+            set -e
+            echo "gate_status=${status}" >> "${GITHUB_OUTPUT}"
+            exit "${status}"
           else
             echo "Security update does not change Go module files; skipping the Go vulnerability gate." | tee "${ARTIFACT_DIR}/security-gate.log"
+            echo "gate_status=skipped" >> "${GITHUB_OUTPUT}"
           fi
 
       - name: Upload security gate artifacts
@@ -71,9 +70,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Validate vendoring and Go version
+        run: |
+          make vendor
+          make check-go-version
+          git diff --exit-code
+
   open-pr:
     needs: validate
-    if: needs.validate.result == 'success' && needs.validate.outputs.pr_exists != 'true'
+    if: needs.validate.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -89,23 +94,62 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
+          GATE_STATUS: ${{ needs.validate.outputs.gate_status }}
         run: |
           if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" == "0" ]]; then
+            SUBJECT="$(git log -1 --pretty=%s)"
+            COMMIT_BODY="$(git log -1 --pretty=%b | grep -v '^Signed-off-by:' || true)"
+            {
+              if [[ -n "${COMMIT_BODY//[[:space:]]/}" ]]; then
+                printf '%s\n\n' "${COMMIT_BODY}"
+              fi
+              printf -- '---\n\n'
+              printf 'This update was opened automatically after the renovate-pr-opener\n'
+              printf 'workflow validated it (vendoring and Go toolchain version'
+              if [[ "${GITHUB_REF_NAME}" == renovate/security/* ]]; then
+                if [[ "${GATE_STATUS}" == "0" ]]; then
+                  printf ', plus the security gate: a reachable vulnerability fix with CVSS >= 7.0'
+                else
+                  printf '; the Go vulnerability gate was skipped because this update does not change Go module files'
+                fi
+              fi
+              printf ').\n'
+              if [[ -n "${SECURITY_SUMMARY}" ]]; then
+                printf '\n<!-- security-summary:start -->\n%s\n<!-- security-summary:end -->\n' "${SECURITY_SUMMARY}"
+              fi
+            } > /tmp/pr-body.md
             gh pr create \
               --base main \
               --head "${GITHUB_REF_NAME}" \
-              --fill-first \
+              --title "${SUBJECT}" \
+              --body-file /tmp/pr-body.md \
               --label dependencies \
               --label release-note-none
           else
             echo "Pull request already exists for ${GITHUB_REF_NAME}"
-          fi
-          if [[ -n "${SECURITY_SUMMARY}" ]]; then
             PR_NUMBER="$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq '.[0].number')"
             EXISTING_BODY="$(gh pr view "${PR_NUMBER}" --json body --jq '.body')"
-            NEW_BODY="$(printf '%s\n\n%s' "${EXISTING_BODY}" "${SECURITY_SUMMARY}")"
-            gh pr edit "${PR_NUMBER}" \
-              --body "${NEW_BODY}"
+            # Replace the previous generated security summary instead of
+            # appending, so the body always holds exactly one current summary.
+            BASE_BODY="$(printf '%s' "${EXISTING_BODY}" | awk '
+              /<!-- security-summary:start -->/ { skip=1; next }
+              /<!-- security-summary:end -->/ { skip=0; next }
+              !skip { lines[++n] = $0 }
+              END {
+                while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+                for (i = 1; i <= n; i++) print lines[i]
+              }
+            ')"
+            if [[ -n "${SECURITY_SUMMARY}" ]]; then
+              NEW_BODY="$(printf '%s\n\n<!-- security-summary:start -->\n%s\n<!-- security-summary:end -->' \
+                "${BASE_BODY}" "${SECURITY_SUMMARY}")"
+            else
+              NEW_BODY="${BASE_BODY}"
+            fi
+            if [[ "${NEW_BODY}" != "${EXISTING_BODY}" ]]; then
+              gh pr edit "${PR_NUMBER}" \
+                --body "${NEW_BODY}"
+            fi
           fi
 
   cleanup:
@@ -153,8 +197,14 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          gh label create renovate-security-review \
+            --description "Renovate security updates held for human review" \
+            --color FBCA04 \
+            --force >/dev/null
+
           find_issue() {
-            gh issue list --state all --limit 500 --json number,title,state \
+            gh issue list --label renovate-security-review --state all --limit 500 \
+              --json number,title \
               --jq ".[] | select(.title == \"${1}\") | .number"
           }
 
@@ -189,10 +239,6 @@ jobs:
                   echo "Issue ${existing} for ${id} is ${state}; respecting the human decision."
                 fi
               else
-                gh label create renovate-security-review \
-                  --description "Renovate security updates held for human review" \
-                  --color FBCA04 \
-                  --force >/dev/null
                 gh issue create \
                   --title "${title}" \
                   --body-file /tmp/issue-body.md \
@@ -212,3 +258,92 @@ jobs:
               fi
             fi
           done
+
+  security-intervention-tracker:
+    needs: [validate, open-pr, cleanup]
+    if: always() && startsWith(github.ref, 'refs/heads/renovate/security/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Track security updates that fail validation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GATE_STATUS: ${{ needs.validate.outputs.gate_status }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          OPEN_PR_RESULT: ${{ needs.open-pr.result }}
+          SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
+          BRANCH: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create renovate-security-intervention \
+            --description "Renovate security updates that need manual work" \
+            --color D93F0B \
+            --force >/dev/null
+
+          find_issue() {
+            gh issue list --label renovate-security-intervention --state all --limit 500 \
+              --json number,title \
+              --jq ".[] | select(.title == \"${1}\") | .number"
+          }
+
+          title="[renovate-security-intervention] ${BRANCH}"
+          existing="$(find_issue "${title}")"
+
+          if [[ "${VALIDATE_RESULT}" == "failure" && ( "${GATE_STATUS}" == "0" || "${GATE_STATUS}" == "2" ) ]]; then
+            # The candidate branch is deleted by cleanup, so link the
+            # evaluated commit SHA, which remains accessible, instead of
+            # the branch name.
+            compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${GITHUB_SHA}"
+            {
+              printf '## Renovate security update needs human intervention\n\n'
+              printf 'Renovate prepared a security update on branch %s. ' "${BRANCH}"
+              if [[ "${GATE_STATUS}" == "0" ]]; then
+                printf 'The security\n'
+                printf 'gate approved the update, but automated validation failed, so the\n'
+                printf 'update needs manual work before it can be merged.\n\n'
+              else
+                printf 'The security\n'
+                printf 'gate could not evaluate the update because a govulncheck scan\n'
+                printf 'failed, for example when the update breaks compilation, so the\n'
+                printf 'update needs manual work before it can be merged.\n\n'
+              fi
+              if [[ -n "${SECURITY_SUMMARY}" ]]; then
+                printf '%s\n\n' "${SECURITY_SUMMARY}"
+              fi
+              printf '### What failed\n\n'
+              printf 'Validation log: %s\n\n' "${RUN_URL}"
+              printf 'The branch is cleaned up automatically when it holds no pull request;\n'
+              printf 'Renovate recreates and re-validates the update on every run. This issue\n'
+              printf 'updates itself on every evaluation and closes automatically once\n'
+              printf 'validation passes and its pull request is opened.\n\n'
+              printf '### How to resolve\n\n'
+              printf 'Inspect the validation failure and prepare the update manually, for\n'
+              printf 'example by adapting code to the new dependency API or rewriting import\n'
+              printf 'paths, then open a pull request and close this issue. Compare view:\n\n'
+              printf '%s\n\n' "${compare_url}"
+              printf 'Last evaluated: %s\n' "${RUN_URL}"
+            } > /tmp/issue-body.md
+
+            if [[ -n "${existing}" ]]; then
+              state="$(gh issue view "${existing}" --json state --jq .state)"
+              if [[ "${state}" == "OPEN" ]]; then
+                gh issue edit "${existing}" --body-file /tmp/issue-body.md
+              else
+                echo "Issue ${existing} for ${BRANCH} is ${state}; respecting the human decision."
+              fi
+            else
+              gh issue create \
+                --title "${title}" \
+                --body-file /tmp/issue-body.md \
+                --label renovate-security-intervention
+            fi
+          elif [[ "${VALIDATE_RESULT}" == "success" && "${OPEN_PR_RESULT}" == "success" && -n "${existing}" ]]; then
+            state="$(gh issue view "${existing}" --json state --jq .state)"
+            if [[ "${state}" == "OPEN" ]]; then
+              gh issue close "${existing}" \
+                --comment "Resolved: validation now passes for ${BRANCH} and its pull request is open (${RUN_URL}); the security update no longer requires manual work."
+            fi
+          fi

@@ -28,8 +28,8 @@ The automation uses two GitHub Actions workflows:
 The state of an existing pull request is handled as follows:
 
 - If an open pull request already exists for a Renovate branch, the PR opener
-  still validates pushes to that branch but does not create a duplicate pull
-  request.
+  still validates pushes to that branch, does not create a duplicate pull
+  request, and refreshes the pull-request body with the latest CVSS summary.
 - If a security pull request is manually closed and its branch was deleted,
   the next Renovate run creates a fresh branch, which restarts validation.
 - If a security pull request is manually closed but its branch remains and is
@@ -42,6 +42,18 @@ The state of an existing pull request is handled as follows:
   passed validation. When the branch no longer exists, the fresh branch
   restarts validation.
 
+## Pull requests
+
+The opener workflow builds each pull request from the candidate branch's
+latest commit: the commit subject becomes the pull-request title, and the
+body carries the commit message without sign-off trailers, a note about the
+validation that ran, and — for security updates — the CVSS summary from the
+gate. The CVSS summary sits in a delimited section of the body that is
+replaced on every refresh, so repeated evaluations never accumulate stale
+summaries. Sign-off trailers stay in the commits, where DCO validation reads
+them, and are kept out of the pull-request description. When a pull request
+already exists, the CVSS summary is appended only if it changed.
+
 ## Validation
 
 All Renovate branches are checked with:
@@ -50,11 +62,19 @@ All Renovate branches are checked with:
 - `make check-go-version`
 - a clean Git tree after vendoring
 
-Security branches use the `renovate/security/**` prefix. Branches that
-change Go module files additionally run `govulncheck` against both:
+Security branches use the `renovate/security/**` prefix and run the Go
+vulnerability gate before those checks, so the gate's verdict is recorded
+even when the update later fails vendoring. The gate wrapper reports its
+outcome as an exit status: `0` approved, `1` rejected, `2` scan failure,
+and `3` held for human review. Branches that change Go module files run
+`govulncheck` against both:
 
 - the merge base with `main`
 - the candidate branch
+
+Each revision is scanned with its own Go toolchain, installed from its own
+`go.mod`, so an update that only bumps the toolchain to pick up a
+standard-library fix still shows up as a fixed vulnerability in the diff.
 
 `renovate-security-gate` parses both raw `govulncheck` reports and reports two separate checks:
 
@@ -109,9 +129,38 @@ A maintainer takes the update by opening the pull request from the compare
 view linked in the issue, or rejects it by closing the issue and letting the
 branch be cleaned up once a score confirms the decision.
 
+### Updates that fail validation
+
+A security update can pass the gate and still fail automated validation —
+for example when a major bump changes an API and vendoring or the build
+breaks. A scan failure is tracked the same way: when a `govulncheck` scan
+cannot complete, for example because the update breaks compilation of the
+scanned code, the gate cannot evaluate the update at all. Such updates
+need human work, so the `security-intervention-tracker` job maintains one
+`[renovate-security-intervention] <branch>` issue per failing branch:
+
+- a new issue is created the first time a gate-approved or unevaluable
+  update fails validation, linking the validation log and explaining how
+  to resolve it
+- an open issue is updated on every evaluation, so it always points at the
+  latest run
+- a closed issue is left alone, respecting an earlier human decision
+- the issue closes itself once validation passes and the pull request is
+  opened, so a failed pull-request creation keeps the issue open
+
+The compare view linked in the issue targets the evaluated commit rather
+than the branch, because cleanup deletes the candidate branch while the
+issue remains the durable recovery record.
+
+The candidate branch is still cleaned up like any rejected branch, so it
+cannot go stale; Renovate recreates it on every run and the issue is the
+durable record. Tracker issues are looked up by their dedicated label, so
+the lookup stays correct even when the repository accumulates many issues.
+
 ## Debug artifacts
 
-The Renovate workflow uploads a debug log and the input configuration file.
+The Renovate workflow uploads a debug log and the repository configuration
+file.
 The security validation uploads its console log, the raw baseline and candidate
 `govulncheck` JSON, the Markdown CVSS summary, and the machine-readable gate
 result. Artifacts are retained for seven days.
@@ -128,39 +177,24 @@ Branch topics include the dependency and target version. Renovate rebases an
 existing branch only when it is conflicted, and closed security pull requests
 are recreated on later Renovate runs.
 
-The update policy is:
+Renovate discovers `renovate.json` from the repository itself; the workflow
+deliberately does not pass it through the action's `configurationFile` input.
+Passing the file both ways applies it twice — once as file config and once as
+repository config — which concatenates array options such as `extends` and
+applied `:gitSignOff` twice, duplicating every commit sign-off.
 
-- Go digest, patch, and minor updates are grouped into a single
-  `all dependencies` branch; direct major updates are grouped into a separate
-  `major dependencies` branch that also rewrites import paths
-  (`gomodUpdateImportPaths`).
-- Routine updates for `k8s.io/**` and `sigs.k8s.io/**` are disabled because
-  they currently require code changes. Vulnerability alerts override this
-  rule, so security fixes for those modules still flow through the
-  `renovate/security/**` path and the CVSS gate.
-- Indirect Go modules keep Renovate's default of no routine updates; their
-  security fixes still flow through vulnerability alerts.
-- GitHub Actions are updated to newer tags, one branch per action.
-- `postUpgradeTasks` runs `make vendor` once per branch (`executionMode:
-  branch`) after installing Go via `installTools`, and commits only
-  `go.mod`, `go.sum`, and `vendor/**`.
+The update policy is security-only: a blanket package rule disables every
+routine update, so Renovate never proposes digest, patch, minor, or major
+bumps on its own. Vulnerability alerts override the rule through Renovate's
+forced `vulnerabilityAlerts` settings, so every `renovate/security/**`
+branch is alert-driven and passes the CVSS gate before a pull request can
+open. `postUpgradeTasks` runs `make vendor` once per branch
+(`executionMode: branch`) after installing Go via `installTools`, and
+commits only `go.mod`, `go.sum`, and `vendor/**`.
 
 The Renovate workflow checks out the repository with
 `persist-credentials: false`; the Renovate action clones and pushes with its
 own token.
-
-## Dependency dashboard
-
-Renovate maintains a single dependency dashboard issue that lists pending
-branches waiting for green status checks, vulnerable dependencies, ignored
-or blocked updates with their reasons, and errored updates. It is the
-primary overview of the pilot's state and is updated on every Renovate run;
-edits to the issue do not generate notifications.
-
-The dashboard is a visibility surface only. Renovate's `status-success`
-pull-request creation ignores forced creation from the dashboard, so the
-dashboard's approval checkbox cannot open a pull request before the
-branch's validation succeeds.
 
 ## Authentication
 
@@ -178,7 +212,7 @@ permissions:
 - Contents (read & write): pushing `renovate/**` branches.
 - Pull requests (read & write): creating, labeling, and assigning pull
   requests.
-- Issues (read & write): maintaining the dependency dashboard issue.
+- Issues (read & write): maintaining the security tracker issues.
 - Workflows (read & write): committing updates to files under
   `.github/workflows/` from the github-actions manager.
 - Commit statuses (read & write): reporting `renovate/artifacts` statuses

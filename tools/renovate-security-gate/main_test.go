@@ -296,6 +296,33 @@ var _ = Describe("CheckSecurityGate", func() {
 		}),
 	)
 
+	It("collapses API error response bodies onto a single line in assessment reasons", func() {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			_, err := writer.Write([]byte("<html>\n<body>\n503 back\n</body>\n</html>"))
+			Expect(err).NotTo(HaveOccurred())
+		}))
+		defer server.Close()
+
+		result, err := CheckSecurityGate(
+			context.Background(),
+			strings.NewReader(govulncheckJSON(govulncheckInput{
+				entry:     OSVEntry{ID: "GO-2025-3488", Aliases: []string{"CVE-2025-22868"}},
+				reachable: true,
+			})),
+			strings.NewReader(govulncheckJSON()),
+			7.0,
+			&githubAdvisoryResolver{client: server.Client(), endpoint: server.URL},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.NeedsReview).To(BeTrue())
+		Expect(result.CVSSAssessments).To(HaveLen(1))
+		Expect(result.CVSSAssessments[0].Status).To(Equal(CVSSUnclear))
+		Expect(result.CVSSAssessments[0].Reason).To(ContainSubstring(
+			"CVSS lookup failed: GitHub Advisory API returned 503 Service Unavailable: <html> <body> 503 back </body> </html>",
+		))
+	})
+
 	Describe("decodeReachableOSVs", func() {
 		It("decodes symbol-level findings", func() {
 			input := `{"osv":{"id":"GO-2025-3488","aliases":["CVE-2025-22868"]}}
@@ -477,10 +504,23 @@ var _ = Describe("CheckSecurityGate", func() {
 				&nvdResolver{client: second.Client(), endpoint: second.URL},
 			)
 			score, err := resolver.CVSSScore(context.Background(), "CVE-2025-22868")
-			Expect(err).To(MatchError(ContainSubstring("CVSS lookup failed for CVE-2025-22868")))
-			Expect(err).To(MatchError(ContainSubstring("403")))
+			Expect(err).To(MatchError(ContainSubstring("GitHub Advisory API returned 403")))
 			Expect(err).To(MatchError(ContainSubstring("no NVD entry")))
 			Expect(score).To(Equal(0.0))
+		})
+	})
+
+	Describe("errorBodySnippet", func() {
+		It("collapses response bodies onto a single line", func() {
+			Expect(errorBodySnippet(strings.NewReader("  <html>\n\terror\n\npage  "))).To(Equal("<html> error page"))
+		})
+
+		It("truncates long response bodies", func() {
+			Expect(errorBodySnippet(strings.NewReader(strings.Repeat("a", 300)))).To(HaveLen(200))
+		})
+
+		It("describes empty response bodies", func() {
+			Expect(errorBodySnippet(strings.NewReader(""))).To(Equal("(empty response body)"))
 		})
 	})
 

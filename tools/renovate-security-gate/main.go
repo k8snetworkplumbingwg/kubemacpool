@@ -94,6 +94,19 @@ type govulncheckRecord struct {
 	Finding *findingEntry `json:"finding,omitempty"`
 }
 
+// errorBodySnippet reads a short snippet of an API error response body and
+// collapses it onto a single line. It keeps the failure identifiable in
+// security summaries without pasting whole response bodies, which may be
+// HTML error pages, into pull-request descriptions.
+func errorBodySnippet(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, 200))
+	snippet := strings.Join(strings.Fields(string(data)), " ")
+	if snippet == "" {
+		return "(empty response body)"
+	}
+	return snippet
+}
+
 func newGitHubAdvisoryResolver(client *http.Client) cvssResolver {
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
@@ -132,8 +145,7 @@ func (resolver *githubAdvisoryResolver) CVSSScore(ctx context.Context, cve strin
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		// Best effort: the body only adds context to an error that is already being returned.
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-		return 0, fmt.Errorf("GitHub Advisory API returned %s: %s", response.Status, string(body))
+		return 0, fmt.Errorf("GitHub Advisory API returned %s: %s", response.Status, errorBodySnippet(response.Body))
 	}
 
 	var advisories []githubAdvisory
@@ -243,14 +255,13 @@ func (resolver *nvdResolver) query(ctx context.Context, cve string) (float64, er
 
 	response, err := client.Do(request)
 	if err != nil {
-		return 0, fmt.Errorf("querying NVD API: %w", err)
+		return 0, fmt.Errorf("sending NVD request: %w", err)
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		// Best effort: the body only adds context to an error that is already being returned.
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-		return 0, fmt.Errorf("NVD API returned %s: %s", response.Status, string(body))
+		return 0, fmt.Errorf("NVD API returned %s: %s", response.Status, errorBodySnippet(response.Body))
 	}
 
 	var payload nvdResponse
@@ -303,7 +314,7 @@ func (resolver *chainedResolver) CVSSScore(ctx context.Context, cve string) (flo
 		}
 		messages = append(messages, err.Error())
 	}
-	return 0, fmt.Errorf("CVSS lookup failed for %s: %s", cve, strings.Join(messages, "; "))
+	return 0, errors.New(strings.Join(messages, "; "))
 }
 
 func diffReachable(base, candidate map[string]OSVEntry) (fixed, introduced []OSVEntry) {
@@ -461,7 +472,7 @@ func thresholdStatusLabel(result *SecurityGateResult) string {
 
 func cvssLabel(assessment CVSSAssessment) string {
 	if assessment.Score == nil {
-		return "UNCLEAR"
+		return "unavailable"
 	}
 	return fmt.Sprintf("%.1f", *assessment.Score)
 }

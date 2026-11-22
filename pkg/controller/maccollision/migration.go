@@ -20,24 +20,26 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	kubevirtv1 "kubevirt.io/api/core/v1"
 )
 
 // filterOutDecentralizedMigrations filters out VMIs that share MACs due to decentralized migration, returning only real collisions
 func (r *VMIReconciler) filterOutDecentralizedMigrations(reconciledVMI *kubevirtv1.VirtualMachineInstance, duplicates []*kubevirtv1.VirtualMachineInstance, logger logr.Logger) []*kubevirtv1.VirtualMachineInstance {
-	reconciledSourceUID, reconciledTargetUID := extractMigrationUIDs(reconciledVMI)
-	if reconciledSourceUID == "" && reconciledTargetUID == "" {
-		// No active migration on reconciled VMI, all duplicates are real collisions
+	migrationUIDs := extractMigrationUIDs(reconciledVMI)
+	if migrationUIDs.Len() == 0 {
 		return duplicates
 	}
 
 	var actualCollisions []*kubevirtv1.VirtualMachineInstance
 	for _, duplicate := range duplicates {
-		if sharesActiveMigration(reconciledSourceUID, reconciledTargetUID, duplicate) {
+		if sharesMigrationUID(migrationUIDs, duplicate) {
 			logger.V(1).Info("Filtering out VMI sharing migration",
 				"vmi", fmt.Sprintf("%s/%s", duplicate.Namespace, duplicate.Name),
-				"sourceUID", reconciledSourceUID,
-				"targetUID", reconciledTargetUID)
+				"migrationUIDs", sets.List(migrationUIDs))
 			continue
 		}
 
@@ -54,38 +56,31 @@ func (r *VMIReconciler) filterOutDecentralizedMigrations(reconciledVMI *kubevirt
 	return actualCollisions
 }
 
-func extractMigrationUIDs(vmi *kubevirtv1.VirtualMachineInstance) (sourceUID, targetUID string) {
-	if vmi.Status.MigrationState == nil {
-		return "", ""
+func extractMigrationUIDs(vmi *kubevirtv1.VirtualMachineInstance) sets.Set[types.UID] {
+	uids := sets.New[types.UID]()
+	state := vmi.Status.MigrationState
+	if state == nil {
+		return uids
 	}
 
-	if vmi.Status.MigrationState.SourceState != nil {
-		sourceUID = string(vmi.Status.MigrationState.SourceState.MigrationUID)
+	// The local migration UID survives successful target cleanup of the nested states.
+	uids.Insert(state.MigrationUID)
+	if state.SourceState != nil {
+		uids.Insert(state.SourceState.MigrationUID)
+	}
+	if state.TargetState != nil {
+		uids.Insert(state.TargetState.MigrationUID)
 	}
 
-	if vmi.Status.MigrationState.TargetState != nil {
-		targetUID = string(vmi.Status.MigrationState.TargetState.MigrationUID)
-	}
-
-	return sourceUID, targetUID
+	uids.Delete(types.UID(""))
+	return uids
 }
 
-// sharesActiveMigration checks if a VMI shares the same migration by matching UIDs in both states
-// Returns true only if EITHER source or target migration UIDs match
-// This ensures they are part of the exact same active migration
-func sharesActiveMigration(reconciledSourceUID, reconciledTargetUID string, vmi *kubevirtv1.VirtualMachineInstance) bool {
-	if vmi.Status.MigrationState == nil {
-		return false
+func sharesMigrationUID(uids sets.Set[types.UID], vmi *kubevirtv1.VirtualMachineInstance) bool {
+	for uid := range extractMigrationUIDs(vmi) {
+		if uids.Has(uid) {
+			return true
+		}
 	}
-
-	duplicateSourceUID, duplicateTargetUID := extractMigrationUIDs(vmi)
-
-	if reconciledSourceUID != "" && reconciledSourceUID == duplicateSourceUID {
-		return true
-	}
-	if reconciledTargetUID != "" && reconciledTargetUID == duplicateTargetUID {
-		return true
-	}
-
 	return false
 }

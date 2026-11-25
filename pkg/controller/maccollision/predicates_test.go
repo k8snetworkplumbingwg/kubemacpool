@@ -185,6 +185,45 @@ var _ = Describe("Predicates", func() {
 		})
 
 		Context("when migration state changes", func() {
+			DescribeTable("should track changes to the effective migration UID set",
+				func(oldUID, newUID string, expected bool) {
+					oldVMI := newVMI("test-ns", "test-vmi",
+						withMigrationUIDs("source-migration", "target-migration"),
+						withLocalMigrationUID(oldUID))
+					updatedVMI := oldVMI.DeepCopy()
+					updatedVMI.Status.MigrationState.MigrationUID = types.UID(newUID)
+
+					Expect(predicate.Update(event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
+						ObjectOld: oldVMI,
+						ObjectNew: updatedVMI,
+					})).To(Equal(expected))
+				},
+				Entry("when a distinct top-level UID is added", "", "local-migration", true),
+				Entry("when a distinct top-level UID changes", "local-migration", "next-migration", true),
+				Entry("when a distinct top-level UID is removed", "local-migration", "", true),
+				Entry("when the added top-level UID is already nested", "", "target-migration", false),
+			)
+
+			DescribeTable("should reconcile cleanup only when the effective UID set changes",
+				func(sourceUID string, expected bool) {
+					oldVMI := newVMI("test-ns", "test-vmi",
+						withMigrationUIDs(sourceUID, "target-migration"),
+						withLocalMigrationUID("target-migration"))
+					oldVMI.Status.MigrationState.Completed = true
+					updatedVMI := oldVMI.DeepCopy()
+					updatedVMI.Status.MigrationState.SourceState = nil
+					updatedVMI.Status.MigrationState.TargetState = nil
+
+					Expect(predicate.Update(event.TypedUpdateEvent[*kubevirtv1.VirtualMachineInstance]{
+						ObjectOld: oldVMI,
+						ObjectNew: updatedVMI,
+					})).To(Equal(expected))
+				},
+				Entry("when the source UID is removed", "source-migration", true),
+				Entry("when the only UID is retained at the top level", "", false),
+				Entry("when duplicate nested UIDs are removed", "target-migration", false),
+			)
+
 			It("should trigger reconciliation when source migration UID is added", func() {
 				oldVMI := &kubevirtv1.VirtualMachineInstance{
 					ObjectMeta: metav1.ObjectMeta{

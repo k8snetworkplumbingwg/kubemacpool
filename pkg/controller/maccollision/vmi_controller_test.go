@@ -216,6 +216,15 @@ func withMigrationUIDs(sourceMigrationUID, targetMigrationUID string) vmiOption 
 	}
 }
 
+func withLocalMigrationUID(uid string) vmiOption {
+	return func(vmi *kubevirtv1.VirtualMachineInstance) {
+		if vmi.Status.MigrationState == nil {
+			vmi.Status.MigrationState = &kubevirtv1.VirtualMachineInstanceMigrationState{}
+		}
+		vmi.Status.MigrationState.MigrationUID = types.UID(uid)
+	}
+}
+
 func newVMI(namespace, name string, opts ...vmiOption) *kubevirtv1.VirtualMachineInstance {
 	vmi := &kubevirtv1.VirtualMachineInstance{
 		ObjectMeta: metav1.ObjectMeta{
@@ -645,6 +654,99 @@ var _ = Describe("VMI Collision Controller", func() {
 		})
 
 		Context("when VMIs are part of same migration", func() {
+			Context("when successful target cleanup clears nested migration states", func() {
+				var source, target *kubevirtv1.VirtualMachineInstance
+
+				BeforeEach(func() {
+					source = newVMI("source-ns", "source",
+						withPhase(kubevirtv1.Running),
+						withMACs(testMAC1),
+						withMigrationUIDs("source-migration", "target-migration"),
+						withLocalMigrationUID("source-migration"))
+					target = newVMI("target-ns", "target",
+						withPhase(kubevirtv1.Running),
+						withMACs(testMAC1),
+						withMigrationUIDs("source-migration", "target-migration"),
+						withLocalMigrationUID("target-migration"))
+					target.Status.MigrationState.Completed = true
+				})
+
+				DescribeTable("should preserve the exemption across target cleanup", func(reconcileSource bool) {
+					var fakeClient client.Client
+					reconciler, mockRecorder, fakeClient = setupReconciler(mockPoolManager, source, target)
+					reconciledVMI := target
+					if reconcileSource {
+						reconciledVMI = source
+					}
+					req := reconcile.Request{NamespacedName: client.ObjectKeyFromObject(reconciledVMI)}
+
+					_, err := reconciler.Reconcile(ctx, req)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(mockRecorder.Events).To(BeEmpty())
+					Expect(mockPoolManager.collisionMapUpdates).To(HaveLen(1))
+					Expect(mockPoolManager.collisionMapUpdates[0].collisions).To(BeEmpty())
+
+					updatedTarget := &kubevirtv1.VirtualMachineInstance{}
+					Expect(fakeClient.Get(ctx, client.ObjectKeyFromObject(target), updatedTarget)).To(Succeed())
+					updatedTarget.Status.MigrationState.SourceState = nil
+					updatedTarget.Status.MigrationState.TargetState = nil
+					Expect(fakeClient.Update(ctx, updatedTarget)).To(Succeed())
+
+					_, err = reconciler.Reconcile(ctx, req)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(mockRecorder.Events).To(BeEmpty())
+					Expect(mockPoolManager.collisionMapUpdates).To(HaveLen(2))
+					Expect(mockPoolManager.collisionMapUpdates[1].collisions).To(BeEmpty())
+				},
+					Entry("when reconciling the source", true),
+					Entry("when reconciling the cleaned target", false),
+				)
+
+				DescribeTable("should still report an unrelated collider",
+					func(reconcileSource bool, unrelatedMigrationUID string) {
+						target.Status.MigrationState.SourceState = nil
+						target.Status.MigrationState.TargetState = nil
+						unrelated := newVMI(testNamespace, "unrelated",
+							withPhase(kubevirtv1.Running),
+							withMACs(testMAC1),
+							withLocalMigrationUID(unrelatedMigrationUID))
+						reconciler, mockRecorder, _ = setupReconciler(mockPoolManager, source, target, unrelated)
+						reconciledVMI := target
+						if reconcileSource {
+							reconciledVMI = source
+						}
+
+						_, err := reconciler.Reconcile(ctx, reconcile.Request{
+							NamespacedName: client.ObjectKeyFromObject(reconciledVMI),
+						})
+						Expect(err).NotTo(HaveOccurred())
+						Expect(mockPoolManager.collisionMapUpdates).To(Equal([]collisionMapUpdate{{
+							objectRef: vmiObjectRef(reconciledVMI.Namespace, reconciledVMI.Name),
+							collisions: map[string][]pool_manager.ObjectReference{
+								testMAC1: {vmiObjectRef(unrelated.Namespace, unrelated.Name)},
+							},
+						}}))
+						Expect(mockRecorder.Events).To(HaveLen(2))
+						Expect(mockRecorder.Events).To(ConsistOf(
+							And(
+								HaveField("ObjectNamespace", reconciledVMI.Namespace),
+								HaveField("ObjectName", reconciledVMI.Name),
+								HaveField("Reason", "MACCollision"),
+							),
+							And(
+								HaveField("ObjectNamespace", unrelated.Namespace),
+								HaveField("ObjectName", unrelated.Name),
+								HaveField("Reason", "MACCollision"),
+							),
+						))
+					},
+					Entry("without migration state, reconciling source", true, ""),
+					Entry("without migration state, reconciling target", false, ""),
+					Entry("with a different migration, reconciling source", true, "unrelated-migration"),
+					Entry("with a different migration, reconciling target", false, "unrelated-migration"),
+				)
+			})
+
 			It("should report collision when VMIs have different migration state fields", func() {
 				migrationUID1 := "migration-123"
 				migrationUID2 := "migration-456"

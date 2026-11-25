@@ -60,27 +60,7 @@ func macAddressesChanged(oldVMI, newVMI *kubevirtv1.VirtualMachineInstance) bool
 }
 
 func migrationStateChanged(oldVMI, newVMI *kubevirtv1.VirtualMachineInstance) bool {
-	oldSourceUID := getSourceMigrationUID(oldVMI)
-	newSourceUID := getSourceMigrationUID(newVMI)
-
-	oldTargetUID := getTargetMigrationUID(oldVMI)
-	newTargetUID := getTargetMigrationUID(newVMI)
-
-	return oldSourceUID != newSourceUID || oldTargetUID != newTargetUID
-}
-
-func getSourceMigrationUID(vmi *kubevirtv1.VirtualMachineInstance) string {
-	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.SourceState != nil {
-		return string(vmi.Status.MigrationState.SourceState.MigrationUID)
-	}
-	return ""
-}
-
-func getTargetMigrationUID(vmi *kubevirtv1.VirtualMachineInstance) string {
-	if vmi.Status.MigrationState != nil && vmi.Status.MigrationState.TargetState != nil {
-		return string(vmi.Status.MigrationState.TargetState.MigrationUID)
-	}
-	return ""
+	return !extractMigrationUIDs(oldVMI).Equal(extractMigrationUIDs(newVMI))
 }
 
 func podCollisionRelevantChanges() predicate.TypedPredicate[*corev1.Pod] {

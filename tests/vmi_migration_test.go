@@ -192,9 +192,26 @@ var _ = Describe("[rfe_id:3503][crit:medium][vendor:cnv-qe@redhat.com][level:com
 					g.Expect(updatedSourceMigration.Status.Phase).To(Equal(kubevirtv1.MigrationSucceeded))
 				}).WithTimeout(migrationTimeout).WithPolling(pollingInterval).Should(Succeed(), "Migrations should complete successfully")
 
-				By("Verifying NO collision events on target VMI after migration completes")
-				// Note: source VMI no longer exists after cross-namespace migration completes
-				expectNoMACCollisionEvents([]vmiReference{{targetVMINamespace, targetVMIName}},
+				By("Waiting for successful target cleanup to remove nested migration states")
+				Eventually(func(g Gomega) {
+					targetVMI := &kubevirtv1.VirtualMachineInstance{}
+					err := testClient.CRClient.Get(context.TODO(),
+						client.ObjectKey{Namespace: targetVMINamespace, Name: targetVMIName}, targetVMI)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(targetVMI.Status.Phase).To(Equal(kubevirtv1.Running))
+					g.Expect(targetVMI.Status.MigrationState).NotTo(BeNil())
+					g.Expect(targetVMI.Status.MigrationState.Completed).To(BeTrue())
+					g.Expect(targetVMI.Status.MigrationState.MigrationUID).To(Equal(targetMigration.UID))
+					g.Expect(targetVMI.Status.MigrationState.SourceState).To(BeNil())
+					g.Expect(targetVMI.Status.MigrationState.TargetState).To(BeNil())
+				}).WithTimeout(timeout).WithPolling(pollingInterval).Should(Succeed(),
+					"Target VMI should retain its local migration UID after successful cleanup")
+
+				By("Verifying neither migration partner reported MAC collision, including after target cleanup")
+				expectNoMACCollisionEvents([]vmiReference{
+					{sourceVMINamespace, sourceVMIName},
+					{targetVMINamespace, targetVMIName},
+				},
 					"VMI is part of cross-namespace migration")
 				expectNoMACCollisionGaugeConsistently(sharedMAC)
 			})

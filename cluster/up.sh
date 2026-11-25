@@ -26,7 +26,7 @@ CNAO_VERSION=v0.76.1
 export KUBEVIRT_DEPLOY_PROMETHEUS=true
 
 #use kubevirt latest z stream release
-KUBEVIRT_VERSION="v1.9.0"
+KUBEVIRT_VERSION="v1.10.0"
 cluster::install
 
 if [[ "$KUBEVIRT_PROVIDER" != external ]]; then
@@ -44,7 +44,7 @@ fi
 
 
 # deploy kubevirt
-./cluster/kubectl.sh apply -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
+./cluster/kubectl.sh apply --server-side -f https://github.com/kubevirt/kubevirt/releases/download/${KUBEVIRT_VERSION}/kubevirt-operator.yaml
 
 # Ensure the KubeVirt CRD is created
 count=0

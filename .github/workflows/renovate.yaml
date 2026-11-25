@@ -1,4 +1,6 @@
-# Manually triggered Renovate workflow for dependency updates.
+# Manually triggered Renovate workflow for dependency updates. After each
+# run, held security branches are re-evaluated so updates waiting for a
+# CVSS score are re-checked instead of staying frozen.
 #
 # Requires a GitHub App installed on this repository with contents:write,
 # pull-requests:write, issues:write, workflows:write, statuses:write, and
@@ -57,3 +59,70 @@ jobs:
             renovate.json
           if-no-files-found: warn
           retention-days: 7
+
+  reevaluate-held-security-branches:
+    needs: renovate
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Re-evaluate held security branches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Renovate pushes a branch only when its content changes, so a held
+          # security branch (kept because a fixed CVE has no CVSS score yet)
+          # never triggers the PR opener on its own again. Re-evaluate every
+          # held branch: a security branch with no open pull request and no
+          # validation already in progress.
+          for branch in $(gh api --paginate 'repos/{owner}/{repo}/branches?per_page=100' \
+              --jq '.[].name | select(startswith("renovate/security/"))'); do
+            if [[ "$(gh pr list --head "${branch}" --state open --json number --jq 'length')" != "0" ]]; then
+              echo "${branch}: an open pull request already tracks it; nothing to re-evaluate."
+              continue
+            fi
+
+            latest_status="$(gh run list --workflow renovate-pr-opener.yaml \
+              --branch "${branch}" --limit 1 \
+              --json status --jq '.[0].status // ""')"
+            if [[ "${latest_status}" == "queued" || "${latest_status}" == "in_progress" ]]; then
+              echo "${branch}: a validation run is already ${latest_status}."
+              continue
+            fi
+
+            if gh workflow run renovate-pr-opener.yaml --ref "${branch}"; then
+              echo "${branch}: dispatched the PR opener to re-evaluate it."
+            else
+              # The branch predates the PR opener's workflow_dispatch
+              # trigger, so the workflow file at that ref cannot be
+              # dispatched; re-running its latest validation re-executes
+              # that run's original workflow version. A re-run publishes
+              # the commit it validates, so only re-run it while the
+              # branch still points at that commit — a moved branch is
+              # left to the run its newer push triggers.
+              latest_run="$(gh run list --workflow renovate-pr-opener.yaml \
+                --branch "${branch}" --limit 1 \
+                --json databaseId,headSha \
+                --jq '(.[0] // {}) | [.databaseId // "", .headSha // ""] | @tsv')"
+              IFS=$'\t' read -r latest_run_id latest_head_sha <<<"${latest_run}"
+              if [[ -z "${latest_run_id}" ]]; then
+                echo "${branch}: no previous validation run to re-run; skipping."
+                continue
+              fi
+              branch_tip="$(gh api "repos/{owner}/{repo}/branches/${branch//\//%2F}" --jq .commit.sha)"
+              if [[ "${branch_tip}" != "${latest_head_sha}" ]]; then
+                echo "${branch}: moved to ${branch_tip} since run ${latest_run_id} validated ${latest_head_sha}; leaving it to a newer run."
+                continue
+              fi
+              if gh run rerun "${latest_run_id}"; then
+                echo "${branch}: re-ran validation run ${latest_run_id} to re-evaluate it."
+              else
+                echo "${branch}: re-running validation run ${latest_run_id} failed; skipping."
+              fi
+            fi
+          done

@@ -9,8 +9,8 @@ pull requests only after those branches pass repository validation.
 
 The automation uses two GitHub Actions workflows:
 
-1. `renovate.yaml` runs Renovate manually and creates candidate branches.
-2. `renovate-pr-opener.yaml` validates candidate branches, opens pull requests after successful validation, and deletes rejected branches when no pull request exists.
+1. `renovate.yaml` runs Renovate manually, creates candidate branches, and re-evaluates held security branches after each run.
+2. `renovate-pr-opener.yaml` validates candidate branches, opens pull requests after successful validation, and deletes rejected branches when no pull request exists. It runs on every branch push and can also be dispatched on a specific branch, which is how held branches are re-evaluated. Refs outside `renovate/**` are ignored, and a pull request is only published for the commit that validation evaluated.
 
 ## Branch lifecycle
 
@@ -24,6 +24,9 @@ The automation uses two GitHub Actions workflows:
    workflow opens the pull request.
 5. If validation fails, the opener workflow deletes the branch unless an open
    pull request already exists or the update is held for human review.
+6. After the run, the Renovate workflow re-evaluates every held security
+   branch, so updates waiting for a CVSS score are re-checked instead of
+   staying frozen (see "Unclear CVSS scores").
 
 The state of an existing pull request is handled as follows:
 
@@ -129,6 +132,21 @@ A maintainer takes the update by opening the pull request from the compare
 view linked in the issue, or rejects it by closing the issue and letting the
 branch be cleaned up once a score confirms the decision.
 
+Held branches are re-evaluated on every Renovate run. Renovate itself pushes
+a branch only when its content changes, and a held branch is deliberately
+kept, so waiting for Renovate alone would never run the gate on it again.
+The Renovate workflow therefore dispatches the PR opener on every held
+security branch after Renovate finishes — a branch with no open pull request
+and no validation already in progress. Branches created before the PR opener
+grew its `workflow_dispatch` trigger cannot be dispatched; their latest
+validation run is re-run instead, but only while the branch still points at
+the commit that run validated, so a moved branch is left to a newer run. A
+re-evaluation picks up CVSS scores published since the hold: the gate then
+either approves the update, rejects it so cleanup removes the branch and the
+issue closes itself, or holds it again with a refreshed issue. If the branch
+moved since the re-run's original commit, the opener stands down and leaves
+the pull request to a run that validates the new tip.
+
 ### Updates that fail validation
 
 A security update can pass the gate and still fail automated validation —
@@ -226,6 +244,12 @@ Renovate run completes within minutes. The default `GITHUB_TOKEN` cannot
 be used because pushes created with it do not trigger the PR opener
 workflow; pushes created with a GitHub App installation token do trigger
 it.
+
+The re-evaluation job still uses the default `GITHUB_TOKEN`:
+`workflow_dispatch` (and `repository_dispatch`) are the documented
+exceptions to that guard, so a dispatch fired with `GITHUB_TOKEN` does
+start the PR opener. Re-running a previous validation run with
+`GITHUB_TOKEN` works the same way, because a re-run is not a new event.
 
 The workflow runs only through GitHub's `workflow_dispatch` trigger during the
 pilot phase. After the workflow is available on `main`, it can be run from the

@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - "renovate/**"
+  # Dispatched on a specific branch by the Renovate workflow to re-evaluate
+  # held security branches (github.ref still points at the candidate branch,
+  # so the push logic runs unchanged).
+  workflow_dispatch:
 
 concurrency:
   group: renovate-pr-opener-${{ github.ref }}
@@ -11,6 +15,10 @@ concurrency:
 
 jobs:
   validate:
+    # The push trigger is already limited to renovate/** branches; this also
+    # limits manual dispatches, so a stray dispatch cannot delete a branch
+    # or open a pull request outside the automation's scope.
+    if: startsWith(github.ref, 'refs/heads/renovate/')
     runs-on: ubuntu-latest
     outputs:
       security_summary: ${{ steps.security.outputs.security_summary }}
@@ -96,6 +104,15 @@ jobs:
           SECURITY_SUMMARY: ${{ needs.validate.outputs.security_summary }}
           GATE_STATUS: ${{ needs.validate.outputs.gate_status }}
         run: |
+          # Publish only the commit that validation evaluated: a re-run keeps
+          # its original GITHUB_SHA, so if the branch moved since, a newer
+          # run must be the one to open the pull request.
+          tip="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          if [[ "${tip}" != "${GITHUB_SHA}" ]]; then
+            echo "${GITHUB_REF_NAME} moved to ${tip} after this run validated ${GITHUB_SHA}; leaving the pull request to a newer run."
+            exit 0
+          fi
+
           if [[ "$(gh pr list --head "${GITHUB_REF_NAME}" --state open --json number --jq 'length')" == "0" ]]; then
             SUBJECT="$(git log -1 --pretty=%s)"
             COMMIT_BODY="$(git log -1 --pretty=%b | grep -v '^Signed-off-by:' || true)"
@@ -154,7 +171,7 @@ jobs:
 
   cleanup:
     needs: [validate, open-pr]
-    if: always() && (needs.validate.result == 'failure' || needs.open-pr.result == 'failure') && needs.validate.outputs.needs_review != 'true'
+    if: always() && startsWith(github.ref, 'refs/heads/renovate/') && (needs.validate.result == 'failure' || needs.open-pr.result == 'failure') && needs.validate.outputs.needs_review != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -266,6 +283,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: read
     steps:
       - name: Track security updates that fail validation
         env:
@@ -343,7 +361,14 @@ jobs:
           elif [[ "${VALIDATE_RESULT}" == "success" && "${OPEN_PR_RESULT}" == "success" && -n "${existing}" ]]; then
             state="$(gh issue view "${existing}" --json state --jq .state)"
             if [[ "${state}" == "OPEN" ]]; then
-              gh issue close "${existing}" \
-                --comment "Resolved: validation now passes for ${BRANCH} and its pull request is open (${RUN_URL}); the security update no longer requires manual work."
+              # A stood-down open-pr job also reports success (it must not
+              # fail, or cleanup would delete the branch), so verify the
+              # pull request really exists before claiming it is open.
+              if [[ "$(gh pr list --head "${BRANCH}" --state open --json number --jq 'length')" != "0" ]]; then
+                gh issue close "${existing}" \
+                  --comment "Resolved: validation now passes for ${BRANCH} and its pull request is open (${RUN_URL}); the security update no longer requires manual work."
+              else
+                echo "Validation passed for ${BRANCH} but no pull request is open (the branch moved during validation); keeping intervention issue ${existing} open."
+              fi
             fi
           fi
